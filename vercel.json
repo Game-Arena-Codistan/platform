@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "echo 'No repository-root install required'",
+  "buildCommand": "cd apps/web && npm run ci",
+  "outputDirectory": "apps/web",
+  "cleanUrls": false,
+  "trailingSlash": false
+}
