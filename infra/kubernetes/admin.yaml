@@ -10,6 +10,7 @@ spec:
     metadata: {labels: {app: game-arena-admin}}
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets: [{name: ghcr-pull}]
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: admin
