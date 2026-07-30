@@ -16,6 +16,8 @@ jobs:
         with: {node-version: 22}
       - name: Repository checks
         run: node scripts/security-check.mjs
+      - name: Render staging blueprint checks
+        run: node scripts/check-render-blueprint.mjs
       - name: API checks
         working-directory: apps/api
         run: npm run ci
@@ -34,3 +36,4 @@ jobs:
           docker build -t game-arena-web:assurance apps/web
           docker build -t game-arena-admin:assurance apps/admin
           docker build -t game-arena-games:assurance apps/game-origin
+          docker build -t game-arena-render-gateway:assurance infra/render-gateway
