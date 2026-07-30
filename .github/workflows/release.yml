@@ -58,6 +58,7 @@ jobs:
       - name: Apply platform configuration
         run: |
           sed "s/REPLACE_IMAGE_TAG/${{ github.sha }}/g" infra/kubernetes/platform.yaml | kubectl apply -f -
+          sed "s/REPLACE_IMAGE_TAG/${{ github.sha }}/g" infra/kubernetes/admin.yaml | kubectl apply -f -
           kubectl -n game-arena rollout status deployment/api --timeout=180s
           kubectl -n game-arena rollout status deployment/web --timeout=180s
           kubectl -n game-arena rollout status deployment/admin --timeout=180s
