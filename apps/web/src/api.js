@@ -1,5 +1,6 @@
-const config={mode:'mock',apiBaseUrl:'',gameOrigin:'',...(window.GAME_ARENA_CONFIG||{})};
+const config={mode:'mock',apiBaseUrl:'',gameOrigin:'',gameHosts:[],...(window.GAME_ARENA_CONFIG||{})};
 const wait=(ms=450)=>new Promise(resolve=>setTimeout(resolve,ms));
+const allowedGameHosts=new Set(['games.codistan.org',...(config.gameHosts||[])]);
 
 async function request(path,options={}){
   const response=await fetch(`${config.apiBaseUrl}${path}`,{
@@ -33,8 +34,17 @@ export async function refreshEntitlement(transactionId){
 }
 
 export function gameUrl(game){
-  if(!config.gameOrigin)return '';
-  return `${config.gameOrigin.replace(/\/$/,'')}/${encodeURIComponent(game.id)}/index.html`;
+  try{
+    if(game?.gameUrl){
+      const url=new URL(game.gameUrl);
+      if(url.protocol!=='https:'||!allowedGameHosts.has(url.hostname))return '';
+      return url.href;
+    }
+    if(!config.gameOrigin)return '';
+    const url=new URL(`${config.gameOrigin.replace(/\/$/,'')}/${encodeURIComponent(game.id)}/index.html`);
+    if(url.protocol!=='https:'&&location.protocol==='https:')return '';
+    return url.href;
+  }catch{return '';}
 }
 
 export function mode(){return config.mode;}
