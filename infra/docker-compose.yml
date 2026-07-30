@@ -45,9 +45,10 @@ services:
   admin:
     build: ../apps/admin
     environment:
-      GAME_ARENA_ADMIN_API_BASE_URL: http://localhost:8081
+      GAME_ARENA_ADMIN_API_BASE_URL: /api
       GAME_ARENA_ADMIN_AUTH_MODE: local-key
     ports: ["8083:8080"]
+    depends_on: {api: {condition: service_healthy}}
     restart: unless-stopped
   game-origin:
     build: ../apps/game-origin
