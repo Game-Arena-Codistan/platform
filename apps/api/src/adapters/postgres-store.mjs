@@ -1,0 +1,15 @@
+import {Pool} from 'pg';
+import {MemoryStore} from './memory-store.mjs';
+import {AuditLog,Metrics} from '../lib/observability.mjs';
+const MAP_FIELDS=['users','usersByIdentity','identities','otp','sessions','devices','entitlements','transactions','paymentEvents','playSessions','rateLimits','challenges','tournaments','adjustments'];
+const ARRAY_FIELDS=['entitlementHistory','reconciliationCases','ledger','games','scoreEvents','tournamentEntries'];
+const MUTATIONS=['createOtp','saveOtp','findOrCreateUser','linkIdentity','createSession','saveSession','deleteSession','revokeUserSessions','setEntitlement','saveGame','createTransaction','saveTransaction','addPaymentEvent','createReconciliationCase','appendLedger','createPlaySession','savePlaySession','addScore','joinTournament','requestDeletion'];
+function encode(store){const state={schemaVersion:1};for(const field of MAP_FIELDS)state[field]=[...store[field].entries()];for(const field of ARRAY_FIELDS)state[field]=store[field];state.audit=store.audit.events;state.metrics={counters:[...store.metrics.counters.entries()],timings:[...store.metrics.timings.entries()]};return state;}
+function restore(store,state){if(!state||state.schemaVersion!==1)return;for(const field of MAP_FIELDS)if(Array.isArray(state[field]))store[field]=new Map(state[field]);for(const field of ARRAY_FIELDS)if(Array.isArray(state[field]))store[field]=state[field];store.audit.events=Array.isArray(state.audit)?state.audit:[];store.metrics.counters=new Map(state.metrics?.counters||[]);store.metrics.timings=new Map(state.metrics?.timings||[]);}
+export class PostgresStore extends MemoryStore{
+  static async connect({connectionString,ssl=false}){const pool=new Pool({connectionString,max:10,idleTimeoutMillis:30000,connectionTimeoutMillis:10000,ssl:ssl?{rejectUnauthorized:false}:undefined});await pool.query('SELECT 1');await pool.query(`CREATE TABLE IF NOT EXISTS platform_state (id text PRIMARY KEY, revision bigint NOT NULL DEFAULT 0, state jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`);const result=await pool.query('SELECT state FROM platform_state WHERE id=$1',['primary']);const store=new PostgresStore({pool});if(result.rows[0])restore(store,result.rows[0].state);store.dirty=false;return store;}
+  constructor({pool}){super({audit:new AuditLog(),metrics:new Metrics()});this.pool=pool;this.dirty=false;this.flushing=null;for(const name of MUTATIONS){const original=this[name].bind(this);this[name]=(...args)=>{const result=original(...args);this.markDirty();return result;};}}
+  markDirty(){this.dirty=true;if(!this.flushing)this.flushing=Promise.resolve().then(()=>this.flush()).finally(()=>{this.flushing=null;if(this.dirty)this.markDirty();});}
+  async flush(){if(!this.dirty)return;this.dirty=false;const state=encode(this);try{await this.pool.query(`INSERT INTO platform_state(id,revision,state,updated_at) VALUES($1,1,$2,now()) ON CONFLICT(id) DO UPDATE SET revision=platform_state.revision+1,state=EXCLUDED.state,updated_at=now()`,['primary',state]);}catch(error){this.dirty=true;throw error;}}
+  async close(){await this.flush();await this.pool.end();}
+}
