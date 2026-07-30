@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'bootstrap/READY'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bootstrap/PR_READY'
 
 permissions:
   contents: write
@@ -23,6 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Reassemble and verify release bundle
