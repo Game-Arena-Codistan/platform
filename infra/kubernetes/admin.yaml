@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin
+  namespace: game-arena
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: game-arena-admin}}
+  template:
+    metadata: {labels: {app: game-arena-admin}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: admin
+          image: ghcr.io/game-arena-codistan/platform-admin:REPLACE_IMAGE_TAG
+          ports: [{containerPort: 8080}]
+          env:
+            - {name: GAME_ARENA_ADMIN_API_BASE_URL, value: /api}
+            - {name: GAME_ARENA_ADMIN_AUTH_MODE, value: gateway}
+          readinessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 20}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 250m, memory: 128Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: false, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: admin, namespace: game-arena}
+spec:
+  selector: {app: game-arena-admin}
+  ports: [{port: 8080, targetPort: 8080}]
