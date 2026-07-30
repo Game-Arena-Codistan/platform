@@ -1,0 +1,63 @@
+name: Release qualification
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'infra/**'
+      - '.github/workflows/qualification.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  api-load:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Start isolated API
+        env:
+          NODE_ENV: test
+          PORT: 8081
+          OTP_PROVIDER_MODE: mock
+          JAZZCASH_MODE: mock
+          ALLOW_DEBUG_OTP: "true"
+          REQUIRE_DATABASE: "false"
+        run: |
+          node src/server.mjs > /tmp/game-arena-api.log 2>&1 &
+          echo $! > /tmp/game-arena-api.pid
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8081/healthz && break; sleep 1; done
+      - name: Run launch-profile load test
+        env:
+          TARGET_URL: http://127.0.0.1:8081
+          DURATION_SECONDS: 10
+          CONCURRENCY: 25
+          MAX_P95_MS: 500
+          MAX_ERROR_RATE: 0.01
+        run: npm run load
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-load-report
+          path: apps/api/reports/load-test.json
+          retention-days: 30
+      - name: Stop API
+        if: always()
+        run: kill $(cat /tmp/game-arena-api.pid) || true
+  configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        working-directory: infra
+        run: docker compose -f docker-compose.yml config --quiet
+      - name: Validate Kubernetes YAML is renderable
+        run: |
+          test -s infra/kubernetes/platform.yaml
+          grep -q 'kind: Deployment' infra/kubernetes/platform.yaml
+          grep -q 'REPLACE_IMAGE_TAG' infra/kubernetes/platform.yaml
