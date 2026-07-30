@@ -17,6 +17,7 @@ const values={
   REPLACE_OTP_PROVIDER_MODE:process.env.OTP_PROVIDER_MODE,
   REPLACE_ALLOW_DEBUG_OTP:process.env.ALLOW_DEBUG_OTP,
   REPLACE_JAZZCASH_MODE:process.env.JAZZCASH_MODE,
+  REPLACE_ADMIN_AUTH_MODE:process.env.ADMIN_AUTH_MODE,
   REPLACE_TLS_SECRET_NAME:process.env.TLS_SECRET_NAME,
   REPLACE_AWS_CERTIFICATE_ARN:process.env.AWS_CERTIFICATE_ARN
 };
@@ -36,6 +37,7 @@ if(values.REPLACE_DATABASE_SSL&&!/^(true|false)$/.test(values.REPLACE_DATABASE_S
 if(values.REPLACE_ALLOW_DEBUG_OTP&&!/^(true|false)$/.test(values.REPLACE_ALLOW_DEBUG_OTP))throw new Error('ALLOW_DEBUG_OTP must be true or false.');
 if(values.REPLACE_OTP_PROVIDER_MODE&&!/^(mock|http|disabled)$/.test(values.REPLACE_OTP_PROVIDER_MODE))throw new Error('OTP_PROVIDER_MODE is invalid.');
 if(values.REPLACE_JAZZCASH_MODE&&!/^(mock|hosted|disabled)$/.test(values.REPLACE_JAZZCASH_MODE))throw new Error('JAZZCASH_MODE is invalid.');
+if(values.REPLACE_ADMIN_AUTH_MODE&&!/^(local-key|gateway)$/.test(values.REPLACE_ADMIN_AUTH_MODE))throw new Error('ADMIN_AUTH_MODE is invalid.');
 
 let rendered=template;
 for(const token of tokens)rendered=rendered.replaceAll(token,values[token]);
