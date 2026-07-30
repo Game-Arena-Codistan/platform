@@ -1,0 +1,59 @@
+name: Validate frontend release candidate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'release/READY'
+      - 'apps/web/**'
+      - 'docs/**'
+      - 'README.release.md'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: frontend-release-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-clean:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Validate source layout
+        run: |
+          test -f apps/web/index.html
+          test -f apps/web/package.json
+          test -f apps/web/nginx.conf
+          test -f docs/PRODUCT.md
+          test -f docs/ARCHITECTURE.md
+          test -f docs/GAMES.md
+          test -f docs/PAYMENTS.md
+
+      - name: Run frontend release checks
+        working-directory: apps/web
+        run: npm run ci
+
+      - name: Build production container
+        working-directory: apps/web
+        run: docker build -t game-arena-web:release .
+
+      - name: Remove bootstrap transport and finalize repository files
+        run: |
+          rm -rf bootstrap release
+          rm -f .github/workflows/bootstrap-platform.yml
+          if [ -f README.release.md ]; then mv README.release.md README.md; fi
+          if [ -f SECURITY.release.md ]; then mv SECURITY.release.md SECURITY.md; fi
+          git config user.name 'game-arena-release[bot]'
+          git config user.email 'game-arena-release[bot]@users.noreply.github.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore: finalize clean frontend release candidate'
+            git push origin HEAD:${{ github.head_ref }}
+          fi
