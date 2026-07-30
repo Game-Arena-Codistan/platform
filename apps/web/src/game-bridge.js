@@ -15,10 +15,12 @@ function createMessage(source,type,payload={}){const value={source,version:VERSI
 export class GameBridge{
   constructor(iframe,game,onEvent,{readyTimeoutMs=15000}={}){
     this.iframe=iframe;this.game=game;this.onEvent=onEvent;this.started=Date.now();this.ready=false;
-    const url=new URL(game.gameUrl||iframe.src,location.href);this.origin=url.origin;this.receive=this.receive.bind(this);addEventListener('message',this.receive);
+    const opaqueSandbox=iframe.hasAttribute('sandbox');
+    const url=new URL(game.gameUrl||iframe.src,location.href);this.origin=opaqueSandbox?'null':url.origin;this.targetOrigin=opaqueSandbox?'*':url.origin;
+    this.receive=this.receive.bind(this);addEventListener('message',this.receive);
     this.timer=setTimeout(()=>{if(!this.ready)this.onEvent?.('error',{code:'bridge_ready_timeout'});},readyTimeoutMs);
   }
-  send(type,payload={}){if(!outbound.has(type))throw new Error(`Unsupported host event: ${type}`);this.iframe.contentWindow?.postMessage(createMessage('game-arena',type,payload),this.origin);}
+  send(type,payload={}){if(!outbound.has(type))throw new Error(`Unsupported host event: ${type}`);this.iframe.contentWindow?.postMessage(createMessage('game-arena',type,payload),this.targetOrigin);}
   receive(event){
     if(event.source!==this.iframe.contentWindow||event.origin!==this.origin)return;const value=event.data;
     if(!value||value.source!=='game-arena-game')return;

@@ -1,6 +1,6 @@
 const config={mode:'mock',apiBaseUrl:'',gameOrigin:'',gameHosts:[],...(window.GAME_ARENA_CONFIG||{})};
 const wait=(ms=450)=>new Promise(resolve=>setTimeout(resolve,ms));
-const allowedGameHosts=new Set(['games.codistan.org',...(config.gameHosts||[])]);
+const allowedGameHosts=new Set([location.hostname,'games.codistan.org',...(config.gameHosts||[])]);
 function cookie(name){return document.cookie.split(';').map(item=>item.trim()).find(item=>item.startsWith(`${name}=`))?.slice(name.length+1)||'';}
 async function request(path,options={}){const method=options.method||'GET';const headers={'content-type':'application/json',...(options.headers||{})};if(!['GET','HEAD','OPTIONS'].includes(method))headers['x-csrf-token']=decodeURIComponent(cookie('ga_csrf'));const response=await fetch(`${config.apiBaseUrl}${path}`,{credentials:'include',...options,headers});const data=response.status===204?null:await response.json().catch(()=>null);if(!response.ok){const error=new Error(data?.error?.message||`Request failed: ${response.status}`);error.code=data?.error?.code;error.status=response.status;error.details=data?.error?.details;throw error;}return data;}
 export async function getSession(){if(config.mode==='live')return request('/v1/session');return{authenticated:false};}
@@ -21,5 +21,5 @@ export async function fetchChallenges(){if(config.mode==='live')return request('
 export async function claimChallenge(id){return request(`/v1/challenges/${encodeURIComponent(id)}/claim`,{method:'POST'});}
 export async function fetchTournaments(){if(config.mode==='live')return request('/v1/tournaments');return{tournaments:[]};}
 export async function joinTournament(id){return request(`/v1/tournaments/${encodeURIComponent(id)}/join`,{method:'POST'});}
-export function gameUrl(game){try{if(game?.gameUrl){const url=new URL(game.gameUrl);if(url.protocol!=='https:'||!allowedGameHosts.has(url.hostname))return'';return url.href;}if(!config.gameOrigin)return'';const url=new URL(`${config.gameOrigin.replace(/\/$/,'')}/${encodeURIComponent(game.id)}/index.html`);if(url.protocol!=='https:'&&location.protocol==='https:')return'';return url.href;}catch{return'';}}
+export function gameUrl(game){try{if(game?.gameUrl){const url=new URL(game.gameUrl,location.href);if(url.protocol!=='https:'&&location.protocol==='https:')return'';if(!allowedGameHosts.has(url.hostname))return'';return url.href;}if(!config.gameOrigin)return'';const url=new URL(`${config.gameOrigin.replace(/\/$/,'')}/${encodeURIComponent(game.id)}/index.html`);if(url.protocol!=='https:'&&location.protocol==='https:')return'';return url.href;}catch{return'';}}
 export function mode(){return config.mode;}

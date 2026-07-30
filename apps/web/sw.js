@@ -1,5 +1,5 @@
-const CACHE='game-arena-shell-v1';
-const SHELL=['/','/index.html','/manifest.webmanifest','/styles/tokens.css','/styles/app.css','/styles/responsive.css','/assets/icon.svg','/assets/logo.svg','/src/app.js','/src/data.js','/src/state.js','/src/api.js','/src/ui.js','/src/analytics.js','/src/game-bridge.js','/src/views/feed.js','/src/views/library.js','/src/views/rewards.js','/src/views/premium.js','/src/views/account.js'];
+const CACHE='game-arena-shell-v2';
+const SHELL=['/','/index.html','/manifest.webmanifest','/styles/tokens.css','/styles/app.css','/styles/responsive.css','/assets/icon.svg','/assets/logo.svg','/assets/app.js','/demo-games/arena-dash/index.html'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
@@ -11,5 +11,5 @@ self.addEventListener('fetch',event=>{
     event.respondWith(fetch(request).then(response=>{const copy=response.clone();caches.open(CACHE).then(cache=>cache.put('/index.html',copy));return response;}).catch(()=>caches.match('/index.html')));
     return;
   }
-  event.respondWith(caches.match(request).then(cached=>cached||fetch(request).then(response=>{if(response.ok&&['style','script','image','manifest'].includes(request.destination)){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(request,copy));}return response;})));
+  event.respondWith(caches.match(request).then(cached=>cached||fetch(request).then(response=>{if(response.ok&&['style','script','image','manifest','document'].includes(request.destination)){const copy=response.clone();caches.open(CACHE).then(cache=>cache.put(request,copy));}return response;})));
 });
