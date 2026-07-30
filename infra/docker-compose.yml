@@ -5,33 +5,24 @@ services:
       POSTGRES_DB: game_arena
       POSTGRES_USER: game_arena
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL","pg_isready -U game_arena -d game_arena"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck: {test: [CMD-SHELL, "pg_isready -U game_arena -d game_arena"], interval: 5s, timeout: 3s, retries: 20}
     restart: unless-stopped
-
   migrate:
     build: ../apps/api
-    command: ["npm","run","migrate"]
+    command: [npm, run, migrate]
     environment:
       DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD:-local-only-change-me}@postgres:5432/game_arena
       DATABASE_SSL: "false"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    depends_on: {postgres: {condition: service_healthy}}
     restart: "no"
-
   api:
     build: ../apps/api
     environment:
       NODE_ENV: development
       PORT: 8081
       PUBLIC_ORIGIN: http://localhost:8080
-      ALLOWED_ORIGINS: http://localhost:8080
+      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:8083
       DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD:-local-only-change-me}@postgres:5432/game_arena
       DATABASE_SSL: "false"
       REQUIRE_DATABASE: "true"
@@ -40,11 +31,9 @@ services:
       JAZZCASH_MODE: mock
       JAZZCASH_WEBHOOK_SECRET: ${JAZZCASH_WEBHOOK_SECRET:-local-jazzcash-secret}
       ADMIN_API_KEYS: ${ADMIN_API_KEYS:-local-admin-key}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
+    ports: ["8081:8081"]
+    depends_on: {migrate: {condition: service_completed_successfully}}
     restart: unless-stopped
-
   web:
     build: ../apps/web
     environment:
@@ -53,25 +42,22 @@ services:
       GAME_ARENA_GAME_ORIGIN: http://localhost:8082/games
       GAME_ARENA_GAME_HOSTS: games.codistan.org,localhost
     restart: unless-stopped
-
+  admin:
+    build: ../apps/admin
+    environment:
+      GAME_ARENA_ADMIN_API_BASE_URL: http://localhost:8081
+      GAME_ARENA_ADMIN_AUTH_MODE: local-key
+    ports: ["8083:8080"]
+    restart: unless-stopped
   game-origin:
     build: ../apps/game-origin
-    ports:
-      - "8082:8080"
+    ports: ["8082:8080"]
     restart: unless-stopped
-
   gateway:
     image: nginx:1.29-alpine
-    volumes:
-      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "8080:8080"
-    depends_on:
-      api:
-        condition: service_healthy
-      web:
-        condition: service_healthy
+    volumes: [./gateway/nginx.conf:/etc/nginx/nginx.conf:ro]
+    ports: ["8080:8080"]
+    depends_on: {api: {condition: service_healthy}, web: {condition: service_healthy}}
     restart: unless-stopped
-
 volumes:
   postgres-data:
