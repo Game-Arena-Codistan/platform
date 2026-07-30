@@ -1,0 +1,21 @@
+{
+  "name":"Game Arena",
+  "short_name":"Game Arena",
+  "description":"Instant HTML5 games, tournaments and Arena Coins.",
+  "id":"/",
+  "start_url":"/#/feed",
+  "scope":"/",
+  "display":"standalone",
+  "orientation":"any",
+  "background_color":"#0b0714",
+  "theme_color":"#0b0714",
+  "categories":["games","entertainment"],
+  "icons":[
+    {"src":"/assets/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ],
+  "shortcuts":[
+    {"name":"Play games","url":"/#/feed"},
+    {"name":"Discover","url":"/#/library"},
+    {"name":"Rewards","url":"/#/rewards"}
+  ]
+}
