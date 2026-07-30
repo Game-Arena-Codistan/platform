@@ -1,0 +1,36 @@
+name: Platform assurance
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '40 3 * * 2'
+permissions: {contents: read}
+jobs:
+  assurance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Repository checks
+        run: node scripts/security-check.mjs
+      - name: API checks
+        working-directory: apps/api
+        run: npm run ci
+      - name: Game isolation checks
+        working-directory: apps/game-ops
+        run: npm run ci
+      - name: Bridge checks
+        working-directory: packages/game-bridge
+        run: npm run ci
+      - name: Operations console checks
+        working-directory: apps/admin
+        run: npm run ci
+      - name: Production container builds
+        run: |
+          docker build -t game-arena-api:assurance apps/api
+          docker build -t game-arena-web:assurance apps/web
+          docker build -t game-arena-admin:assurance apps/admin
+          docker build -t game-arena-games:assurance apps/game-origin

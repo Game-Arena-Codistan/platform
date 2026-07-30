@@ -1,0 +1,2 @@
+# Add one regex entry per disabled immutable build, then reload Nginx.
+# Example: ~^/games/sample-game/1\.0\.0/ 1;

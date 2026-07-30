@@ -1,50 +1,25 @@
 const config={mode:'mock',apiBaseUrl:'',gameOrigin:'',gameHosts:[],...(window.GAME_ARENA_CONFIG||{})};
 const wait=(ms=450)=>new Promise(resolve=>setTimeout(resolve,ms));
 const allowedGameHosts=new Set(['games.codistan.org',...(config.gameHosts||[])]);
-
-async function request(path,options={}){
-  const response=await fetch(`${config.apiBaseUrl}${path}`,{
-    credentials:'include',
-    headers:{'content-type':'application/json',...(options.headers||{})},
-    ...options
-  });
-  if(!response.ok)throw new Error(`Request failed: ${response.status}`);
-  return response.status===204?null:response.json();
-}
-
-export async function requestOtp(identifier){
-  if(config.mode==='live')return request('/v1/auth/otp',{method:'POST',body:JSON.stringify({identifier})});
-  await wait();return{challengeId:crypto.randomUUID(),expiresIn:300,resendIn:30};
-}
-
-export async function verifyOtp(challengeId,code){
-  if(config.mode==='live')return request('/v1/auth/otp/verify',{method:'POST',body:JSON.stringify({challengeId,code})});
-  await wait();if(code!=='123456')throw new Error('Invalid code. Use 123456 in demo mode.');
-  return{user:{id:'demo-user',displayName:'Player One'},entitlement:'free',coins:120};
-}
-
-export async function createCheckout(planId){
-  if(config.mode==='live')return request('/v1/payments/jazzcash/checkout',{method:'POST',body:JSON.stringify({planId})});
-  await wait();return{transactionId:crypto.randomUUID(),status:'pending',provider:'JazzCash'};
-}
-
-export async function refreshEntitlement(transactionId){
-  if(config.mode==='live')return request(`/v1/entitlements/me?transactionId=${encodeURIComponent(transactionId)}`);
-  await wait(700);return{entitlement:'premium',status:'active'};
-}
-
-export function gameUrl(game){
-  try{
-    if(game?.gameUrl){
-      const url=new URL(game.gameUrl);
-      if(url.protocol!=='https:'||!allowedGameHosts.has(url.hostname))return '';
-      return url.href;
-    }
-    if(!config.gameOrigin)return '';
-    const url=new URL(`${config.gameOrigin.replace(/\/$/,'')}/${encodeURIComponent(game.id)}/index.html`);
-    if(url.protocol!=='https:'&&location.protocol==='https:')return '';
-    return url.href;
-  }catch{return '';}
-}
-
+function cookie(name){return document.cookie.split(';').map(item=>item.trim()).find(item=>item.startsWith(`${name}=`))?.slice(name.length+1)||'';}
+async function request(path,options={}){const method=options.method||'GET';const headers={'content-type':'application/json',...(options.headers||{})};if(!['GET','HEAD','OPTIONS'].includes(method))headers['x-csrf-token']=decodeURIComponent(cookie('ga_csrf'));const response=await fetch(`${config.apiBaseUrl}${path}`,{credentials:'include',...options,headers});const data=response.status===204?null:await response.json().catch(()=>null);if(!response.ok){const error=new Error(data?.error?.message||`Request failed: ${response.status}`);error.code=data?.error?.code;error.status=response.status;error.details=data?.error?.details;throw error;}return data;}
+export async function getSession(){if(config.mode==='live')return request('/v1/session');return{authenticated:false};}
+export async function requestOtp(identifier){if(config.mode==='live')return request('/v1/auth/otp',{method:'POST',body:JSON.stringify({identifier})});await wait();return{challengeId:crypto.randomUUID(),expiresIn:300,resendIn:30};}
+export async function verifyOtp(challengeId,code){if(config.mode==='live')return request('/v1/auth/otp/verify',{method:'POST',body:JSON.stringify({challengeId,code})});await wait();if(code!=='123456')throw new Error('Invalid code. Use 123456 in demo mode.');return{user:{id:'demo-user',displayName:'Player One'},entitlement:'free',coins:120,csrfToken:'demo'};}
+export async function logout(){if(config.mode==='live')return request('/v1/auth/logout',{method:'POST'});}
+export async function logoutAll(){if(config.mode==='live')return request('/v1/auth/logout-all',{method:'POST'});return{revoked:0};}
+export async function listSessions(){if(config.mode==='live')return request('/v1/account/sessions');return{sessions:[]};}
+export async function exportAccount(){if(config.mode==='live')return request('/v1/account/export');return{exportedAt:new Date().toISOString()};}
+export async function deleteAccount(){if(config.mode==='live')return request('/v1/account',{method:'DELETE'});return{status:'deletion_pending'};}
+export async function createCheckout(planId){if(config.mode==='live')return request('/v1/payments/jazzcash/checkout',{method:'POST',headers:{'idempotency-key':crypto.randomUUID()},body:JSON.stringify({planId})});await wait();return{transactionId:crypto.randomUUID(),status:'pending',provider:'JazzCash',checkout:{method:'mock'}};}
+export function submitCheckout(checkout){if(!checkout||checkout.method==='mock')return false;if(checkout.method==='POST'&&checkout.actionUrl){const form=document.createElement('form');form.method='POST';form.action=checkout.actionUrl;form.hidden=true;for(const [name,value] of Object.entries(checkout.fields||{})){const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(value);form.append(input);}document.body.append(form);form.submit();return true;}if(checkout.redirectUrl){location.assign(checkout.redirectUrl);return true;}return false;}
+export async function paymentStatus(transactionId){if(config.mode==='live')return request(`/v1/payments/${encodeURIComponent(transactionId)}`);await wait(500);return{transactionId,status:'paid',entitlement:{tier:'premium',status:'active'}};}
+export async function refreshEntitlement(transactionId,{attempts=12,intervalMs=2000}={}){if(config.mode!=='live'){await wait(700);return{entitlement:'premium',status:'active'};}for(let attempt=0;attempt<attempts;attempt++){const result=await paymentStatus(transactionId);if(result.status==='paid')return{entitlement:result.entitlement.tier,status:result.entitlement.status};if(['failed','refunded','voided'].includes(result.status))throw new Error(`Payment ${result.status}.`);await wait(intervalMs);}return{entitlement:'free',status:'pending'};}
+export async function startPlay(gameId){if(config.mode==='live')return request('/v1/play-sessions',{method:'POST',body:JSON.stringify({gameId})});return{playSessionId:crypto.randomUUID(),gameVersion:'demo',nonce:'demo'};}
+export async function completePlay(playSessionId,result){if(config.mode==='live')return request(`/v1/play-sessions/${encodeURIComponent(playSessionId)}/complete`,{method:'POST',body:JSON.stringify(result)});return{accepted:true,reward:20,balance:140,status:'verified'};}
+export async function fetchChallenges(){if(config.mode==='live')return request('/v1/challenges');return{challenges:[]};}
+export async function claimChallenge(id){return request(`/v1/challenges/${encodeURIComponent(id)}/claim`,{method:'POST'});}
+export async function fetchTournaments(){if(config.mode==='live')return request('/v1/tournaments');return{tournaments:[]};}
+export async function joinTournament(id){return request(`/v1/tournaments/${encodeURIComponent(id)}/join`,{method:'POST'});}
+export function gameUrl(game){try{if(game?.gameUrl){const url=new URL(game.gameUrl);if(url.protocol!=='https:'||!allowedGameHosts.has(url.hostname))return'';return url.href;}if(!config.gameOrigin)return'';const url=new URL(`${config.gameOrigin.replace(/\/$/,'')}/${encodeURIComponent(game.id)}/index.html`);if(url.protocol!=='https:'&&location.protocol==='https:')return'';return url.href;}catch{return'';}}
 export function mode(){return config.mode;}

@@ -6,6 +6,9 @@ on:
       - 'apps/game-ops/**'
       - 'apps/game-origin/**'
       - 'apps/api/src/catalogue/**'
+      - 'apps/api/src/services/catalogue-admin.mjs'
+      - 'packages/game-bridge/**'
+      - 'examples/game-bridge-sample/**'
       - '.github/workflows/game-runtime-qa.yml'
   workflow_dispatch:
   schedule:
@@ -22,9 +25,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate tools and catalogue
+      - name: Validate ingestion tools and catalogue
         working-directory: apps/game-ops
         run: npm run ci
+      - name: Validate Game Bridge SDK
+        working-directory: packages/game-bridge
+        run: npm run ci
+      - name: Validate API catalogue administration tests
+        working-directory: apps/api
+        run: npm test
       - name: Build controlled game origin
         working-directory: apps/game-origin
         run: docker build -t game-arena-game-origin:ci .
