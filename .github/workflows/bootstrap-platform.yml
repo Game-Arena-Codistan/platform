@@ -19,14 +19,30 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA256: 003f313235f7a20ef752aaa6a3811677e353da2cd09f2a582e785a9681c78786
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Reassemble release bundle
+      - name: Reassemble and verify release bundle
         run: |
-          cat bootstrap/part-* | base64 --decode > /tmp/game-arena-platform.tar.xz
+          cat \
+            bootstrap/part-000 \
+            bootstrap/part-001 \
+            bootstrap/part-002 \
+            bootstrap/part-003 \
+            bootstrap/part-005 \
+            bootstrap/part-007 \
+            bootstrap/part-009 \
+            bootstrap/x011a \
+            bootstrap/x011b \
+            bootstrap/x012a \
+            bootstrap/x012b \
+            bootstrap/x013a \
+            bootstrap/x013b \
+            | base64 --decode > /tmp/game-arena-platform.tar.xz
+          echo "$RELEASE_SHA256  /tmp/game-arena-platform.tar.xz" | sha256sum --check --strict
           rm -rf /tmp/game-arena-platform
           mkdir -p /tmp/game-arena-platform
           tar -xJf /tmp/game-arena-platform.tar.xz -C /tmp/game-arena-platform
