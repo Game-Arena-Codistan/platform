@@ -1,14 +1,10 @@
 import {randomUUID} from 'node:crypto';
+import {catalogue} from '../catalogue/index.mjs';
+
 export class MemoryStore{
   constructor(){
     this.users=new Map();this.usersByIdentity=new Map();this.otp=new Map();this.sessions=new Map();this.entitlements=new Map();this.transactions=new Map();this.ledger=[];this.playSessions=new Map();this.rateLimits=new Map();
-    this.games=[
-      {id:'neon-rider',title:'Neon Rider',genre:'Racing',tier:'free',orientation:'landscape',reward:20,status:'live'},
-      {id:'sky-sprint',title:'Sky Sprint',genre:'Running',tier:'free',orientation:'portrait',reward:15,status:'live'},
-      {id:'logic-loop',title:'Logic Loop',genre:'Puzzle',tier:'free',orientation:'portrait',reward:18,status:'live'},
-      {id:'moto-x',title:'Moto X3M Arena',genre:'Racing',tier:'premium',orientation:'landscape',reward:50,status:'live'},
-      {id:'galaxy-guard',title:'Galaxy Guard',genre:'Arcade',tier:'premium',orientation:'landscape',reward:45,status:'live'}
-    ];
+    this.games=catalogue.map(game=>({...game}));
   }
   hitRateLimit(key,limit,windowMs,now=Date.now()){const recent=(this.rateLimits.get(key)??[]).filter(time=>time>now-windowMs);recent.push(now);this.rateLimits.set(key,recent);return recent.length>limit;}
   createOtp(challenge){this.otp.set(challenge.id,challenge);return challenge;} getOtp(id){return this.otp.get(id);} saveOtp(challenge){this.otp.set(challenge.id,challenge);}

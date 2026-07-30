@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "spreadsheetId": "19DD1Bby9Zm0A4WZ6MZGXrOyW-8lzPfajbIPKGGFKVJ0",
+    "sheet": "Games - GameNow Submission",
+    "qaSheet": "Games QA",
+    "artworkSheet": "New Icons and Banner "
+  },
+  "importedAt": "2026-07-30T10:42:00Z",
+  "counts": {
+    "submitted": 61,
+    "live": 44,
+    "quarantined": 17,
+    "freeLive": 17,
+    "premiumLive": 27
+  },
+  "quarantined": [
+    {"title":"Plumber","sourceRow":2,"reasons":["qa_issue"],"qaNote":"Issue in game end result"},
+    {"title":"Duck Hunter","sourceRow":3,"reasons":["qa_issue"],"qaNote":"Game works but has continuous text/design issue"},
+    {"title":"SWAT vs Zombies","sourceRow":4,"reasons":["game_url_points_to_asset_folder"],"qaNote":"Working Well"},
+    {"title":"Ninja Run New","sourceRow":5,"reasons":["qa_unavailable","missing_or_invalid_game_url"],"qaNote":"Not Available"},
+    {"title":"Halloween Memory","sourceRow":9,"reasons":["missing_or_invalid_game_url"],"qaNote":"Working Well"},
+    {"title":"Stick Monkey","sourceRow":11,"reasons":["qa_not_working"],"qaNote":"Not Working"},
+    {"title":"Gold Miner","sourceRow":12,"reasons":["qa_not_working"],"qaNote":"Not Working"},
+    {"title":"Fruit Snake","sourceRow":20,"reasons":["qa_not_working"],"qaNote":"Not Working"},
+    {"title":"Tank Defender","sourceRow":21,"reasons":["qa_not_working"],"qaNote":"Not Working"},
+    {"title":"Crazy Runner","sourceRow":22,"reasons":["duplicate_submission"],"qaNote":"Working Well"},
+    {"title":"Super Cowboy Run","sourceRow":24,"reasons":["wrong_build"],"qaNote":"Uploaded build is Space Purge instead of Super Cowboy Run"},
+    {"title":"Smiles","sourceRow":48,"reasons":["qa_not_working","insecure_http_url"],"qaNote":"Not Working"},
+    {"title":"Zombie Uprising","sourceRow":49,"reasons":["qa_not_working","insecure_http_url"],"qaNote":"Not Working"},
+    {"title":"Super Pongoal","sourceRow":50,"reasons":["qa_unavailable","missing_or_invalid_game_url"],"qaNote":"Not Available"},
+    {"title":"Memory Game","sourceRow":57,"reasons":["game_url_mismatches_title"],"qaNote":"Working Well"},
+    {"title":"Flappy Bounce","sourceRow":60,"reasons":["qa_not_working"],"qaNote":"Not Working"},
+    {"title":"Caster Memory","sourceRow":62,"reasons":["qa_unavailable","missing_or_invalid_game_url"],"qaNote":"Not Available"}
+  ]
+}
