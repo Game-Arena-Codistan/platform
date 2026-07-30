@@ -32,10 +32,10 @@ apps/game-ops/        Game validation, scanning and packaging
 apps/game-origin/     Isolated immutable game server
 packages/game-bridge/ Game Bridge v1 SDK and schemas
 examples/             Reference game integration
-infra/                Compose, gateway, Render and Kubernetes deployment
+infra/                Local Compose and portable Kubernetes deployment
 catalogue/            Imported catalogue audit artifacts
 docs/                 Architecture, security, operations and launch runbooks
-.github/workflows/    Quality, security, qualification and release automation
+.github/workflows/    Quality, previews, image publishing and cloud deployment
 ```
 
 ## Run the complete local stack
@@ -68,10 +68,10 @@ cd ../api && npm install && npm run ci
 cd ../game-ops && npm run ci
 cd ../../packages/game-bridge && npm run ci
 node ../../scripts/security-check.mjs
-node ../../scripts/check-render-blueprint.mjs
+node ../../scripts/check-cloud-deployment.mjs
 ```
 
-GitHub Actions additionally build every production container, validate infrastructure manifests and run the synthetic API launch profile.
+GitHub Actions additionally build every production container, validate the DigitalOcean/AWS manifests and run the synthetic API launch profile.
 
 ## Architecture boundaries
 
@@ -85,18 +85,19 @@ GitHub Actions additionally build every production container, validate infrastru
 
 ## Deployment
 
-A complete mock-provider staging environment can be provisioned from the root `render.yaml` Blueprint. It creates a same-origin player/API gateway, private application services, a separate game origin and managed PostgreSQL. See [`docs/RENDER-STAGING.md`](docs/RENDER-STAGING.md).
+- **Frontend previews:** `.github/workflows/vercel-preview.yml` deploys `apps/web` to Vercel in mock mode after Vercel project secrets are configured. It does not expose backend, OTP or payment credentials.
+- **Full staging/production:** `.github/workflows/deploy-kubernetes.yml` deploys the release images to either DigitalOcean Kubernetes or AWS EKS. It uses GitHub Environments, runs PostgreSQL migrations in-cluster, applies provider-specific TLS/routing and verifies health.
+- **Images:** `.github/workflows/release.yml` publishes commit-addressed API, web, admin and game-origin images to GHCR.
 
-Production and launch references:
+See:
 
+- [`docs/CLOUD-DEPLOYMENT.md`](docs/CLOUD-DEPLOYMENT.md)
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
 - [`docs/SECURITY-VERIFICATION.md`](docs/SECURITY-VERIFICATION.md)
 - [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md)
 - [`docs/GO-LIVE.md`](docs/GO-LIVE.md)
 
-The release workflow publishes commit-addressed API, web, admin and game-origin images. Production deployment requires environment approval, database/cluster secrets and successful automated and manual qualification.
-
 ## Current status
 
-The repository is a software-complete release candidate for the implemented scope. The next step is the Render staging deployment and manual qualification. Public launch remains blocked by original licensed game builds, production infrastructure, OTP and JazzCash credentials, legal/operator approval and physical-device/payment testing tracked in GitHub issues #40 and #41.
+The repository is a software-complete release candidate for the implemented scope. Vercel preview and DigitalOcean/AWS deployment automation are ready. The next owner decision is the cloud provider and environment access. Public launch still requires original licensed game builds, production OTP and JazzCash credentials, legal/operator approval and physical-device/payment testing tracked in GitHub issues #40 and #41.
