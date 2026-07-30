@@ -25,6 +25,9 @@ jobs:
       - name: Bridge checks
         working-directory: packages/game-bridge
         run: npm run ci
+      - name: Operations console checks
+        working-directory: apps/admin
+        run: npm run ci
       - name: Production container builds
         run: |
           docker build -t game-arena-api:assurance apps/api
