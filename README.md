@@ -32,7 +32,7 @@ apps/game-ops/        Game validation, scanning and packaging
 apps/game-origin/     Isolated immutable game server
 packages/game-bridge/ Game Bridge v1 SDK and schemas
 examples/             Reference game integration
-infra/                Compose, gateway and Kubernetes deployment
+infra/                Compose, gateway, Render and Kubernetes deployment
 catalogue/            Imported catalogue audit artifacts
 docs/                 Architecture, security, operations and launch runbooks
 .github/workflows/    Quality, security, qualification and release automation
@@ -68,6 +68,7 @@ cd ../api && npm install && npm run ci
 cd ../game-ops && npm run ci
 cd ../../packages/game-bridge && npm run ci
 node ../../scripts/security-check.mjs
+node ../../scripts/check-render-blueprint.mjs
 ```
 
 GitHub Actions additionally build every production container, validate infrastructure manifests and run the synthetic API launch profile.
@@ -84,7 +85,9 @@ GitHub Actions additionally build every production container, validate infrastru
 
 ## Deployment
 
-See:
+A complete mock-provider staging environment can be provisioned from the root `render.yaml` Blueprint. It creates a same-origin player/API gateway, private application services, a separate game origin and managed PostgreSQL. See [`docs/RENDER-STAGING.md`](docs/RENDER-STAGING.md).
+
+Production and launch references:
 
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
@@ -96,4 +99,4 @@ The release workflow publishes commit-addressed API, web, admin and game-origin 
 
 ## Current status
 
-The repository is a software-complete release candidate for the implemented scope. Public deployment remains blocked by original licensed game builds, production infrastructure, OTP and JazzCash credentials, legal/operator approval and physical-device/payment testing tracked in GitHub issues #40 and #41.
+The repository is a software-complete release candidate for the implemented scope. The next step is the Render staging deployment and manual qualification. Public launch remains blocked by original licensed game builds, production infrastructure, OTP and JazzCash credentials, legal/operator approval and physical-device/payment testing tracked in GitHub issues #40 and #41.
