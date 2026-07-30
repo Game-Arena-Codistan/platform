@@ -1,0 +1,13 @@
+{
+  "name":"@game-arena/game-ops",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "engines":{"node":">=22"},
+  "scripts":{
+    "check":"node src/catalogue-check.mjs",
+    "test":"node --test",
+    "probe":"node src/probe.mjs",
+    "ci":"npm run check && npm test"
+  }
+}
