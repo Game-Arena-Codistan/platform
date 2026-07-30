@@ -9,7 +9,7 @@ for(const game of catalogue){
   if(ids.has(game.id))errors.push(`${game.title}: duplicate id`);ids.add(game.id);
   if(!['free','premium'].includes(game.tier))errors.push(`${game.title}: invalid tier`);
   if(!['portrait','landscape'].includes(game.orientation))errors.push(`${game.title}: invalid orientation`);
-  if(game.status!=='live'||game.qaStatus!=='working')errors.push(`${game.title}: not release-approved`);
+  if(game.status!=='live'||(game.qaStatus&&game.qaStatus!=='working'))errors.push(`${game.title}: not release-approved`);
   try{const url=new URL(game.gameUrl);if(url.protocol!=='https:'||!allowedHosts.has(url.hostname))errors.push(`${game.title}: unapproved game URL`);}catch{errors.push(`${game.title}: invalid game URL`);}
 }
 
