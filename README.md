@@ -1,77 +1,99 @@
 # Game Arena
 
-Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swipe-based game discovery with deliberate catalogue browsing, frictionless OTP access, JazzCash premium checkout, Arena Coins, challenges and tournaments.
+Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swipe-based discovery, a curated game catalogue, OTP accounts, JazzCash premium checkout, Arena Coins, challenges, leaderboards and tournaments.
 
 ## Product model
 
 ### Free
-- Limited, ad-supported catalogue
-- Play limits on selected games
-- Basic leaderboards
-- Standard reward access
+
+- Selected catalogue
+- Standard rewards and basic leaderboards
+- Optional promotional placements
+- Limits on selected games or features
 
 ### Game Arena+
+
 - Full catalogue access
-- Ad-free play
+- Ad-free platform experience
 - Premium challenges and tournaments
-- Reward eligibility and 2× Arena Coins
+- 2× Arena Coins on eligible verified play
 - 10% member top-up discount
 - PKR 299 monthly or PKR 4,999 yearly
+
+Checkout is currently designed as a single JazzCash charge. Automatic renewal must not be promised unless the merchant/provider arrangement and customer disclosure are approved.
 
 ## Repository
 
 ```text
-apps/web/                 Production-oriented static PWA
-apps/web/src/             Native ES modules
-apps/web/styles/          Design tokens and responsive UI
-apps/web/assets/          SVG brand assets
-apps/web/scripts/         Dependency-free CI checks
-docs/                     Product and architecture decisions
-.github/workflows/        Frontend validation
+apps/web/             Player-facing PWA
+apps/api/             Platform API, migrations and service adapters
+apps/admin/           Private operations console
+apps/game-ops/        Game validation, scanning and packaging
+apps/game-origin/     Isolated immutable game server
+packages/game-bridge/ Game Bridge v1 SDK and schemas
+examples/             Reference game integration
+infra/                Compose, gateway and Kubernetes deployment
+catalogue/            Imported catalogue audit artifacts
+docs/                 Architecture, security, operations and launch runbooks
+.github/workflows/    Quality, security, qualification and release automation
 ```
 
-## Run locally
+## Run the complete local stack
+
+```bash
+cd infra
+docker compose up --build
+```
+
+- Player platform: `http://localhost:8080`
+- API: `http://localhost:8081`
+- Controlled game origin: `http://localhost:8082`
+- Operations console: `http://localhost:8083`
+- Local operations key: `local-admin-key` unless overridden
+- Demo OTP: `123456`
+- JazzCash: mock mode only
+
+The frontend can also run independently:
 
 ```bash
 cd apps/web
 npm run dev
 ```
 
-Open `http://localhost:8080`.
-
 ## Validate
 
 ```bash
-cd apps/web
-npm run ci
+cd apps/web && npm run ci
+cd ../api && npm install && npm run ci
+cd ../game-ops && npm run ci
+cd ../../packages/game-bridge && npm run ci
+node ../../scripts/security-check.mjs
 ```
 
-The release gate checks JavaScript syntax, required security controls, commercial fixtures, PWA files, static asset references and the 115 KB core-shell budget.
+GitHub Actions additionally build every production container, validate infrastructure manifests and run the synthetic API launch profile.
 
-## Production image
+## Architecture boundaries
 
-```bash
-cd apps/web
-docker build -t game-arena-web .
-docker run --rm -p 8080:8080 game-arena-web
-```
+- Games are untrusted, scanned, versioned and served from a separate origin.
+- Game Bridge messages require an exact source window, exact origin and the v1 schema.
+- Games request rewards; only the API can create ledger entries.
+- Browser payment returns never activate premium; verified provider events do.
+- Production authentication uses opaque HttpOnly cookies plus CSRF and origin controls.
+- Production requires PostgreSQL. The current durable service repository intentionally uses one API writer replica; horizontal API writes require a later normalized repository migration.
+- Optional product analytics is off by default and excludes identity, OTP, session and payment fields.
 
-## Integration boundaries
+## Deployment
 
-The frontend runs in mock mode by default. Set `window.GAME_ARENA_CONFIG` before `src/app.js` loads to provide API and game origins:
+See:
 
-```html
-<script>
-window.GAME_ARENA_CONFIG = {
-  mode: 'live',
-  apiBaseUrl: 'https://api.example.com',
-  gameOrigin: 'https://games.example.com'
-};
-</script>
-```
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
+- [`docs/SECURITY-VERIFICATION.md`](docs/SECURITY-VERIFICATION.md)
+- [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md)
+- [`docs/GO-LIVE.md`](docs/GO-LIVE.md)
 
-Games are treated as untrusted and run in sandboxed iframes on a separate origin. Payments and rewards are server-authoritative; the browser never grants premium access or changes coin balances directly.
+The release workflow publishes commit-addressed API, web, admin and game-origin images. Production deployment requires environment approval, database/cluster secrets and successful automated and manual qualification.
 
 ## Current status
 
-This branch contains the frontend release candidate and the contracts required for the next phase: importing the real HTML5 catalogue, implementing OTP and JazzCash services, and connecting entitlements, coins and tournament APIs.
+The repository is a software-complete release candidate for the implemented scope. Public deployment remains blocked by original licensed game builds, production infrastructure, OTP and JazzCash credentials, legal/operator approval and physical-device/payment testing tracked in GitHub issues #40 and #41.
