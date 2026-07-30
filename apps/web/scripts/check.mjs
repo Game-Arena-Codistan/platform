@@ -1,5 +1,5 @@
 import {access,readFile,readdir,stat} from 'node:fs/promises';
-import {join} from 'node:path';
+import {join,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 const root=fileURLToPath(new URL('..',import.meta.url));
@@ -11,7 +11,7 @@ if(!html.includes('Content-Security-Policy')||!html.includes('viewport-fit=cover
 if(!css.includes('prefers-reduced-motion'))throw new Error('Reduced-motion support missing.');
 const scripts=(await readdir(join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')).map(file=>join(root,'src',file));
 for(const file of [...scripts,join(root,'sw.js')]){const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(result.status!==0)throw new Error(`${file}: ${result.stderr}`);}
-const budgetFiles=['index.html','styles/tokens.css','styles/app.css','styles/responsive.css',...scripts.map(file=>file.slice(root.length+1))];
+const budgetFiles=['index.html','styles/tokens.css','styles/app.css','styles/responsive.css',...scripts.map(file=>relative(root,file))];
 const bytes=(await Promise.all(budgetFiles.map(file=>stat(join(root,file))))).reduce((sum,item)=>sum+item.size,0);
 if(bytes>115*1024)throw new Error(`Core shell ${(bytes/1024).toFixed(1)} KB exceeds 115 KB.`);
 console.log(`Checks passed. Core shell ${(bytes/1024).toFixed(1)} KB.`);
