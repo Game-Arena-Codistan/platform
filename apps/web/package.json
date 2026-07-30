@@ -1,0 +1,13 @@
+{
+  "name":"@game-arena/web",
+  "version":"1.0.0-rc.1",
+  "private":true,
+  "type":"module",
+  "scripts":{
+    "dev":"node scripts/dev.mjs",
+    "check":"node scripts/check.mjs",
+    "test":"node --test scripts/test.mjs",
+    "ci":"npm run check && npm test"
+  },
+  "engines":{"node":">=22"}
+}
