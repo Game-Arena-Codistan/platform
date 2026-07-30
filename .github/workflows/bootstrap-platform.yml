@@ -26,17 +26,17 @@ jobs:
 
       - name: Reassemble release bundle
         run: |
-          cat bootstrap/part-* | base64 --decode > /tmp/game-arena-platform.zip
+          cat bootstrap/part-* | base64 --decode > /tmp/game-arena-platform.tar.xz
           rm -rf /tmp/game-arena-platform
           mkdir -p /tmp/game-arena-platform
-          unzip -q /tmp/game-arena-platform.zip -d /tmp/game-arena-platform
+          tar -xJf /tmp/game-arena-platform.tar.xz -C /tmp/game-arena-platform
 
       - name: Replace bootstrap repository with release candidate
         run: |
           rsync -a --delete \
             --exclude='.git/' \
             --exclude='bootstrap/' \
-            /tmp/game-arena-platform/game-arena-platform-bootstrap/ ./
+            /tmp/game-arena-platform/game-arena-github-import/ ./
           rm -rf bootstrap
 
       - name: Validate documentation and backlog
