@@ -41,7 +41,8 @@ jobs:
             bootstrap/part-007 \
             bootstrap/part-009 \
             bootstrap/x011a \
-            bootstrap/x011b \
+            bootstrap/x011b0 \
+            bootstrap/x011b1 \
             bootstrap/x012a \
             bootstrap/x012b \
             bootstrap/x013a \
