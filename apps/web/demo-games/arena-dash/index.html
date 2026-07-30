@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Arena Dash</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#f7f8ff;background:#070a14}*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden}body{display:grid;place-items:center;background:radial-gradient(circle at 70% 10%,#3b2b80 0,transparent 35%),linear-gradient(160deg,#070a14,#101525)}main{width:min(100%,900px);height:100%;display:grid;grid-template-rows:auto 1fr auto;gap:12px;padding:14px}.hud{display:flex;justify-content:space-between;gap:12px;align-items:center}.pill{background:#101525cc;border:1px solid #ffffff22;border-radius:999px;padding:8px 14px;font-weight:800}.arena{position:relative;border-radius:22px;border:1px solid #ffffff22;overflow:hidden;background:linear-gradient(180deg,#141b38,#090d1d)}.target{position:absolute;width:72px;height:72px;border:0;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0 6%,#3bd9ff 8% 35%,#7b61ff 62%,#27184e 100%);box-shadow:0 0 30px #3bd9ffaa;transform:translate(-50%,-50%);cursor:pointer;touch-action:manipulation}.target:active{scale:.88}.controls{display:flex;gap:10px;justify-content:center}.controls button{border:0;border-radius:999px;padding:12px 20px;font:inherit;font-weight:900;background:#7b61ff;color:white}.controls .finish{background:#ffc857;color:#281800}#message{text-align:center;color:#a5acc2;margin:0;font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <div class="hud"><span class="pill">Arena Dash</span><span class="pill">Score: <b id="score">0</b></span><span class="pill">Time: <b id="time">30</b>s</span></div>
+  <section class="arena" id="arena" aria-label="Tap the glowing target"><button class="target" id="target" aria-label="Score point"></button></section>
+  <div><div class="controls"><button id="start">Start</button><button class="finish" id="finish">Finish run</button></div><p id="message">Tap Start, then hit the glowing target as many times as possible.</p></div>
+</main>
+<script>
+const VERSION='1.0';const arena=document.querySelector('#arena');const target=document.querySelector('#target');const scoreNode=document.querySelector('#score');const timeNode=document.querySelector('#time');const message=document.querySelector('#message');let score=0;let remaining=30;let startedAt=0;let timer=null;let running=false;let hostOrigin=location.origin;
+function id(){return crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`}
+function send(type,payload={}){parent.postMessage({source:'game-arena-game',version:VERSION,type,payload,correlationId:id(),timestamp:Date.now()},hostOrigin)}
+function move(){const rect=arena.getBoundingClientRect();const pad=48;const x=pad+Math.random()*Math.max(1,rect.width-pad*2);const y=pad+Math.random()*Math.max(1,rect.height-pad*2);target.style.left=`${x}px`;target.style.top=`${y}px`}
+function stop(label='Run complete'){if(timer)clearInterval(timer);timer=null;running=false;message.textContent=`${label}. Final score: ${score}.`;send('score',{score});send('progress',{value:1})}
+function start(){score=0;remaining=30;startedAt=Date.now();running=true;scoreNode.textContent='0';timeNode.textContent='30';message.textContent='Go!';move();if(timer)clearInterval(timer);timer=setInterval(()=>{remaining-=1;timeNode.textContent=String(remaining);send('progress',{value:(30-remaining)/30});if(remaining<=0)stop('Time up')},1000)}
+target.addEventListener('click',()=>{if(!running)return;score+=1;scoreNode.textContent=String(score);send('score',{score});move()});document.querySelector('#start').addEventListener('click',start);document.querySelector('#finish').addEventListener('click',()=>{if(running)stop();send('reward-request',{reason:'game_completion',score,durationMs:Math.max(1000,Date.now()-(startedAt||Date.now()))});message.textContent=`Reward requested for score ${score}.`});
+addEventListener('message',event=>{const value=event.data;if(!value||value.source!=='game-arena'||value.version!==VERSION)return;hostOrigin=event.origin;if(value.type==='init'){message.textContent='Connected. Tap Start to play.';send('ready',{input:['touch','mouse'],orientation:'any',audio:false})}if(value.type==='pause'&&running){clearInterval(timer);timer=null;message.textContent='Paused'}if(value.type==='resume'&&running&&!timer){message.textContent='Resumed';timer=setInterval(()=>{remaining-=1;timeNode.textContent=String(remaining);if(remaining<=0)stop('Time up')},1000)}if(value.type==='destroy'){if(timer)clearInterval(timer)}});
+move();send('ready',{input:['touch','mouse'],orientation:'any',audio:false});
+</script>
+</body>
+</html>
