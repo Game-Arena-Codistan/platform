@@ -12,7 +12,7 @@ data:
   NODE_ENV: production
   PORT: "8081"
   PUBLIC_ORIGIN: https://gamearena.pk
-  ALLOWED_ORIGINS: https://gamearena.pk
+  ALLOWED_ORIGINS: https://gamearena.pk,https://admin.gamearena.pk
   DATABASE_SSL: "true"
   REQUIRE_DATABASE: "true"
   OTP_PROVIDER_MODE: http
