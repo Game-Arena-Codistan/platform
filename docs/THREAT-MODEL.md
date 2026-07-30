@@ -35,7 +35,7 @@ This model covers the web shell, API, account identity, JazzCash payment boundar
 | Payment forgery, replay or return-page trust | HMAC verification, idempotent provider events, server transaction state, entitlement source-of-truth, reconciliation | Verify merchant credentials, provider callback fields and settlement reports |
 | Coin or score inflation | Server-created play sessions, nonce/version checks, plausibility rules, rate controls, append-only ledger, idempotency and review state | Tune rules using real game telemetry |
 | Malicious game build | ZIP traversal and file limits, executable blocking, remote-script/tracker detection, immutable versions, isolated origin, restrictive CSP | Review scanner exceptions for each imported build |
-| Sandbox escape or cookie access | Separate origin, no `allow-same-origin`, permission-by-manifest, exact postMessage origin/window | Browser test representative engines and games |
+| Sandbox escape or cookie access | Separate origin, same-origin permission omitted, permission-by-manifest, exact postMessage origin/window | Browser test representative engines and games |
 | Admin privilege misuse | Separate admin authentication, role checks, dual approval, redacted audit logs | Configure named administrators, MFA/SSO gateway and log retention |
 | Data leakage through analytics/logging | Payload key deny-list, log redaction, no game access to account/payment data | Review production telemetry destinations and retention |
 | Denial of service | Request/body/time limits, rate limits, static CDN/game origin, health checks and kill switches | Load test deployed API/database and configure edge limits |
