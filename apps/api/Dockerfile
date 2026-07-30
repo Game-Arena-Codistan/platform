@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
 COPY --chown=node:node src ./src
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node migrations ./migrations
 USER node
 EXPOSE 8081
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s CMD wget -q -O /dev/null http://127.0.0.1:8081/healthz || exit 1
