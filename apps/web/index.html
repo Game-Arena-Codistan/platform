@@ -6,11 +6,13 @@
   <meta name="theme-color" content="#0b0714">
   <meta name="description" content="Game Arena — your next game is one swipe away.">
   <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests">
   <meta property="og:title" content="Game Arena">
   <meta property="og:description" content="Play instantly. Compete. Earn Arena Coins. Upgrade to Game Arena+.">
   <meta property="og:image" content="/assets/social.svg">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/assets/icon.svg">
   <link rel="stylesheet" href="/styles/tokens.css">
   <link rel="stylesheet" href="/styles/app.css">
   <link rel="stylesheet" href="/styles/responsive.css">
@@ -26,15 +28,11 @@
       </a>
       <div class="top-actions">
         <span id="network-status" class="status" role="status">Online</span>
-        <button id="coins-button" class="coin-button" type="button" aria-label="Open Arena Coins wallet">
-          <span aria-hidden="true">◉</span><b id="coin-balance">0</b>
-        </button>
+        <button id="coins-button" class="coin-button" type="button" aria-label="Open Arena Coins wallet"><span aria-hidden="true">◉</span><b id="coin-balance">0</b></button>
         <button id="profile-button" class="avatar" type="button" aria-label="Open account">GA</button>
       </div>
     </header>
-
     <main id="app" tabindex="-1" aria-live="polite"></main>
-
     <nav class="bottom-nav" aria-label="Primary">
       <a href="#/feed" data-route="feed"><span aria-hidden="true">▶</span><small>Play</small></a>
       <a href="#/library" data-route="library"><span aria-hidden="true">⌕</span><small>Discover</small></a>
@@ -43,7 +41,6 @@
       <a href="#/account" data-route="account"><span aria-hidden="true">●</span><small>Account</small></a>
     </nav>
   </div>
-
   <div id="modal-root"></div>
   <div id="toast-root" class="toast-root" aria-live="polite"></div>
   <noscript>Game Arena requires JavaScript to load games and account features.</noscript>
