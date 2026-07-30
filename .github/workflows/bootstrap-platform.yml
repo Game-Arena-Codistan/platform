@@ -1,0 +1,69 @@
+name: Bootstrap Game Arena platform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/READY'
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: bootstrap-platform
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble release bundle
+        run: |
+          cat bootstrap/part-* | base64 --decode > /tmp/game-arena-platform.zip
+          rm -rf /tmp/game-arena-platform
+          mkdir -p /tmp/game-arena-platform
+          unzip -q /tmp/game-arena-platform.zip -d /tmp/game-arena-platform
+
+      - name: Replace bootstrap repository with release candidate
+        run: |
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='bootstrap/' \
+            /tmp/game-arena-platform/game-arena-platform-bootstrap/ ./
+          rm -rf bootstrap
+
+      - name: Validate documentation and backlog
+        run: |
+          python -m json.tool backlog/issues.json >/dev/null
+          python -m json.tool backlog/labels.json >/dev/null
+          python -m json.tool backlog/milestones.json >/dev/null
+          test -f README.md
+          test -f docs/04-system-architecture.md
+          test -f docs/08-payments-premium.md
+          test -f docs/21-frontend-production-release.md
+
+      - name: Validate frontend release
+        working-directory: apps/web
+        run: npm run ci
+
+      - name: Build production container
+        working-directory: apps/web
+        run: docker build -t game-arena-web:bootstrap .
+
+      - name: Commit release candidate
+        run: |
+          git config user.name 'game-arena-bootstrap[bot]'
+          git config user.email 'game-arena-bootstrap[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: publish Game Arena frontend release candidate'
+          git push origin main
+
+      - name: Seed labels, milestones and issues
+        run: python3 scripts/seed_github.py "$GITHUB_REPOSITORY"
