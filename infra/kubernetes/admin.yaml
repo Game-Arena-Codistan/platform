@@ -18,7 +18,7 @@ spec:
           ports: [{containerPort: 8080}]
           env:
             - {name: GAME_ARENA_ADMIN_API_BASE_URL, value: /api}
-            - {name: GAME_ARENA_ADMIN_AUTH_MODE, value: gateway}
+            - {name: GAME_ARENA_ADMIN_AUTH_MODE, value: "REPLACE_ADMIN_AUTH_MODE"}
           readinessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 20}
           resources:
