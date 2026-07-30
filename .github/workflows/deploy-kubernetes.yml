@@ -189,7 +189,7 @@ jobs:
             --from-literal=OTP_SECONDARY_API_KEY="${OTP_SECONDARY_API_KEY:-}" \
             --from-literal=JAZZCASH_WEBHOOK_SECRET="$JAZZCASH_WEBHOOK_SECRET" \
             --from-literal=JAZZCASH_MERCHANT_ID="${JAZZCASH_MERCHANT_ID:-}" \
-            --from-literal=JAZZCASH_PASSWORD="${JAZCASH_PASSWORD:-${JAZZCASH_PASSWORD:-}}" \
+            --from-literal=JAZZCASH_PASSWORD="${JAZZCASH_PASSWORD:-}" \
             --from-literal=JAZZCASH_INTEGRITY_SALT="${JAZZCASH_INTEGRITY_SALT:-}" \
             --from-literal=JAZZCASH_ACTION_URL="${JAZZCASH_ACTION_URL:-}" \
             --from-literal=JAZZCASH_RETURN_URL="$return_url" \
