@@ -1,12 +1,24 @@
 import catalogue1 from './catalogue-1.js';
 import catalogue2 from './catalogue-2.js';
 
-export const games=[...catalogue1,...catalogue2];
+const previewGame={
+  id:'arena-dash-preview',title:'Arena Dash',genre:'Arcade',tier:'free',orientation:'any',
+  description:'A fast, touch-friendly target challenge included directly in this preview build.',
+  reward:20,gameUrl:'/demo-games/arena-dash/index.html',multiplayer:false,
+  permissions:{fullscreen:true},preview:true
+};
+const art=[
+  'linear-gradient(135deg,#7b61ff 0%,#24194d 48%,#071c2b 100%)',
+  'linear-gradient(135deg,#0f6c78 0%,#122448 45%,#251643 100%)',
+  'linear-gradient(135deg,#7a2d54 0%,#341948 50%,#101525 100%)',
+  'linear-gradient(135deg,#895b19 0%,#3b2546 48%,#071b2b 100%)'
+];
+export const games=[previewGame,...catalogue1,...catalogue2].map((game,index)=>({...game,art:game.art||art[index%art.length]}));
 export const genres=['All',...new Set(games.map(game=>game.genre))];
 
 export const plans=[
-  {id:'monthly',name:'Monthly',price:299,period:'month',description:'Flexible access with simple monthly renewal.'},
-  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'One annual payment for committed players.',recommended:true}
+  {id:'monthly',name:'Monthly',price:299,period:'month',description:'Flexible access with one fixed-duration monthly purchase.'},
+  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'One fixed-duration annual purchase for committed players.',recommended:true}
 ];
 
 export const premiumFeatures=[
