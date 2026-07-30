@@ -11,17 +11,17 @@ metadata:
 data:
   NODE_ENV: production
   PORT: "8081"
-  PUBLIC_ORIGIN: https://gamearena.pk
-  ALLOWED_ORIGINS: https://gamearena.pk,https://admin.gamearena.pk
-  DATABASE_SSL: "true"
+  PUBLIC_ORIGIN: "REPLACE_PUBLIC_ORIGIN"
+  ALLOWED_ORIGINS: "REPLACE_ALLOWED_ORIGINS"
+  DATABASE_SSL: "REPLACE_DATABASE_SSL"
   REQUIRE_DATABASE: "true"
-  OTP_PROVIDER_MODE: http
-  ALLOW_DEBUG_OTP: "false"
-  JAZZCASH_MODE: hosted
+  OTP_PROVIDER_MODE: "REPLACE_OTP_PROVIDER_MODE"
+  ALLOW_DEBUG_OTP: "REPLACE_ALLOW_DEBUG_OTP"
+  JAZZCASH_MODE: "REPLACE_JAZZCASH_MODE"
   GAME_ARENA_MODE: live
   GAME_ARENA_API_BASE_URL: /api
-  GAME_ARENA_GAME_ORIGIN: https://games.gamearena.pk/games
-  GAME_ARENA_GAME_HOSTS: games.gamearena.pk
+  GAME_ARENA_GAME_ORIGIN: "REPLACE_GAME_ORIGIN"
+  GAME_ARENA_GAME_HOSTS: "REPLACE_GAME_HOSTS"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -39,6 +39,7 @@ spec:
       labels: {app: game-arena-api}
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets: [{name: ghcr-pull}]
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: api
@@ -71,6 +72,7 @@ spec:
     metadata: {labels: {app: game-arena-web}}
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets: [{name: ghcr-pull}]
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: web
@@ -101,11 +103,14 @@ spec:
     metadata: {labels: {app: game-arena-game-origin}}
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets: [{name: ghcr-pull}]
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: game-origin
           image: ghcr.io/game-arena-codistan/platform-games:REPLACE_IMAGE_TAG
           ports: [{containerPort: 8080}]
+          env:
+            - {name: GAME_ARENA_FRAME_ANCESTORS, value: "REPLACE_PUBLIC_ORIGIN"}
           readinessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 20}
           resources:
@@ -121,36 +126,6 @@ spec:
   ports: [{port: 8080, targetPort: 8080}]
 ---
 apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: platform
-  namespace: game-arena
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: 1m
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts: [gamearena.pk, games.gamearena.pk]
-      secretName: game-arena-tls
-  rules:
-    - host: gamearena.pk
-      http:
-        paths:
-          - path: /api
-            pathType: Prefix
-            backend: {service: {name: api, port: {number: 8081}}}
-          - path: /
-            pathType: Prefix
-            backend: {service: {name: web, port: {number: 8080}}}
-    - host: games.gamearena.pk
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend: {service: {name: game-origin, port: {number: 8080}}}
----
-apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: default-deny, namespace: game-arena}
 spec:
@@ -159,12 +134,39 @@ spec:
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata: {name: allow-platform, namespace: game-arena}
+metadata: {name: allow-public-services, namespace: game-arena}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [game-arena-api, game-arena-web, game-arena-game-origin]
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - {protocol: TCP, port: 8080}
+        - {protocol: TCP, port: 8081}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-admin-internal, namespace: game-arena}
+spec:
+  podSelector: {matchLabels: {app: game-arena-admin}}
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {}}]
+      ports: [{protocol: TCP, port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-platform-egress, namespace: game-arena}
 spec:
   podSelector: {}
-  policyTypes: [Ingress, Egress]
-  ingress:
-    - from: [{namespaceSelector: {}}]
+  policyTypes: [Egress]
   egress:
     - to: [{namespaceSelector: {}}]
-    - ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: TCP, port: 443}, {protocol: TCP, port: 5432}]
+    - ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 5432}

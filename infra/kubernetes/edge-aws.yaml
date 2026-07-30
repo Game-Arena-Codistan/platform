@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: game-arena-aws
+  namespace: game-arena
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: "REPLACE_AWS_CERTIFICATE_ARN"
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http2.enabled=true,idle_timeout.timeout_seconds=60
+    alb.ingress.kubernetes.io/transforms.api: >-
+      [{"type":"url-rewrite","urlRewriteConfig":{"rewrites":[{"regex":"^/api/?(.*)$","replace":"/$1"}]}}]
+spec:
+  ingressClassName: alb
+  rules:
+    - host: "REPLACE_PUBLIC_HOST"
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend: {service: {name: api, port: {number: 8081}}}
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: web, port: {number: 8080}}}
+    - host: "REPLACE_GAME_HOST"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: game-origin, port: {number: 8080}}}

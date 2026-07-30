@@ -10,6 +10,7 @@ spec:
     metadata: {labels: {app: game-arena-admin}}
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets: [{name: ghcr-pull}]
       securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: admin
@@ -17,7 +18,7 @@ spec:
           ports: [{containerPort: 8080}]
           env:
             - {name: GAME_ARENA_ADMIN_API_BASE_URL, value: /api}
-            - {name: GAME_ARENA_ADMIN_AUTH_MODE, value: gateway}
+            - {name: GAME_ARENA_ADMIN_AUTH_MODE, value: local-key}
           readinessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 20}
           resources:

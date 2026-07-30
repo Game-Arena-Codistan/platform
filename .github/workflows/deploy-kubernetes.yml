@@ -1,0 +1,292 @@
+name: Deploy Kubernetes
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Cloud Kubernetes provider
+        required: true
+        type: choice
+        options: [digitalocean, aws]
+      environment:
+        description: GitHub Environment containing deployment variables and secrets
+        required: true
+        type: choice
+        options: [staging, production]
+      image_tag:
+        description: Commit SHA/image tag to deploy; defaults to the selected branch SHA
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.provider }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - uses: azure/setup-kubectl@v4
+
+      - name: Resolve and validate deployment configuration
+        env:
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          DEPLOY_ENVIRONMENT_INPUT: ${{ inputs.environment }}
+          PUBLIC_HOST_INPUT: ${{ vars.PUBLIC_HOST }}
+          GAME_HOST_INPUT: ${{ vars.GAME_HOST }}
+          ADMIN_ORIGIN_INPUT: ${{ vars.ADMIN_ORIGIN }}
+          DATABASE_SSL_INPUT: ${{ vars.DATABASE_SSL }}
+          OTP_PROVIDER_MODE_INPUT: ${{ vars.OTP_PROVIDER_MODE }}
+          ALLOW_DEBUG_OTP_INPUT: ${{ vars.ALLOW_DEBUG_OTP }}
+          JAZZCASH_MODE_INPUT: ${{ vars.JAZZCASH_MODE }}
+          TLS_SECRET_NAME_INPUT: ${{ vars.TLS_SECRET_NAME }}
+          AWS_CERTIFICATE_ARN_INPUT: ${{ vars.AWS_CERTIFICATE_ARN }}
+          PUBLIC_HEALTH_URL_INPUT: ${{ vars.PUBLIC_HEALTH_URL }}
+          GAME_HEALTH_URL_INPUT: ${{ vars.GAME_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          image_tag="${INPUT_IMAGE_TAG:-$GITHUB_SHA}"
+          public_host="${PUBLIC_HOST_INPUT:-}"
+          game_host="${GAME_HOST_INPUT:-}"
+          test -n "$public_host" || { echo 'PUBLIC_HOST is required in the selected GitHub Environment.' >&2; exit 1; }
+          test -n "$game_host" || { echo 'GAME_HOST is required in the selected GitHub Environment.' >&2; exit 1; }
+          public_origin="https://${public_host}"
+          game_origin="https://${game_host}/games"
+          allowed_origins="$public_origin"
+          if [ -n "${ADMIN_ORIGIN_INPUT:-}" ]; then allowed_origins="${allowed_origins},${ADMIN_ORIGIN_INPUT}"; fi
+          database_ssl="${DATABASE_SSL_INPUT:-true}"
+          tls_secret_name="${TLS_SECRET_NAME_INPUT:-game-arena-tls}"
+          if [ "$DEPLOY_ENVIRONMENT_INPUT" = staging ]; then
+            otp_mode="${OTP_PROVIDER_MODE_INPUT:-mock}"
+            debug_otp="${ALLOW_DEBUG_OTP_INPUT:-true}"
+            jazzcash_mode="${JAZZCASH_MODE_INPUT:-mock}"
+          else
+            otp_mode="${OTP_PROVIDER_MODE_INPUT:-disabled}"
+            debug_otp="${ALLOW_DEBUG_OTP_INPUT:-false}"
+            jazzcash_mode="${JAZZCASH_MODE_INPUT:-disabled}"
+            [ "$otp_mode" != mock ] || { echo 'Production cannot use mock OTP.' >&2; exit 1; }
+            [ "$debug_otp" = false ] || { echo 'Production cannot expose debug OTP codes.' >&2; exit 1; }
+            [ "$jazzcash_mode" != mock ] || { echo 'Production cannot use mock JazzCash.' >&2; exit 1; }
+          fi
+          {
+            echo "IMAGE_TAG=$image_tag"
+            echo "DEPLOY_ENVIRONMENT=$DEPLOY_ENVIRONMENT_INPUT"
+            echo "PUBLIC_HOST=$public_host"
+            echo "GAME_HOST=$game_host"
+            echo "PUBLIC_ORIGIN=$public_origin"
+            echo "ALLOWED_ORIGINS=$allowed_origins"
+            echo "GAME_ORIGIN=$game_origin"
+            echo "GAME_HOSTS=$game_host"
+            echo "DATABASE_SSL=$database_ssl"
+            echo "OTP_PROVIDER_MODE=$otp_mode"
+            echo "ALLOW_DEBUG_OTP=$debug_otp"
+            echo "JAZZCASH_MODE=$jazzcash_mode"
+            echo "TLS_SECRET_NAME=$tls_secret_name"
+            echo "AWS_CERTIFICATE_ARN=${AWS_CERTIFICATE_ARN_INPUT:-}"
+            echo "PUBLIC_HEALTH_URL=${PUBLIC_HEALTH_URL_INPUT:-}"
+            echo "GAME_HEALTH_URL=${GAME_HEALTH_URL_INPUT:-}"
+          } >> "$GITHUB_ENV"
+
+      - name: Authenticate to DigitalOcean
+        if: inputs.provider == 'digitalocean'
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Configure DOKS access
+        if: inputs.provider == 'digitalocean'
+        env: {DOKS_CLUSTER_NAME: "${{ vars.DOKS_CLUSTER_NAME }}"}
+        run: |
+          set -euo pipefail
+          test -n "$DOKS_CLUSTER_NAME"
+          doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 600
+          kubectl get gatewayclass cilium
+
+      - name: Authenticate to AWS with OIDC
+        if: inputs.provider == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Configure EKS access
+        if: inputs.provider == 'aws'
+        env:
+          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          test -n "$EKS_CLUSTER_NAME"
+          test -n "$AWS_REGION"
+          aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+          kubectl get ingressclass alb
+
+      - name: Verify cluster permissions
+        run: |
+          kubectl cluster-info
+          kubectl auth can-i create deployments --namespace game-arena
+          kubectl auth can-i create secrets --namespace game-arena
+
+      - name: Verify release images
+        env: {GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+        run: |
+          set -euo pipefail
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for component in api web admin games; do
+            docker manifest inspect "ghcr.io/game-arena-codistan/platform-${component}:${IMAGE_TAG}" >/dev/null
+          done
+
+      - name: Create namespace and deployment secrets
+        env:
+          GHCR_USERNAME: ${{ vars.GHCR_USERNAME }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ADMIN_API_KEYS: ${{ secrets.ADMIN_API_KEYS }}
+          OTP_PRIMARY_NAME: ${{ vars.OTP_PRIMARY_NAME }}
+          OTP_PRIMARY_ENDPOINT: ${{ secrets.OTP_PRIMARY_ENDPOINT }}
+          OTP_PRIMARY_API_KEY: ${{ secrets.OTP_PRIMARY_API_KEY }}
+          OTP_SECONDARY_NAME: ${{ vars.OTP_SECONDARY_NAME }}
+          OTP_SECONDARY_ENDPOINT: ${{ secrets.OTP_SECONDARY_ENDPOINT }}
+          OTP_SECONDARY_API_KEY: ${{ secrets.OTP_SECONDARY_API_KEY }}
+          JAZZCASH_WEBHOOK_SECRET: ${{ secrets.JAZZCASH_WEBHOOK_SECRET }}
+          JAZZCASH_MERCHANT_ID: ${{ secrets.JAZZCASH_MERCHANT_ID }}
+          JAZZCASH_PASSWORD: ${{ secrets.JAZZCASH_PASSWORD }}
+          JAZZCASH_INTEGRITY_SALT: ${{ secrets.JAZZCASH_INTEGRITY_SALT }}
+          JAZZCASH_ACTION_URL: ${{ vars.JAZZCASH_ACTION_URL }}
+          JAZZCASH_RETURN_URL: ${{ vars.JAZZCASH_RETURN_URL }}
+        run: |
+          set -euo pipefail
+          test -n "$GHCR_USERNAME" || { echo 'GHCR_USERNAME is required.' >&2; exit 1; }
+          test -n "$GHCR_READ_TOKEN" || { echo 'GHCR_READ_TOKEN is required.' >&2; exit 1; }
+          test -n "$DATABASE_URL" || { echo 'DATABASE_URL is required.' >&2; exit 1; }
+          test -n "$ADMIN_API_KEYS" || { echo 'ADMIN_API_KEYS is required.' >&2; exit 1; }
+          test -n "$JAZZCASH_WEBHOOK_SECRET" || { echo 'JAZZCASH_WEBHOOK_SECRET is required.' >&2; exit 1; }
+          kubectl create namespace game-arena --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n game-arena create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username="$GHCR_USERNAME" \
+            --docker-password="$GHCR_READ_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          return_url="${JAZZCASH_RETURN_URL:-${PUBLIC_ORIGIN}/api/v1/payments/jazzcash/return}"
+          kubectl -n game-arena create secret generic game-arena-secrets \
+            --from-literal=DATABASE_URL="$DATABASE_URL" \
+            --from-literal=DATABASE_SSL="$DATABASE_SSL" \
+            --from-literal=ADMIN_API_KEYS="$ADMIN_API_KEYS" \
+            --from-literal=OTP_PRIMARY_NAME="${OTP_PRIMARY_NAME:-primary}" \
+            --from-literal=OTP_PRIMARY_ENDPOINT="${OTP_PRIMARY_ENDPOINT:-}" \
+            --from-literal=OTP_PRIMARY_API_KEY="${OTP_PRIMARY_API_KEY:-}" \
+            --from-literal=OTP_SECONDARY_NAME="${OTP_SECONDARY_NAME:-secondary}" \
+            --from-literal=OTP_SECONDARY_ENDPOINT="${OTP_SECONDARY_ENDPOINT:-}" \
+            --from-literal=OTP_SECONDARY_API_KEY="${OTP_SECONDARY_API_KEY:-}" \
+            --from-literal=JAZZCASH_WEBHOOK_SECRET="$JAZZCASH_WEBHOOK_SECRET" \
+            --from-literal=JAZZCASH_MERCHANT_ID="${JAZZCASH_MERCHANT_ID:-}" \
+            --from-literal=JAZZCASH_PASSWORD="${JAZZCASH_PASSWORD:-}" \
+            --from-literal=JAZZCASH_INTEGRITY_SALT="${JAZZCASH_INTEGRITY_SALT:-}" \
+            --from-literal=JAZZCASH_ACTION_URL="${JAZZCASH_ACTION_URL:-}" \
+            --from-literal=JAZZCASH_RETURN_URL="$return_url" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create DigitalOcean TLS secret
+        if: inputs.provider == 'digitalocean'
+        env:
+          TLS_CERT_B64: ${{ secrets.TLS_CERT_B64 }}
+          TLS_KEY_B64: ${{ secrets.TLS_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TLS_CERT_B64:-}" ] && [ -n "${TLS_KEY_B64:-}" ]; then
+            tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+            printf '%s' "$TLS_CERT_B64" | base64 -d > "$tmp/tls.crt"
+            printf '%s' "$TLS_KEY_B64" | base64 -d > "$tmp/tls.key"
+            kubectl -n game-arena create secret tls "$TLS_SECRET_NAME" --cert="$tmp/tls.crt" --key="$tmp/tls.key" --dry-run=client -o yaml | kubectl apply -f -
+          else
+            kubectl -n game-arena get secret "$TLS_SECRET_NAME" >/dev/null || { echo 'Set TLS_CERT_B64 and TLS_KEY_B64, or pre-create the TLS secret.' >&2; exit 1; }
+          fi
+
+      - name: Render Kubernetes manifests
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/game-arena
+          node scripts/render-kubernetes.mjs infra/kubernetes/platform.yaml /tmp/game-arena/platform.yaml
+          node scripts/render-kubernetes.mjs infra/kubernetes/admin.yaml /tmp/game-arena/admin.yaml
+          node scripts/render-kubernetes.mjs infra/kubernetes/migration-job.yaml /tmp/game-arena/migration-job.yaml
+          if [ "${{ inputs.provider }}" = digitalocean ]; then
+            node scripts/render-kubernetes.mjs infra/kubernetes/edge-digitalocean.yaml /tmp/game-arena/edge.yaml
+          else
+            test -n "$AWS_CERTIFICATE_ARN" || { echo 'AWS_CERTIFICATE_ARN is required for AWS.' >&2; exit 1; }
+            node scripts/render-kubernetes.mjs infra/kubernetes/edge-aws.yaml /tmp/game-arena/edge.yaml
+          fi
+
+      - name: Run backwards-compatible migrations
+        run: |
+          set -euo pipefail
+          kubectl -n game-arena delete job game-arena-migrate --ignore-not-found=true --wait=true
+          kubectl apply -f /tmp/game-arena/migration-job.yaml
+          if ! kubectl -n game-arena wait --for=condition=complete job/game-arena-migrate --timeout=300s; then
+            kubectl -n game-arena logs job/game-arena-migrate --all-containers=true || true
+            exit 1
+          fi
+          kubectl -n game-arena logs job/game-arena-migrate --all-containers=true
+
+      - name: Apply application and provider edge
+        run: |
+          set -euo pipefail
+          kubectl apply -f /tmp/game-arena/platform.yaml
+          kubectl apply -f /tmp/game-arena/admin.yaml
+          if [ "${{ inputs.provider }}" = digitalocean ]; then
+            kubectl -n game-arena delete ingress game-arena-aws --ignore-not-found=true
+          else
+            kubectl -n game-arena delete httproute player games --ignore-not-found=true
+            kubectl -n game-arena delete gateway game-arena --ignore-not-found=true
+          fi
+          kubectl apply -f /tmp/game-arena/edge.yaml
+          kubectl -n game-arena rollout status deployment/api --timeout=300s
+          kubectl -n game-arena rollout status deployment/web --timeout=300s
+          kubectl -n game-arena rollout status deployment/admin --timeout=300s
+          kubectl -n game-arena rollout status deployment/game-origin --timeout=300s
+
+      - name: Verify internal service health
+        run: |
+          set -euo pipefail
+          kubectl -n game-arena port-forward service/api 18081:8081 >/tmp/game-arena-api-port-forward.log 2>&1 & api_pf=$!
+          kubectl -n game-arena port-forward service/game-origin 18082:8080 >/tmp/game-arena-games-port-forward.log 2>&1 & games_pf=$!
+          trap 'kill "$api_pf" "$games_pf" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:18081/healthz >/dev/null && break; sleep 2; done
+          curl --fail --silent http://127.0.0.1:18081/readyz
+          curl --fail --silent http://127.0.0.1:18082/healthz
+
+      - name: Verify external health when DNS is ready
+        if: vars.PUBLIC_HEALTH_URL != ''
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "$PUBLIC_HEALTH_URL" >/dev/null; then break; fi
+            sleep 10
+          done
+          curl --fail --silent --show-error "$PUBLIC_HEALTH_URL"
+          if [ -n "$GAME_HEALTH_URL" ]; then curl --fail --silent --show-error "$GAME_HEALTH_URL"; fi
+
+      - name: Publish deployment summary
+        run: |
+          {
+            echo '## Game Arena deployment'
+            echo "- Provider: ${{ inputs.provider }}"
+            echo "- Environment: $DEPLOY_ENVIRONMENT"
+            echo "- Image tag: $IMAGE_TAG"
+            echo "- Player origin: $PUBLIC_ORIGIN"
+            echo "- Game origin: $GAME_ORIGIN"
+            if [ "${{ inputs.provider }}" = digitalocean ]; then
+              address="$(kubectl -n game-arena get gateway game-arena -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)"
+            else
+              address="$(kubectl -n game-arena get ingress game-arena-aws -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
+            fi
+            echo "- Load balancer: ${address:-pending}"
+          } >> "$GITHUB_STEP_SUMMARY"
