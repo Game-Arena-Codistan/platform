@@ -1,0 +1,11 @@
+import {createServer} from 'node:http';
+import {loadConfig} from './config.mjs';
+import {createApp} from './app.mjs';
+import {MemoryStore} from './adapters/memory-store.mjs';
+import {JazzCashAdapter} from './adapters/jazzcash.mjs';
+const config=loadConfig();
+const store=new MemoryStore();
+const app=createApp({config,store,jazzcash:new JazzCashAdapter(config)});
+const server=createServer(app);
+server.listen(config.port,'0.0.0.0',()=>console.log(JSON.stringify({level:'info',message:'Game Arena API listening',port:config.port,mode:config.nodeEnv})));
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>process.exit(0)));
