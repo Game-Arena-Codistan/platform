@@ -6,16 +6,14 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '40 3 * * 2'
-permissions:
-  contents: read
+permissions: {contents: read}
 jobs:
   assurance:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        with: {node-version: 22}
       - name: Repository checks
         run: node scripts/security-check.mjs
       - name: API checks
@@ -31,4 +29,5 @@ jobs:
         run: |
           docker build -t game-arena-api:assurance apps/api
           docker build -t game-arena-web:assurance apps/web
+          docker build -t game-arena-admin:assurance apps/admin
           docker build -t game-arena-games:assurance apps/game-origin
