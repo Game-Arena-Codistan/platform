@@ -1,0 +1,113 @@
+name: Import game content
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Import a single ZIP or read all rich links from the submission sheet
+        required: true
+        type: choice
+        options: [single, spreadsheet]
+      zip_url:
+        description: HTTPS/Google Drive ZIP URL for single mode
+        required: false
+        type: string
+      manifest_json:
+        description: Single-mode manifest JSON; version may be "auto"
+        required: false
+        type: string
+      spreadsheet_id:
+        description: Google spreadsheet ID for spreadsheet mode
+        required: false
+        type: string
+      sheet_name:
+        description: Visible sheet tab for spreadsheet mode
+        required: false
+        type: string
+      slug:
+        description: Optional game slug filter for spreadsheet mode
+        required: false
+        type: string
+      limit:
+        description: Maximum rows to process
+        required: false
+        default: '1'
+        type: string
+      dry_run:
+        description: Validate without committing packaged content
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: game-content-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Import one remote build
+        if: inputs.mode == 'single'
+        env:
+          ZIP_URL: ${{ inputs.zip_url }}
+          MANIFEST_JSON: ${{ inputs.manifest_json }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GAME_ARENA_ACTOR: github-actions:${{ github.actor }}
+        run: |
+          set -euo pipefail
+          test -n "$ZIP_URL" && test -n "$MANIFEST_JSON"
+          mkdir -p apps/game-ops/reports
+          args=(--zip-url "$ZIP_URL" --manifest-json "$MANIFEST_JSON" --output-root apps/game-origin/public --audit-root apps/game-ops/reports/audit)
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node apps/game-ops/src/import-remote.mjs "${args[@]}" | tee apps/game-ops/reports/single-import.json
+      - name: Import rich sheet links
+        if: inputs.mode == 'spreadsheet'
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}
+          SPREADSHEET_ID: ${{ inputs.spreadsheet_id }}
+          SHEET_NAME: ${{ inputs.sheet_name }}
+          SLUG: ${{ inputs.slug }}
+          LIMIT: ${{ inputs.limit }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_SERVICE_ACCOUNT_JSON_B64" && test -n "$SPREADSHEET_ID" && test -n "$SHEET_NAME"
+          args=(--spreadsheet-id "$SPREADSHEET_ID" --sheet-name "$SHEET_NAME" --limit "$LIMIT" --output-root apps/game-origin/public --artwork-root apps/game-origin/public/artwork --audit-root apps/game-ops/reports/audit --report apps/game-ops/reports/catalogue-import.json)
+          if [ -n "$SLUG" ]; then args+=(--slug "$SLUG"); fi
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node apps/game-ops/src/import-catalogue.mjs "${args[@]}"
+      - name: Validate generated platform content
+        run: |
+          cd apps/game-ops && npm run ci
+          cd ../web && npm install && npm run ci
+          cd ../api && npm install && npm run ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-content-import-${{ github.run_id }}
+          path: apps/game-ops/reports
+          retention-days: 30
+      - name: Open review pull request
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch="content/game-import-${GITHUB_RUN_ID}"
+          git switch -c "$branch"
+          git config user.name 'game-arena-content-bot'
+          git config user.email 'game-arena-content-bot@users.noreply.github.com'
+          git add apps/game-origin/public apps/game-ops/reports
+          git diff --cached --quiet && { echo 'No importable content was generated.' >&2; exit 1; }
+          git commit -m 'Games: import approved controlled-origin builds'
+          git push --set-upstream origin "$branch"
+          gh pr create --base main --head "$branch" --title 'Games: review controlled-origin content import' --body $'Automated content-import run.\n\nReview the audit reports, game inventory, external domains, runtime behavior and rights evidence before merging. This workflow never publishes directly to main.'
