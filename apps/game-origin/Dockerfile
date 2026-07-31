@@ -1,4 +1,4 @@
-FROM nginxinc/nginx-unprivileged:1.29-alpine-slim@sha256:59678856b05324b7f6371f26eb1520be7fcd8bdc8ab380fc4913db8503e5a842
+FROM nginxinc/nginx-unprivileged:1.31-alpine-slim@sha256:22f839c5fb4007dc24d203a170a9e03fc185d660bfefc34ac6823a7aef085cbc
 ENV PORT=8080 \
     GAME_ARENA_FRAME_ANCESTORS="https://gamearena.pk https://*.gamearena.pk" \
     GAME_ARENA_PLAYER_HOST="gamearena.pk" \
