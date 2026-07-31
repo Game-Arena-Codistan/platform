@@ -1,60 +1,41 @@
 # Repository completion audit
 
-**Audit date:** 2026-07-31  
+> **Status correction — 2026-07-31:** This earlier audit recorded the cleanup completed by PR #50, but its conclusion that only game deployment, AWS execution and JazzCash integration remained was too broad. A deeper production-path review identified repository-controlled P0 blockers in administrative authorization, PostgreSQL durability, payment invariants, runtime CSP/cache behavior, play-result proof and game archive/artifact handling. The authoritative assessment is now [`FINAL-GO-LIVE-AUDIT.md`](FINAL-GO-LIVE-AUDIT.md).
+
+**Original audit date:** 2026-07-31  
 **Repository:** `Game-Arena-Codistan/platform`  
 **Base reviewed:** `8132a17b77a879a372e737e1f36fc317a17a049c`
 
-## Organization scope
+## What this audit established correctly
 
-The connected GitHub organization exposes one repository, `platform`. The product is intentionally implemented as a monorepo; there is no second repository currently available to audit or clean.
+- The connected GitHub organization exposes one repository, `platform`, implemented as a monorepo.
+- The duplicate DigitalOcean/AWS deployment path was removed and AWS became the authoritative delivery system.
+- Proxy address selection, repository scanning, assurance dependency installation and launch-tracker cleanup were improved.
+- The frontend, API, game tooling, containers and AWS definitions passed their existing automated checks.
 
-## Audit objective
+## What required correction
 
-Confirm that all repository-controlled work is complete except:
+Passing the existing checks did not prove the production path was complete. The later review traced real request, persistence, payment, browser-runtime, game-ingestion and AWS operational paths and found that:
 
-1. deployment of approved game builds;
-2. provisioning and execution of the production environment;
-3. live JazzCash merchant integration.
+- administrator roles were still client-selectable after shared-key authentication;
+- production operations used an asynchronous whole-state PostgreSQL snapshot instead of the normalized transactional schema;
+- payment callbacks and refunds lacked several ownership and expected-value invariants;
+- production CSP and service-worker caching conflicted with the configured controlled-game origin;
+- play completion proof and valuable competition controls were incomplete;
+- ZIP preflight and bulk game-artifact delivery were not ready for 100–150 independent titles;
+- application telemetry, alarms, WAF, support delivery and deletion completion remained production requirements.
 
-External credentials, legal/operator approvals, device evidence and launch-owner sign-off are execution inputs under those gates, not missing application modules.
+## Historical cleanup completed by PR #50
 
-## Reviewed areas
-
-| Area | Result |
-|---|---|
-| Mobile-first PWA, feed, catalogue and player | Complete |
-| OTP/session/account lifecycle contracts | Complete; live provider credentials are deployment inputs |
-| Premium, entitlements, wallet, vouchers and fixed-duration plans | Complete |
-| JazzCash state machine, signed boundary, callbacks, refunds and reconciliation | Complete in software; live merchant mapping remains issue #17 |
-| Rewards, anti-cheat review, leaderboards, challenges and tournaments | Complete |
-| Multiplayer room and competition contracts | Complete |
-| Admin operations, audit, game controls and reconciliation views | Complete |
-| PostgreSQL migrations and durable repository | Complete for the documented single-writer launch boundary |
-| Game ingestion, archive safety, scanning, packaging and origin isolation | Complete; approved source builds and publication remain issue #40 |
-| Game Bridge SDK and sample integration | Complete |
-| Container, local Compose and Kubernetes manifests | Complete |
-| AWS OpenTofu and protected staging/production/rollback automation | Complete; account provisioning and execution remain issue #48 |
-| Browser, API, runtime, security and load automation | Complete |
-| Privacy, terms, rewards, tournament, security, support and launch drafts | Complete; final operator/provider approval is part of issue #48 |
-
-## Cleanup completed by this audit
-
-- Retired the duplicate generic DigitalOcean/AWS deployment workflow and the inactive DigitalOcean infrastructure path.
+- Retired the duplicate generic DigitalOcean/AWS deployment workflow and inactive DigitalOcean infrastructure path.
 - Kept AWS as the single authoritative production delivery system.
 - Removed documentation that allowed production with disabled OTP or JazzCash.
 - Strengthened cloud-policy checks so the obsolete workflow cannot return unnoticed.
-- Corrected proxy address handling so a client-supplied leading `X-Forwarded-For` value cannot bypass abuse limits.
+- Corrected proxy address handling so a client-supplied leading `X-Forwarded-For` value cannot bypass limits.
 - Added regression tests for client-address selection.
-- Expanded repository secret and unfinished-marker scanning to Terraform, shell, Docker and other operational files.
+- Expanded repository secret and unfinished-marker scanning to Terraform, shell, Docker and operational files.
 - Ensured API dependencies are installed before assurance tests.
-- Consolidated launch tracking into issues #40, #48 and #17.
 
-## Validation evidence
+## Current authority
 
-The base release was merged after successful frontend, platform assurance, release qualification, AWS OpenTofu and Vercel checks. This audit must pass the same repository workflows before merge. The production environment, licensed games and live merchant account are intentionally not represented as deployed.
-
-## Remaining open gates
-
-- **#40:** approved game builds, rights, controlled-origin publication and game certification.
-- **#48:** AWS provisioning, staging evidence, operator/legal inputs, OTP configuration, manual qualification and production promotion.
-- **#17:** live JazzCash merchant integration, exact provider mapping and end-to-end verification.
+Use [`FINAL-GO-LIVE-AUDIT.md`](FINAL-GO-LIVE-AUDIT.md) for the staging plan, P0 remediation order, production no-go rules and scope exclusions. Initial AWS staging provisioning may proceed as an infrastructure shakeout, but final staging qualification must use a release containing all P0 fixes.
