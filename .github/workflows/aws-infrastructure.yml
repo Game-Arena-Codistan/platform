@@ -44,8 +44,8 @@ jobs:
         run: |
           set -euo pipefail
           tofu fmt -recursive
-          git diff -- infra/opentofu/aws
-          git diff --quiet -- infra/opentofu/aws || exit 1
+          git diff -- .
+          git diff --quiet -- . || exit 1
       - run: tofu init -backend=false -input=false
       - run: tofu validate
       - name: Validate example configuration files
