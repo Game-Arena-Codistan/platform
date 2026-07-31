@@ -28,6 +28,21 @@ const criticalWorkflows=[
 const failures=[];
 const text=path=>readFileSync(path,'utf8');
 const assert=(condition,message)=>{if(!condition)failures.push(message);};
+function hclBlock(source,header){
+  const start=source.indexOf(header);
+  if(start<0)return'';
+  const open=source.indexOf('{',start);
+  if(open<0)return'';
+  let depth=0;
+  for(let index=open;index<source.length;index+=1){
+    if(source[index]==='{')depth+=1;
+    if(source[index]==='}'){
+      depth-=1;
+      if(depth===0)return source.slice(start,index+1);
+    }
+  }
+  return'';
+}
 
 for(const path of criticalWorkflows){
   assert(existsSync(path),`Missing critical workflow: ${path}`);
@@ -70,14 +85,20 @@ for(const marker of [
 }
 
 const variables=text('infra/opentofu/aws/variables.tf');
-assert(/variable "kubernetes_version" \{[\s\S]*?type\s*=\s*string[\s\S]*?validation \{/m.test(variables),'kubernetes_version must be an explicitly validated required variable.');
-assert(!/variable "kubernetes_version" \{[\s\S]*?default\s*=/m.test(variables),'kubernetes_version must not have a default.');
+const kubernetesBlock=hclBlock(variables,'variable "kubernetes_version"');
+assert(Boolean(kubernetesBlock),'Missing kubernetes_version variable.');
+assert(kubernetesBlock.includes('type        = string'),'kubernetes_version must be a string.');
+assert(kubernetesBlock.includes('validation {'),'kubernetes_version must be validated.');
+assert(!kubernetesBlock.includes('default'),'kubernetes_version must not have a default.');
+assert(!kubernetesBlock.includes('nullable'),'kubernetes_version must be non-nullable.');
 
 const operations=text('infra/opentofu/aws/operations-variables.tf');
 for(const name of ['operations_alert_email','github_runtime_role_arn']){
-  const block=operations.match(new RegExp(`variable "${name}" \\{([\\s\\S]*?)\\n\\}`));
+  const block=hclBlock(operations,`variable "${name}"`);
   assert(Boolean(block),`Missing required variable ${name}.`);
-  if(block)assert(!/default\s*=|nullable\s*=/.test(block[1]),`${name} must be required and non-nullable.`);
+  assert(!block.includes('default'),`${name} must not have a default.`);
+  assert(!block.includes('nullable'),`${name} must be non-nullable.`);
+  assert(block.includes('validation {'),`${name} must be validated.`);
 }
 
 const controls=text('infra/opentofu/aws/pre-staging-controls.tf');
