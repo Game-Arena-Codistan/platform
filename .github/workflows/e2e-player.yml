@@ -1,0 +1,44 @@
+name: Player end-to-end
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-player.yml'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Optional deployed staging player URL
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ inputs.base_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+        working-directory: apps/web
+      - run: npm run ci
+        working-directory: apps/web
+      - run: npm install
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e
+      - run: npm test
+        working-directory: tests/e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: player-e2e-report
+          path: tests/e2e/report
+          retention-days: 30

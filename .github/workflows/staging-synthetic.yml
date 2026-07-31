@@ -1,0 +1,31 @@
+name: Staging synthetic journeys
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      PLAYER_URL: ${{ vars.PUBLIC_HEALTH_URL }}
+      GAME_URL: ${{ vars.GAME_HEALTH_URL }}
+    steps:
+      - name: Verify configured public endpoints
+        run: |
+          set -euo pipefail
+          test -n "$PLAYER_URL" && test -n "$GAME_URL"
+          for url in "$PLAYER_URL" "$GAME_URL"; do
+            curl --fail --silent --show-error --location --max-time 20 --retry 3 --retry-all-errors "$url" >/dev/null
+          done
+      - name: Verify security headers and TLS
+        run: |
+          set -euo pipefail
+          headers="$(curl --fail --silent --show-error --head --max-time 20 "$PLAYER_URL")"
+          grep -qi '^x-content-type-options: *nosniff' <<<"$headers"
+          grep -qi '^referrer-policy:' <<<"$headers"

@@ -1,0 +1,82 @@
+name: DigitalOcean infrastructure
+
+on:
+  pull_request:
+    paths:
+      - 'infra/opentofu/digitalocean/**'
+      - '.github/workflows/infrastructure-opentofu.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: OpenTofu operation
+        required: true
+        type: choice
+        options: [validate, plan, apply]
+      environment:
+        description: GitHub Environment containing backend, token and tfvars secrets
+        required: true
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infrastructure-${{ inputs.environment || 'validation' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/opentofu/digitalocean
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.1
+      - run: tofu fmt -check -recursive
+      - run: tofu init -backend=false -input=false
+      - run: tofu validate
+
+  plan-or-apply:
+    if: github.event_name == 'workflow_dispatch' && inputs.action != 'validate'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: infra/opentofu/digitalocean
+    env:
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.TF_BACKEND_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_BACKEND_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.1
+      - name: Materialize protected configuration
+        env:
+          BACKEND_B64: ${{ secrets.TF_BACKEND_CONFIG_B64 }}
+          TFVARS_B64: ${{ secrets.TFVARS_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$BACKEND_B64" && test -n "$TFVARS_B64" && test -n "$DIGITALOCEAN_TOKEN"
+          printf '%s' "$BACKEND_B64" | base64 -d > backend.hcl
+          printf '%s' "$TFVARS_B64" | base64 -d > environment.auto.tfvars.json
+          chmod 600 backend.hcl environment.auto.tfvars.json
+      - run: tofu init -input=false -backend-config=backend.hcl
+      - run: tofu plan -input=false -out=game-arena.tfplan
+      - name: Apply approved plan
+        if: inputs.action == 'apply'
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then echo 'Infrastructure apply is restricted to main.' >&2; exit 1; fi
+          tofu apply -input=false -auto-approve game-arena.tfplan
+      - name: Publish non-sensitive outputs
+        if: inputs.action == 'apply'
+        run: tofu output -json | jq 'with_entries(select(.value.sensitive == false))' >> "$GITHUB_STEP_SUMMARY"
