@@ -10,6 +10,38 @@ on:
 permissions:
   contents: read
 jobs:
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: game_arena_test
+          POSTGRES_PASSWORD: game_arena_test
+          POSTGRES_DB: game_arena_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U game_arena_test -d game_arena_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: apps/api
+    env:
+      DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:5432/game_arena_test
+      TEST_DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:5432/game_arena_test
+      DATABASE_SSL: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Apply clean migrations
+        run: node scripts/migrate.mjs
+      - name: Run PostgreSQL durability tests
+        run: node --test test/postgres.test.mjs
   api-load:
     runs-on: ubuntu-latest
     defaults:
