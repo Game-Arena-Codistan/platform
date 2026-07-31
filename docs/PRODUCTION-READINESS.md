@@ -1,21 +1,31 @@
 # Production readiness boundary
 
-The codebase contains the player PWA, API, PostgreSQL migrations and durable adapter, private operations console, controlled game origin, content scanner/packager, deployment workflows, AWS infrastructure module and browser qualification suite.
+The repository contains the player PWA, API, PostgreSQL migrations and durable adapter, private operations console, controlled game origin, content scanner/packager, Game Bridge SDK, automated qualification, protected AWS infrastructure/delivery workflows and operating runbooks.
 
-AWS is the selected production target. A repository merge or successful workflow validation is not a production approval. Promotion requires all of the following evidence:
+Repository implementation is complete for the launch-candidate scope. A merge or successful workflow is not a claim that external infrastructure, licensed content or a merchant account is live.
 
-- AWS VPC, EKS, private RDS PostgreSQL, ECR, ACM, Route 53 and protected GitHub Environments provisioned from reviewed OpenTofu state;
-- separate player/API and controlled game-origin DNS names serving valid TLS;
-- immutable commit-addressed images promoted through AWS staging before protected production promotion;
-- deployment migrations, rollout checks, internal/external health checks and retained evidence passing;
-- licensed game archives imported to controlled hosting or explicit approved external-hosting exceptions;
-- OTP production sender/provider and failover verified;
-- JazzCash merchant checkout, signed callback/webhook, refund and reconciliation verified;
-- legal operator details, privacy/terms, processor list, age approach and game rights approved;
-- physical-device, low-bandwidth, orientation, accessibility and payment-return qualification recorded;
-- backup/PITR restore, application rollback, game kill switch and payment-disable rehearsal completed;
-- named engineering, security, finance, support, incident and launch owners.
+Only three execution gates remain:
 
-Staging may use mock OTP and mock JazzCash. Production must use `OTP_PROVIDER_MODE=http`, `JAZZCASH_MODE=hosted`, and `ALLOW_DEBUG_OTP=false`; it must not use mock or incomplete provider configuration. JazzCash remains a fixed-duration single purchase unless written provider capability and approved customer wording establish another model.
+## 1. Game content deployment and rights — issue #40
 
-See `docs/AWS-DEPLOYMENT.md` and issue #48 for the AWS execution and evidence checklist.
+- Supply original licensed game archives or approved written mirroring permission.
+- Record rights for each game and artwork asset.
+- Import, scan, package and publish immutable versions to the controlled game origin.
+- Certify launch versions on supported devices and exercise pause, rollback and kill-switch controls.
+
+## 2. AWS deployment and production qualification — issue #48
+
+- Provision reviewed VPC, EKS, private RDS, ECR, ACM, Route 53, encrypted evidence storage and protected GitHub Environments.
+- Install OTP configuration, operator/legal details, contacts, approved notices, monitoring and named owners.
+- Deploy an immutable SHA to AWS staging and complete device, network, accessibility, security, load, backup/restore and rollback evidence.
+- Promote the same qualified SHA through the protected production workflow and controlled rollout.
+
+## 3. Live JazzCash integration — issue #17
+
+- Install approved merchant credentials and exact hosted-checkout/callback fields.
+- Verify signed paid, pending, failed, cancelled, refund and reconciliation journeys.
+- Keep monthly/yearly access as fixed-duration single purchases unless written provider capability and approved disclosure establish another model.
+
+Production requires PostgreSQL, `OTP_PROVIDER_MODE=http`, `JAZZCASH_MODE=hosted` and `ALLOW_DEBUG_OTP=false`. Browser returns never grant premium without a verified backend event.
+
+See `docs/AWS-DEPLOYMENT.md`, `docs/DEPLOYMENT.md`, `docs/QUALIFICATION.md` and `docs/REPOSITORY-AUDIT.md`.
