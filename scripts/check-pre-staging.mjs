@@ -48,7 +48,7 @@ for(const path of criticalWorkflows){
   assert(existsSync(path),`Missing critical workflow: ${path}`);
   if(!existsSync(path))continue;
   const source=text(path);
-  for(const match of source.matchAll(/uses:\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)@([^\s#]+)/g)){
+  for(const match of source.matchAll(/uses:\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:\/[A-Za-z0-9_./-]+)?@([^\s#]+)/g)){
     const [,action,ref]=match;
     const expected=requiredActionPins.get(action);
     if(expected)assert(ref===expected,`${path} must pin ${action} to ${expected}; found ${ref}`);
