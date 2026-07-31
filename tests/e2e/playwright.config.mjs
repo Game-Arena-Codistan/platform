@@ -10,7 +10,10 @@ export default defineConfig({
   use:{baseURL:process.env.BASE_URL||'http://127.0.0.1:4173',trace:'retain-on-failure',screenshot:'only-on-failure'},
   projects:[
     {name:'mobile-chromium',use:{...devices['Pixel 7']}},
-    {name:'desktop-chromium',use:{...devices['Desktop Chrome']}}
+    {name:'desktop-chromium',use:{...devices['Desktop Chrome']}},
+    {name:'desktop-firefox',use:{...devices['Desktop Firefox']}},
+    {name:'mobile-webkit',use:{...devices['iPhone 15']}},
+    {name:'desktop-webkit',use:{...devices['Desktop Safari']}}
   ],
   webServer:process.env.BASE_URL?undefined:{command:'node ../../apps/web/scripts/dev.mjs',url:'http://127.0.0.1:4173',reuseExistingServer:!process.env.CI,timeout:30000}
 });
