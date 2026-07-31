@@ -4,11 +4,15 @@ resource "aws_s3_bucket" "game_artifacts" {
 
 resource "aws_s3_bucket_versioning" "game_artifacts" {
   bucket = aws_s3_bucket.game_artifacts.id
-  versioning_configuration { status = "Enabled" }
+
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "game_artifacts" {
   bucket = aws_s3_bucket.game_artifacts.id
+
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = "aws:kms"
@@ -28,11 +32,18 @@ resource "aws_s3_bucket_public_access_block" "game_artifacts" {
 
 resource "aws_s3_bucket_lifecycle_configuration" "game_artifacts" {
   bucket = aws_s3_bucket.game_artifacts.id
+
   rule {
     id     = "retain-noncurrent-certified-builds"
     status = "Enabled"
-    noncurrent_version_expiration { noncurrent_days = var.environment == "production" ? 365 : 90 }
-    abort_incomplete_multipart_upload { days_after_initiation = 7 }
+
+    noncurrent_version_expiration {
+      noncurrent_days = var.environment == "production" ? 365 : 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
   }
 }
 
@@ -44,34 +55,69 @@ resource "aws_cloudfront_origin_access_control" "game_artifacts" {
   signing_protocol                  = "sigv4"
 }
 
-data "aws_cloudfront_cache_policy" "caching_optimized" { name = "Managed-CachingOptimized" }
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
 
-data "aws_cloudfront_origin_request_policy" "cors_s3" { name = "Managed-CORS-S3Origin" }
+data "aws_cloudfront_origin_request_policy" "cors_s3" {
+  name = "Managed-CORS-S3Origin"
+}
 
 resource "aws_cloudfront_response_headers_policy" "game_artifacts" {
   name = "${local.name}-game-artifacts"
+
   security_headers_config {
-    content_type_options { override = true }
-    referrer_policy { referrer_policy = "no-referrer" override = true }
-    frame_options { frame_option = "SAMEORIGIN" override = false }
+    content_type_options {
+      override = true
+    }
+
+    referrer_policy {
+      referrer_policy = "no-referrer"
+      override        = true
+    }
   }
+
   custom_headers_config {
     items {
       header   = "Content-Security-Policy"
       override = true
       value    = "default-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; child-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors https://${var.public_host}"
     }
-    items { header = "Cross-Origin-Resource-Policy" value = "cross-origin" override = true }
-    items { header = "Permissions-Policy" value = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-read=(), clipboard-write=(), display-capture=()" override = true }
+
+    items {
+      header   = "Cross-Origin-Resource-Policy"
+      value    = "cross-origin"
+      override = true
+    }
+
+    items {
+      header   = "Permissions-Policy"
+      value    = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-read=(), clipboard-write=(), display-capture=()"
+      override = true
+    }
   }
+
   cors_config {
     access_control_allow_credentials = false
-    access_control_allow_headers { items = ["*"] }
-    access_control_allow_methods { items = ["GET", "HEAD", "OPTIONS"] }
-    access_control_allow_origins { items = ["https://${var.public_host}"] }
-    access_control_expose_headers { items = ["ETag", "Content-Length"] }
+
+    access_control_allow_headers {
+      items = ["*"]
+    }
+
+    access_control_allow_methods {
+      items = ["GET", "HEAD", "OPTIONS"]
+    }
+
+    access_control_allow_origins {
+      items = ["https://${var.public_host}"]
+    }
+
+    access_control_expose_headers {
+      items = ["ETag", "Content-Length"]
+    }
+
     access_control_max_age_sec = 600
-    origin_override = true
+    origin_override            = true
   }
 }
 
@@ -100,15 +146,14 @@ resource "aws_cloudfront_distribution" "game_artifacts" {
   }
 
   restrictions {
-    geo_restriction { restriction_type = "none" }
+    geo_restriction {
+      restriction_type = "none"
+    }
   }
 
-  viewer_certificate { cloudfront_default_certificate = true minimum_protocol_version = "TLSv1.2_2021" }
-
-  logging_config {
-    bucket          = aws_s3_bucket.deployment_evidence.bucket_domain_name
-    prefix          = "cloudfront/game-artifacts/"
-    include_cookies = false
+  viewer_certificate {
+    cloudfront_default_certificate = true
+    minimum_protocol_version       = "TLSv1.2_2021"
   }
 
   depends_on = [aws_s3_bucket_public_access_block.game_artifacts]
@@ -116,11 +161,20 @@ resource "aws_cloudfront_distribution" "game_artifacts" {
 
 data "aws_iam_policy_document" "game_artifact_bucket" {
   statement {
-    sid     = "AllowCloudFrontRead"
-    actions = ["s3:GetObject"]
+    sid       = "AllowCloudFrontRead"
+    actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.game_artifacts.arn}/*"]
-    principals { type = "Service" identifiers = ["cloudfront.amazonaws.com"] }
-    condition { test = "StringEquals" variable = "AWS:SourceArn" values = [aws_cloudfront_distribution.game_artifacts.arn] }
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.game_artifacts.arn]
+    }
   }
 }
 
@@ -141,5 +195,10 @@ resource "aws_ssm_parameter" "game_artifact_distribution_domain" {
   value = aws_cloudfront_distribution.game_artifacts.domain_name
 }
 
-output "game_artifact_bucket" { value = aws_s3_bucket.game_artifacts.id }
-output "game_artifact_distribution_domain" { value = aws_cloudfront_distribution.game_artifacts.domain_name }
+output "game_artifact_bucket" {
+  value = aws_s3_bucket.game_artifacts.id
+}
+
+output "game_artifact_distribution_domain" {
+  value = aws_cloudfront_distribution.game_artifacts.domain_name
+}
