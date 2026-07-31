@@ -3,10 +3,11 @@ import {resolve} from 'node:path';
 
 const [input,output]=process.argv.slice(2);
 if(!input||!output)throw new Error('Usage: node scripts/render-kubernetes.mjs <input> <output>');
-
+const environment=process.env.DEPLOY_ENVIRONMENT;
+const production=environment==='production';
 const values={
   REPLACE_IMAGE_TAG:process.env.IMAGE_TAG,
-  REPLACE_ENVIRONMENT:process.env.DEPLOY_ENVIRONMENT,
+  REPLACE_ENVIRONMENT:environment,
   REPLACE_PUBLIC_HOST:process.env.PUBLIC_HOST,
   REPLACE_GAME_HOST:process.env.GAME_HOST,
   REPLACE_PUBLIC_ORIGIN:process.env.PUBLIC_ORIGIN,
@@ -17,10 +18,10 @@ const values={
   REPLACE_OTP_PROVIDER_MODE:process.env.OTP_PROVIDER_MODE,
   REPLACE_ALLOW_DEBUG_OTP:process.env.ALLOW_DEBUG_OTP,
   REPLACE_JAZZCASH_MODE:process.env.JAZZCASH_MODE,
-  REPLACE_ADMIN_AUTH_MODE:process.env.ADMIN_AUTH_MODE,
-  REPLACE_SUPPORT_DELIVERY_MODE:process.env.SUPPORT_DELIVERY_MODE,
-  REPLACE_ALLOW_EXTERNAL_GAMES:process.env.ALLOW_EXTERNAL_GAMES,
-  REPLACE_COMPETITIONS_ENABLED:process.env.COMPETITIONS_ENABLED,
+  REPLACE_ADMIN_AUTH_MODE:process.env.ADMIN_AUTH_MODE||'signed-headers',
+  REPLACE_SUPPORT_DELIVERY_MODE:process.env.SUPPORT_DELIVERY_MODE||(production?'http':'disabled'),
+  REPLACE_ALLOW_EXTERNAL_GAMES:process.env.ALLOW_EXTERNAL_GAMES||(production?'false':'true'),
+  REPLACE_COMPETITIONS_ENABLED:process.env.COMPETITIONS_ENABLED||'false',
   REPLACE_TLS_SECRET_NAME:process.env.TLS_SECRET_NAME,
   REPLACE_AWS_CERTIFICATE_ARN:process.env.AWS_CERTIFICATE_ARN
 };
