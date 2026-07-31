@@ -23,7 +23,8 @@ Completed implementation includes:
 - EKS/RDS/container observability, alarms and encrypted alert delivery;
 - separate bootstrap/deploy and namespace-scoped runtime roles;
 - operated support delivery and account-retention/legal-hold processing;
-- locked Node dependency trees, Dependabot and CodeQL;
+- locked Node dependency trees and Dependabot;
+- CodeQL security-extended analysis with retained SARIF evidence when GitHub Code Security upload is unavailable;
 - Chromium, Firefox and WebKit automation plus a stateful deployed-staging synthetic journey.
 
 ## Required protected environment values
