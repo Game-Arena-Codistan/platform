@@ -1,0 +1,75 @@
+name: AWS runtime controls
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected AWS environment
+        required: true
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: aws-runtime-controls-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Authenticate to AWS with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: game-arena-runtime-controls-${{ github.run_id }}
+      - name: Resolve protected configuration
+        env:
+          CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
+          ENVIRONMENT_INPUT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          prefix="${CONFIG_PREFIX_INPUT:-/game-arena/${ENVIRONMENT_INPUT}}"
+          parameter() { aws ssm get-parameter --name "$prefix/$1" --query Parameter.Value --output text; }
+          {
+            echo "EKS_CLUSTER_NAME=$(parameter eks-cluster-name)"
+            echo "PUBLIC_HOST=$(parameter public-host)"
+            echo "ARTIFACT_DOMAIN=$(parameter game-artifact-distribution-domain)"
+            echo "PUBLIC_WAF_ARN=$(parameter public-waf-arn)"
+            echo "ACCESS_LOG_BUCKET=$(parameter access-log-bucket)"
+          } >> "$GITHUB_ENV"
+      - name: Apply workload and ingress controls
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+          kubectl -n game-arena set env deployment/game-origin \
+            GAME_ARENA_ARTIFACT_ORIGIN="https://${ARTIFACT_DOMAIN}" \
+            GAME_ARENA_PLAYER_HOST="$PUBLIC_HOST" \
+            GAME_ARENA_FRAME_ANCESTORS="https://${PUBLIC_HOST}"
+          kubectl -n game-arena annotate ingress game-arena-aws \
+            alb.ingress.kubernetes.io/wafv2-acl-arn="$PUBLIC_WAF_ARN" \
+            alb.ingress.kubernetes.io/ssl-policy=ELBSecurityPolicy-TLS13-1-2-2021-06 \
+            alb.ingress.kubernetes.io/load-balancer-attributes="routing.http2.enabled=true,idle_timeout.timeout_seconds=60,access_logs.s3.enabled=true,access_logs.s3.bucket=${ACCESS_LOG_BUCKET},access_logs.s3.prefix=alb" \
+            --overwrite
+          kubectl -n game-arena rollout status deployment/game-origin --timeout=600s
+      - name: Verify effective controls
+        run: |
+          set -euo pipefail
+          ingress="$(kubectl -n game-arena get ingress game-arena-aws -o json)"
+          jq -e --arg waf "$PUBLIC_WAF_ARN" '.metadata.annotations["alb.ingress.kubernetes.io/wafv2-acl-arn"] == $waf' <<<"$ingress" >/dev/null
+          jq -e '.metadata.annotations["alb.ingress.kubernetes.io/ssl-policy"] == "ELBSecurityPolicy-TLS13-1-2-2021-06"' <<<"$ingress" >/dev/null
+          deployment="$(kubectl -n game-arena get deployment game-origin -o json)"
+          jq -e --arg origin "https://${ARTIFACT_DOMAIN}" '[.spec.template.spec.containers[0].env[] | select(.name=="GAME_ARENA_ARTIFACT_ORIGIN")][0].value == $origin' <<<"$deployment" >/dev/null
+          curl --fail --silent --show-error --retry 6 --retry-all-errors "https://${PUBLIC_HOST}/api/healthz" >/dev/null
