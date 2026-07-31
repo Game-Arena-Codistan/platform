@@ -1,11 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,readFile,writeFile} from 'node:fs/promises';
+import {execFile} from 'node:child_process';
+import {mkdtemp,mkdir,readFile,symlink,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {promisify} from 'node:util';
 import {probeGame} from '../src/probe.mjs';
 import {packageBuild} from '../src/package-build.mjs';
+import {preflightZip} from '../src/zip-preflight.mjs';
+const exec=promisify(execFile);
 const response=(body,{url='https://games.codistan.org/example/',status=200,type='text/html'}={})=>({url,status,ok:status>=200&&status<300,headers:new Headers({'content-type':type}),body:new Response(body).body});
+async function zip(root,name='game.zip',args=['-r']){const archive=join(root,name);await exec('zip',[...args,archive,'.'],{cwd:join(root,'source')});return archive;}
 test('probe accepts an HTTPS HTML entry point on the approved host',async()=>{const result=await probeGame({id:'example',title:'Example',gameUrl:'https://games.codistan.org/example/'},{fetchImpl:async()=>response('<!doctype html><html></html>')});assert.equal(result.ok,true);});
 test('probe rejects redirects outside the approved host',async()=>{const result=await probeGame({id:'example',title:'Example',gameUrl:'https://games.codistan.org/example/'},{fetchImpl:async()=>response('<html></html>',{url:'https://example.com/game/'})});assert.equal(result.ok,false);assert.equal(result.checks.host,false);});
 test('packager creates a versioned build with hashes',async()=>{const root=await mkdtemp(join(tmpdir(),'arena-game-'));const source=join(root,'source');const output=join(root,'out');await mkdir(source);await writeFile(join(source,'index.html'),'<!doctype html><script src="game.js"></script>');await writeFile(join(source,'game.js'),'console.log("ready")');const manifest=await packageBuild({manifest:{schemaVersion:1,slug:'example-game',title:'Example Game',version:'1.0.0',genres:['Arcade'],orientation:'any',tier:'free',inputModes:['touch'],entryFile:'index.html',bridgeVersion:'1.0'},sourceDir:source,outputRoot:output});assert.equal(manifest.files.length,2);assert.equal(manifest.entrypoint,'/games/example-game/1.0.0/index.html');const stored=JSON.parse(await readFile(join(output,'games/example-game/1.0.0/game-manifest.json'),'utf8'));assert.equal(stored.totalBytes,manifest.totalBytes);});
+test('ZIP preflight accepts a bounded regular archive',async()=>{const root=await mkdtemp(join(tmpdir(),'arena-zip-'));const source=join(root,'source');await mkdir(source);await writeFile(join(source,'index.html'),'<!doctype html>');const archive=await zip(root);const result=await preflightZip(archive);assert.equal(result.summary.entries>=1,true);assert.equal(result.summary.expandedBytes>0,true);});
+test('ZIP preflight rejects symlinks before extraction',async()=>{const root=await mkdtemp(join(tmpdir(),'arena-link-'));const source=join(root,'source');await mkdir(source);await writeFile(join(source,'index.html'),'<!doctype html>');await symlink('/etc/passwd',join(source,'escape'));const archive=await zip(root,'link.zip',['-yr']);await assert.rejects(()=>preflightZip(archive),/Symlink, device or special ZIP entry/);});
+test('ZIP preflight rejects case-colliding paths',async()=>{const root=await mkdtemp(join(tmpdir(),'arena-case-'));const source=join(root,'source');await mkdir(source);await writeFile(join(source,'Game.js'),'one');await writeFile(join(source,'game.js'),'two');const archive=await zip(root,'case.zip');await assert.rejects(()=>preflightZip(archive),/Duplicate or case-colliding/);});
+test('ZIP preflight rejects suspicious compression ratios',async()=>{const root=await mkdtemp(join(tmpdir(),'arena-bomb-'));const source=join(root,'source');await mkdir(source);await writeFile(join(source,'large.txt'),'0'.repeat(1024*1024));const archive=await zip(root,'bomb.zip');await assert.rejects(()=>preflightZip(archive),/Suspicious compression ratio/);});
