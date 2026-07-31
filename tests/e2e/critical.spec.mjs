@@ -8,7 +8,7 @@ test('public player shell exposes all launch-critical routes',async({page})=>{
     ['Games','#/library',/Games|catalogue|Discover your next game/i],
     ['Compete','#/compete',/Compete|leaderboard|tournament/i],
     ['Rewards','#/rewards',/Rewards|Arena Coins/i],
-    ['Account','#/account',/Account/i]
+    ['Account','#/account',/Guest player|Player/i]
   ]){
     await page.getByRole('link',{name:label,exact:true}).click();
     await expect(page).toHaveURL(new RegExp(hash.replace('/','\\/')));
