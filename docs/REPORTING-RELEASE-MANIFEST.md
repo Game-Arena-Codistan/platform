@@ -2,9 +2,9 @@
 
 Candidate branch: `agent/game-arena-plus-reporting`
 
-Candidate commit: `87798fc0580b12e872ef78805f33521f5d63d921`
-
 Base commit: `766fb01bfec3a9948970945f2b8206e5855be1ea`
+
+The authoritative candidate commit is the immutable pull-request head recorded at qualification time.
 
 ## Included
 
@@ -28,4 +28,4 @@ Base commit: `766fb01bfec3a9948970945f2b8206e5855be1ea`
 
 ## Qualification
 
-The exact candidate commit must pass the complete local repository validation suite, clean PostgreSQL migrations, API/report tests, browser tests, container builds and OpenTofu validation before merge. After merge, AWS staging may use mock OTP and mock JazzCash. Live Game Arena+ remains gated by #17, #19 and the remaining #52 work.
+The exact pull-request head must pass the complete local repository validation suite, clean PostgreSQL migrations, API/report tests, browser tests, container builds and OpenTofu validation before merge. After merge, AWS staging may use mock OTP and mock JazzCash. Live Game Arena+ remains gated by #17, #19 and the remaining #52 work.
