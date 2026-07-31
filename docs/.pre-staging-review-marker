@@ -1,0 +1,1 @@
+Pre-staging hardening review marker. Remove after GitHub Actions runner access is restored and the exact main SHA has completed the full matrix.
