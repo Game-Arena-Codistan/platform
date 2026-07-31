@@ -56,7 +56,8 @@ Administrator identity mappings, the administrator proxy secret, support deliver
 ## Fail-closed controls
 
 - Critical third-party Actions are pinned to reviewed immutable commit SHAs.
-- OpenTofu and provider versions are exact and initialization uses `-upgrade=false`.
+- OpenTofu `1.12.5` and provider versions are exact.
+- Every infrastructure run generates a Linux AMD64 dependency lock from the upstream registry, then initializes with `-lockfile=readonly`; the signed checksum lock is retained with the reviewed plan artifact.
 - AWS authentication is constrained with `allowed-account-ids` and independently verified with STS.
 - OpenTofu checks the authenticated account against `expected_aws_account_id`.
 - Every deployed environment requires an explicit EKS version, operated alert destination, namespace-scoped runtime role and monthly cost budget.
