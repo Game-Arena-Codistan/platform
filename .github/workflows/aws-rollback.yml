@@ -1,0 +1,55 @@
+name: AWS rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back
+        required: true
+        type: choice
+        options: [staging, production]
+      image_tag:
+        description: Previously healthy full commit SHA
+        required: true
+        type: string
+      incident_record:
+        description: Non-sensitive incident or rollback record
+        required: true
+        type: string
+      confirmation:
+        description: Enter ROLLBACK to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm rollback target
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          INCIDENT_RECORD: ${{ inputs.incident_record }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = ROLLBACK || { echo 'confirmation must be ROLLBACK.' >&2; exit 1; }
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]
+          test -n "$INCIDENT_RECORD"
+
+  deploy:
+    needs: guard
+    uses: ./.github/workflows/aws-deploy.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tag: ${{ inputs.image_tag }}
+      run_migrations: false
+      require_staging_evidence: false
+      rollback: true
+      change_record: ${{ inputs.incident_record }}
+      deployment_reason: Application rollback to a previously healthy immutable release
+    secrets: inherit

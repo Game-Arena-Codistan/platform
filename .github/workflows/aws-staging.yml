@@ -1,0 +1,43 @@
+name: AWS staging deployment
+
+on:
+  workflow_run:
+    workflows: ['Build and publish images']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Full commit SHA; defaults to current main SHA
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+jobs:
+  automatic:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && vars.AWS_STAGING_ENABLED == 'true'
+    uses: ./.github/workflows/aws-deploy.yml
+    with:
+      environment: staging
+      image_tag: ${{ github.event.workflow_run.head_sha }}
+      run_migrations: true
+      require_staging_evidence: false
+      rollback: false
+      deployment_reason: Automatic deployment after immutable image publication
+    secrets: inherit
+
+  manual:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/aws-deploy.yml
+    with:
+      environment: staging
+      image_tag: ${{ inputs.image_tag || github.sha }}
+      run_migrations: true
+      require_staging_evidence: false
+      rollback: false
+      deployment_reason: Manual staging deployment
+    secrets: inherit

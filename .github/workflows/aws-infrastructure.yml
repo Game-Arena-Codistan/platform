@@ -1,0 +1,147 @@
+name: AWS infrastructure
+
+on:
+  pull_request:
+    paths:
+      - 'infra/opentofu/aws/**'
+      - '.github/workflows/aws-infrastructure.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: OpenTofu operation
+        required: true
+        type: choice
+        options: [validate, plan, apply]
+      environment:
+        description: Protected GitHub Environment
+        required: true
+        type: choice
+        options: [staging, production]
+      confirmation:
+        description: Enter APPLY for an apply operation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aws-infrastructure-${{ inputs.environment || 'validation' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/opentofu/aws
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.1
+      - run: tofu fmt -check -recursive
+      - run: tofu init -backend=false -input=false
+      - run: tofu validate
+      - name: Validate example configuration files
+        run: |
+          set -euo pipefail
+          for file in staging.tfvars.example production.tfvars.example; do
+            test -s "$file"
+          done
+
+  plan-or-apply:
+    if: github.event_name == 'workflow_dispatch' && inputs.action != 'validate'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infra/opentofu/aws
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.1
+
+      - name: Authenticate to AWS with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_INFRA_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: game-arena-infra-${{ github.run_id }}
+
+      - name: Validate protected environment configuration
+        env:
+          STATE_BUCKET: ${{ vars.AWS_TF_STATE_BUCKET }}
+          STATE_KMS_KEY_ID: ${{ vars.AWS_TF_STATE_KMS_KEY_ID }}
+          TFVARS_B64: ${{ secrets.AWS_TFVARS_JSON_B64 }}
+          ROLE_ARN: ${{ secrets.AWS_INFRA_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          test -n "$STATE_BUCKET"
+          test -n "$TFVARS_B64"
+          test -n "$ROLE_ARN"
+          printf '%s' "$TFVARS_B64" | base64 -d > environment.auto.tfvars.json
+          jq -e --arg environment "${{ inputs.environment }}" '.environment == $environment' environment.auto.tfvars.json >/dev/null
+          chmod 600 environment.auto.tfvars.json
+          if [ -n "$STATE_KMS_KEY_ID" ]; then
+            echo "STATE_KMS_ARGUMENT=-backend-config=kms_key_id=$STATE_KMS_KEY_ID" >> "$GITHUB_ENV"
+          fi
+
+      - name: Initialize encrypted remote state
+        env:
+          STATE_BUCKET: ${{ vars.AWS_TF_STATE_BUCKET }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          tofu init -input=false \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="key=game-arena/${{ inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true" \
+            ${STATE_KMS_ARGUMENT:-}
+
+      - name: Create reviewed execution plan
+        run: tofu plan -input=false -lock-timeout=10m -out=game-arena.tfplan
+
+      - name: Render plan for review
+        run: tofu show -no-color game-arena.tfplan > game-arena.tfplan.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aws-${{ inputs.environment }}-infrastructure-plan-${{ github.run_id }}
+          path: infra/opentofu/aws/game-arena.tfplan.txt
+          retention-days: 30
+
+      - name: Enforce apply controls
+        if: inputs.action == 'apply'
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = APPLY || { echo 'confirmation must be APPLY.' >&2; exit 1; }
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Infrastructure apply is restricted to main.' >&2; exit 1; }
+
+      - name: Apply approved plan
+        if: inputs.action == 'apply'
+        run: tofu apply -input=false -auto-approve game-arena.tfplan
+
+      - name: Publish non-sensitive outputs
+        if: inputs.action == 'apply'
+        run: |
+          set -euo pipefail
+          tofu output -json > outputs.json
+          jq 'with_entries(select(.value.sensitive == false))' outputs.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.action == 'apply'
+        with:
+          name: aws-${{ inputs.environment }}-infrastructure-outputs-${{ github.run_id }}
+          path: infra/opentofu/aws/outputs.json
+          retention-days: 90

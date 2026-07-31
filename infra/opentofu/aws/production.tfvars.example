@@ -1,0 +1,29 @@
+environment = "production"
+aws_region  = "ap-south-1"
+vpc_cidr    = "10.50.0.0/16"
+
+route53_zone_id = "Z0000000000000000000"
+public_host      = "play.gamearena.example"
+game_host        = "games.gamearena.example"
+
+# Use a separate role and protected GitHub Environment for production.
+github_deploy_role_arn = "arn:aws:iam::123456789012:role/game-arena-production-deploy"
+
+single_nat_gateway             = false
+node_instance_types            = ["m7i.large"]
+node_min                       = 3
+node_desired                   = 3
+node_max                       = 8
+database_instance_class        = "db.m7g.large"
+database_multi_az              = true
+database_deletion_protection   = true
+database_backup_retention_days = 30
+
+# Replace 0.0.0.0/0 with approved runner or egress CIDRs where practical.
+cluster_public_access_cidrs = ["0.0.0.0/0"]
+
+tags = {
+  Owner       = "Game Arena"
+  CostCenter  = "game-arena"
+  Criticality = "production"
+}
