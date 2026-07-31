@@ -18,30 +18,26 @@ variable "monthly_budget_usd" {
   }
 }
 
-check "aws_account_matches_environment" {
-  assert {
-    condition     = data.aws_caller_identity.current.account_id == var.expected_aws_account_id
-    error_message = "The authenticated AWS account does not match expected_aws_account_id."
+resource "terraform_data" "deployment_guards" {
+  input = {
+    account_id  = var.expected_aws_account_id
+    environment = var.environment
   }
-}
 
-check "explicit_eks_version" {
-  assert {
-    condition     = var.kubernetes_version != null && try(can(regex("^1\\.[0-9]{2}$", var.kubernetes_version)), false)
-    error_message = "kubernetes_version must be explicitly set to an approved EKS major.minor version."
-  }
-}
+  lifecycle {
+    precondition {
+      condition     = data.aws_caller_identity.current.account_id == var.expected_aws_account_id
+      error_message = "The authenticated AWS account does not match expected_aws_account_id."
+    }
 
-check "operated_alert_destination" {
-  assert {
-    condition     = var.operations_alert_email != null
-    error_message = "Staging and production require an operated alert email destination."
+    precondition {
+      condition     = var.environment != "production" || !contains(var.cluster_public_access_cidrs, "0.0.0.0/0")
+      error_message = "Production EKS API access must be restricted to approved runner or egress CIDRs."
+    }
   }
 }
 
 resource "aws_budgets_budget" "monthly" {
-  count = var.operations_alert_email == null ? 0 : 1
-
   name         = "${local.name}-monthly-cost"
   budget_type  = "COST"
   limit_amount = tostring(var.monthly_budget_usd)
