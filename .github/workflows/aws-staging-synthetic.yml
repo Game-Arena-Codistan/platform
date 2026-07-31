@@ -9,53 +9,140 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: aws-staging-synthetic
+  cancel-in-progress: false
+
 jobs:
-  smoke:
+  journey:
     if: vars.AWS_STAGING_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: staging
     steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
       - name: Authenticate to AWS with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_RUNTIME_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: game-arena-synthetic-${{ github.run_id }}
-
       - name: Resolve staging origins
         env:
           CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
         run: |
           set -euo pipefail
           prefix="${CONFIG_PREFIX_INPUT:-/game-arena/staging}"
-          public_host="$(aws ssm get-parameter --name "$prefix/public-host" --query 'Parameter.Value' --output text)"
-          game_host="$(aws ssm get-parameter --name "$prefix/game-host" --query 'Parameter.Value' --output text)"
+          parameter() { aws ssm get-parameter --name "$prefix/$1" --query Parameter.Value --output text; }
+          public_host="$(parameter public-host)"
+          game_host="$(parameter game-host)"
           {
             echo "PLAYER_URL=https://${public_host}"
-            echo "API_HEALTH_URL=https://${public_host}/api/healthz"
-            echo "GAME_HEALTH_URL=https://${game_host}/healthz"
+            echo "API_URL=https://${public_host}/api"
+            echo "GAME_URL=https://${game_host}"
+            echo "EKS_CLUSTER_NAME=$(parameter eks-cluster-name)"
           } >> "$GITHUB_ENV"
-
-      - name: Verify public endpoints and TLS
+      - name: Configure cluster access
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+      - name: Verify TLS, runtime configuration and security headers
         run: |
           set -euo pipefail
-          for url in "$PLAYER_URL" "$API_HEALTH_URL" "$GAME_HEALTH_URL"; do
+          for url in "$PLAYER_URL" "$API_URL/healthz" "$API_URL/readyz" "$GAME_URL/healthz"; do
             curl --fail --silent --show-error --location --max-time 20 --retry 3 --retry-all-errors "$url" >/dev/null
           done
-
-      - name: Verify player security headers
-        run: |
-          set -euo pipefail
           headers="$(curl --fail --silent --show-error --head --max-time 20 "$PLAYER_URL")"
           grep -qi '^x-content-type-options: *nosniff' <<<"$headers"
           grep -qi '^referrer-policy:' <<<"$headers"
+          config_headers="$(curl --fail --silent --show-error --head "$PLAYER_URL/config.js")"
+          grep -qi '^cache-control: *no-store' <<<"$config_headers"
+          config="$(curl --fail --silent --show-error "$PLAYER_URL/config.js")"
+          grep -q 'mode:"live"' <<<"$config"
+          grep -q 'releaseSha:' <<<"$config"
+          ready="$(curl --fail --silent --show-error "$API_URL/readyz")"
+          jq -e '.status == "ready" and .payments == "mock" and .otp == "mock"' <<<"$ready" >/dev/null
+      - name: Run authenticated player, proof and payment journey
+        run: |
+          set -euo pipefail
+          jar=/tmp/game-arena-synthetic.cookies
+          identifier=03000000001
+          otp="$(curl --fail --silent --show-error "$API_URL/v1/auth/otp" \
+            -H 'content-type: application/json' \
+            --data "{\"identifier\":\"$identifier\"}")"
+          challenge="$(jq -er .challengeId <<<"$otp")"
+          code="$(jq -er .debugCode <<<"$otp")"
+          verified="$(curl --fail --silent --show-error -c "$jar" "$API_URL/v1/auth/otp/verify" \
+            -H 'content-type: application/json' \
+            --data "{\"challengeId\":\"$challenge\",\"code\":\"$code\"}")"
+          csrf="$(jq -er .csrfToken <<<"$verified")"
+          before="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/session")"
+          jq -e '.authenticated == true' <<<"$before" >/dev/null
 
+          catalogue="$(curl --fail --silent --show-error "$API_URL/v1/catalog/games")"
+          game_id="$(jq -er '.games[0].id' <<<"$catalogue")"
+          play="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/play-sessions" \
+            -H 'content-type: application/json' \
+            -H "origin: $PLAYER_URL" \
+            -H "x-csrf-token: $csrf" \
+            --data "{\"gameId\":\"$game_id\"}")"
+          play_id="$(jq -er .playSessionId <<<"$play")"
+          nonce="$(jq -er .nonce <<<"$play")"
+          version="$(jq -er .gameVersion <<<"$play")"
+          sleep 2
+          completed_at="$(date +%s%3N)"
+          completion="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/play-sessions/$play_id/complete" \
+            -H 'content-type: application/json' \
+            -H "origin: $PLAYER_URL" \
+            -H "x-csrf-token: $csrf" \
+            --data "{\"score\":1,\"durationMs\":2000,\"completedAt\":$completed_at,\"gameVersion\":\"$version\",\"nonce\":\"$nonce\"}")"
+          jq -e '.accepted == true and .status == "verified"' <<<"$completion" >/dev/null
+
+          checkout="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/payments/jazzcash/checkout" \
+            -H 'content-type: application/json' \
+            -H "origin: $PLAYER_URL" \
+            -H "x-csrf-token: $csrf" \
+            -H 'idempotency-key: aws-staging-synthetic-monthly-v1' \
+            --data '{"planId":"monthly"}')"
+          transaction="$(jq -er .transactionId <<<"$checkout")"
+          jq -e '.status == "pending"' <<<"$checkout" >/dev/null
+          curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            "$API_URL/v1/payments/jazzcash/return" \
+            -H 'content-type: application/json' \
+            --data "{\"transactionId\":\"$transaction\",\"status\":\"paid\",\"amountMinor\":29900,\"currency\":\"PKR\"}" | grep -q '^303$'
+          status="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/payments/$transaction")"
+          jq -e '.status == "pending"' <<<"$status" >/dev/null
+          {
+            echo "SYNTHETIC_TRANSACTION=$transaction"
+            echo "SYNTHETIC_COOKIE_JAR=$jar"
+          } >> "$GITHUB_ENV"
+      - name: Verify restart durability
+        run: |
+          set -euo pipefail
+          kubectl -n game-arena rollout restart deployment/api
+          kubectl -n game-arena rollout status deployment/api --timeout=600s
+          after="$(curl --fail --silent --show-error -b "$SYNTHETIC_COOKIE_JAR" "$API_URL/v1/session")"
+          jq -e '.authenticated == true' <<<"$after" >/dev/null
+          status="$(curl --fail --silent --show-error -b "$SYNTHETIC_COOKIE_JAR" "$API_URL/v1/payments/$SYNTHETIC_TRANSACTION")"
+          jq -e '.status == "pending"' <<<"$status" >/dev/null
+      - name: Verify deployed edge and runtime controls
+        run: |
+          set -euo pipefail
+          ingress="$(kubectl -n game-arena get ingress game-arena-aws -o json)"
+          jq -e '.metadata.annotations["alb.ingress.kubernetes.io/wafv2-acl-arn"] | length > 10' <<<"$ingress" >/dev/null
+          jq -e '.metadata.annotations["alb.ingress.kubernetes.io/ssl-policy"] == "ELBSecurityPolicy-TLS13-1-2-2021-06"' <<<"$ingress" >/dev/null
+          api="$(kubectl -n game-arena get deployment api -o json)"
+          jq -e '[.spec.template.spec.containers[0].env[] | select(.name=="ADMIN_AUTH_MODE")][0].value == "signed-headers"' <<<"$api" >/dev/null
+          game="$(kubectl -n game-arena get deployment game-origin -o json)"
+          jq -e '[.spec.template.spec.containers[0].env[] | select(.name=="GAME_ARENA_ARTIFACT_ORIGIN")][0].value | startswith("https://")' <<<"$game" >/dev/null
       - name: Publish synthetic summary
         run: |
           {
             echo '## AWS staging synthetic result'
             echo "- Player: $PLAYER_URL"
-            echo "- API health: $API_HEALTH_URL"
-            echo "- Game health: $GAME_HEALTH_URL"
-            echo '- Result: passed'
+            echo "- API: $API_URL"
+            echo "- Game origin: $GAME_URL"
+            echo '- OTP/session: passed'
+            echo '- Exact play proof: passed'
+            echo '- Browser return remains pending: passed'
+            echo '- API restart durability: passed'
+            echo '- WAF/TLS/artifact controls: passed'
           } >> "$GITHUB_STEP_SUMMARY"
