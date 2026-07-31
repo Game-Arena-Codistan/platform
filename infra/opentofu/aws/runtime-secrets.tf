@@ -42,7 +42,7 @@ resource "aws_secretsmanager_secret_version" "runtime_controls_bootstrap" {
     admin_identity_roles_json = "{}"
     support_delivery_endpoint = ""
     support_delivery_secret   = random_password.support_delivery_runtime.result
-    legal_hold_user_ids        = ""
+    legal_hold_user_ids       = ""
   })
 
   lifecycle {
