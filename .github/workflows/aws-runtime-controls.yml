@@ -32,7 +32,7 @@ jobs:
       - name: Authenticate to AWS with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_RUNTIME_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: game-arena-runtime-controls-${{ github.run_id }}
       - name: Resolve protected configuration
@@ -44,16 +44,128 @@ jobs:
           prefix="${CONFIG_PREFIX_INPUT:-/game-arena/${ENVIRONMENT_INPUT}}"
           parameter() { aws ssm get-parameter --name "$prefix/$1" --query Parameter.Value --output text; }
           {
+            echo "DEPLOY_ENVIRONMENT=$ENVIRONMENT_INPUT"
             echo "EKS_CLUSTER_NAME=$(parameter eks-cluster-name)"
             echo "PUBLIC_HOST=$(parameter public-host)"
             echo "ARTIFACT_DOMAIN=$(parameter game-artifact-distribution-domain)"
             echo "PUBLIC_WAF_ARN=$(parameter public-waf-arn)"
             echo "ACCESS_LOG_BUCKET=$(parameter access-log-bucket)"
+            echo "DB_ENDPOINT=$(parameter rds-endpoint)"
+            echo "DB_PORT=$(parameter rds-port)"
+            echo "DB_NAME=$(parameter rds-database)"
+            echo "DB_MASTER_SECRET_ARN=$(parameter rds-master-secret-arn)"
+            echo "DB_APP_SECRET_ARN=$(parameter rds-application-secret-arn)"
+            echo "RUNTIME_SECRET_ARN=$(parameter runtime-controls-secret-arn)"
           } >> "$GITHUB_ENV"
-      - name: Apply workload and ingress controls
+      - name: Configure EKS access
         run: |
           set -euo pipefail
           aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
+          kubectl auth can-i patch secrets --namespace game-arena
+          kubectl auth can-i create jobs --namespace game-arena
+      - name: Apply database identity, application secrets and edge controls
+        run: |
+          set -euo pipefail
+          umask 077
+          bootstrap_secret="game-arena-db-bootstrap-${GITHUB_RUN_ID}"
+          bootstrap_job="game-arena-db-role-${GITHUB_RUN_ID}"
+          cleanup() {
+            kubectl -n game-arena delete job "$bootstrap_job" --ignore-not-found >/dev/null 2>&1 || true
+            kubectl -n game-arena delete secret "$bootstrap_secret" --ignore-not-found >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          master="$(aws secretsmanager get-secret-value --secret-id "$DB_MASTER_SECRET_ARN" --query SecretString --output text)"
+          appdb="$(aws secretsmanager get-secret-value --secret-id "$DB_APP_SECRET_ARN" --query SecretString --output text)"
+          runtime="$(aws secretsmanager get-secret-value --secret-id "$RUNTIME_SECRET_ARN" --query SecretString --output text)"
+          db_master_user="$(jq -er .username <<<"$master")"
+          db_master_password="$(jq -er .password <<<"$master")"
+          db_app_user="$(jq -er .username <<<"$appdb")"
+          db_app_password="$(jq -er .password <<<"$appdb")"
+          admin_proxy_secret="$(jq -er '.admin_proxy_secret // ""' <<<"$runtime")"
+          admin_identity_roles_json="$(jq -er '.admin_identity_roles_json // "{}"' <<<"$runtime")"
+          support_delivery_endpoint="$(jq -er '.support_delivery_endpoint // ""' <<<"$runtime")"
+          support_delivery_secret="$(jq -er '.support_delivery_secret // ""' <<<"$runtime")"
+          legal_hold_user_ids="$(jq -er '.legal_hold_user_ids // ""' <<<"$runtime")"
+
+          for secret in "$db_master_user" "$db_master_password" "$db_app_user" "$db_app_password" "$admin_proxy_secret" "$support_delivery_secret"; do
+            [ -z "$secret" ] || echo "::add-mask::$secret"
+          done
+          jq -e 'type == "object"' <<<"$admin_identity_roles_json" >/dev/null
+          if [ "$DEPLOY_ENVIRONMENT" = production ]; then
+            test -n "$admin_proxy_secret"
+            jq -e 'type == "object" and length > 0' <<<"$admin_identity_roles_json" >/dev/null
+            test -n "$support_delivery_secret"
+            case "$support_delivery_endpoint" in https://*) ;; *) echo 'Production support delivery endpoint must use HTTPS.' >&2; exit 1 ;; esac
+            support_mode=http
+            external_games=false
+          else
+            support_mode=disabled
+            external_games=true
+          fi
+
+          readarray -t urls < <(python - "$db_master_user" "$db_master_password" "$db_app_user" "$db_app_password" "$DB_ENDPOINT" "$DB_PORT" "$DB_NAME" <<'PY'
+          import sys, urllib.parse
+          master_user, master_password, app_user, app_password, host, port, name = sys.argv[1:]
+          def url(user, password):
+              return f"postgresql://{urllib.parse.quote(user, safe='')}:{urllib.parse.quote(password, safe='')}@{host}:{port}/{name}"
+          print(url(master_user, master_password))
+          print(url(app_user, app_password))
+          PY
+          )
+          database_admin_url="${urls[0]}"
+          database_app_url="${urls[1]}"
+          echo "::add-mask::$database_admin_url"
+          echo "::add-mask::$database_app_url"
+
+          api_image="$(kubectl -n game-arena get deployment api -o jsonpath='{.spec.template.spec.containers[0].image}')"
+          kubectl -n game-arena create secret generic "$bootstrap_secret" \
+            --from-literal=DATABASE_ADMIN_URL="$database_admin_url" \
+            --from-literal=DATABASE_APP_USER="$db_app_user" \
+            --from-literal=DATABASE_APP_PASSWORD="$db_app_password" \
+            --from-literal=DATABASE_NAME="$DB_NAME"
+          cat <<EOF | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: ${bootstrap_job}
+            namespace: game-arena
+          spec:
+            backoffLimit: 1
+            ttlSecondsAfterFinished: 300
+            template:
+              spec:
+                restartPolicy: Never
+                automountServiceAccountToken: false
+                securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+                containers:
+                  - name: bootstrap
+                    image: ${api_image}
+                    command: ["node", "scripts/bootstrap-db-role.mjs"]
+                    envFrom: [{secretRef: {name: ${bootstrap_secret}}}]
+                    securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          EOF
+          if ! kubectl -n game-arena wait --for=condition=complete "job/$bootstrap_job" --timeout=300s; then
+            kubectl -n game-arena logs "job/$bootstrap_job" || true
+            exit 1
+          fi
+
+          patch="$(jq -n \
+            --arg database "$database_app_url" \
+            --arg proxy "$admin_proxy_secret" \
+            --arg roles "$admin_identity_roles_json" \
+            --arg supportEndpoint "$support_delivery_endpoint" \
+            --arg supportSecret "$support_delivery_secret" \
+            --arg holds "$legal_hold_user_ids" \
+            '{data:{DATABASE_URL:($database|@base64),ADMIN_PROXY_SECRET:($proxy|@base64),ADMIN_IDENTITY_ROLES_JSON:($roles|@base64),SUPPORT_DELIVERY_ENDPOINT:($supportEndpoint|@base64),SUPPORT_DELIVERY_SECRET:($supportSecret|@base64),LEGAL_HOLD_USER_IDS:($holds|@base64)}}')"
+          kubectl -n game-arena patch secret game-arena-secrets --type merge -p "$patch"
+          kubectl -n game-arena set env deployment/api \
+            ADMIN_AUTH_MODE=signed-headers \
+            SUPPORT_DELIVERY_MODE="$support_mode" \
+            ALLOW_EXTERNAL_GAMES="$external_games" \
+            COMPETITIONS_ENABLED=false
+          kubectl -n game-arena rollout restart deployment/api
+
           kubectl -n game-arena set env deployment/game-origin \
             GAME_ARENA_ARTIFACT_ORIGIN="https://${ARTIFACT_DOMAIN}" \
             GAME_ARENA_PLAYER_HOST="$PUBLIC_HOST" \
@@ -63,6 +175,7 @@ jobs:
             alb.ingress.kubernetes.io/ssl-policy=ELBSecurityPolicy-TLS13-1-2-2021-06 \
             alb.ingress.kubernetes.io/load-balancer-attributes="routing.http2.enabled=true,idle_timeout.timeout_seconds=60,access_logs.s3.enabled=true,access_logs.s3.bucket=${ACCESS_LOG_BUCKET},access_logs.s3.prefix=alb" \
             --overwrite
+          kubectl -n game-arena rollout status deployment/api --timeout=600s
           kubectl -n game-arena rollout status deployment/game-origin --timeout=600s
       - name: Verify effective controls
         run: |
@@ -70,6 +183,8 @@ jobs:
           ingress="$(kubectl -n game-arena get ingress game-arena-aws -o json)"
           jq -e --arg waf "$PUBLIC_WAF_ARN" '.metadata.annotations["alb.ingress.kubernetes.io/wafv2-acl-arn"] == $waf' <<<"$ingress" >/dev/null
           jq -e '.metadata.annotations["alb.ingress.kubernetes.io/ssl-policy"] == "ELBSecurityPolicy-TLS13-1-2-2021-06"' <<<"$ingress" >/dev/null
-          deployment="$(kubectl -n game-arena get deployment game-origin -o json)"
-          jq -e --arg origin "https://${ARTIFACT_DOMAIN}" '[.spec.template.spec.containers[0].env[] | select(.name=="GAME_ARENA_ARTIFACT_ORIGIN")][0].value == $origin' <<<"$deployment" >/dev/null
-          curl --fail --silent --show-error --retry 6 --retry-all-errors "https://${PUBLIC_HOST}/api/healthz" >/dev/null
+          game="$(kubectl -n game-arena get deployment game-origin -o json)"
+          jq -e --arg origin "https://${ARTIFACT_DOMAIN}" '[.spec.template.spec.containers[0].env[] | select(.name=="GAME_ARENA_ARTIFACT_ORIGIN")][0].value == $origin' <<<"$game" >/dev/null
+          api="$(kubectl -n game-arena get deployment api -o json)"
+          jq -e '[.spec.template.spec.containers[0].env[] | select(.name=="ADMIN_AUTH_MODE")][0].value == "signed-headers"' <<<"$api" >/dev/null
+          curl --fail --silent --show-error --retry 6 --retry-all-errors "https://${PUBLIC_HOST}/api/readyz" | jq -e '.status == "ready"' >/dev/null
