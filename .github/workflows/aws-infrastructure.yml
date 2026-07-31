@@ -40,12 +40,7 @@ jobs:
       - uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: 1.12.1
-      - name: Show canonical OpenTofu formatting
-        run: |
-          set -euo pipefail
-          tofu fmt -recursive
-          git diff -- .
-          git diff --quiet -- . || exit 1
+      - run: tofu fmt -check -recursive
       - run: tofu init -backend=false -input=false
       - run: tofu validate
       - name: Validate example configuration files
