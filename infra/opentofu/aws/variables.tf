@@ -48,10 +48,13 @@ variable "cluster_public_access_cidrs" {
 }
 
 variable "kubernetes_version" {
-  description = "EKS Kubernetes version. Null uses the current EKS default."
+  description = "Explicit approved EKS Kubernetes major.minor version."
   type        = string
-  default     = null
-  nullable    = true
+
+  validation {
+    condition     = can(regex("^1\\.[0-9]{2}$", var.kubernetes_version))
+    error_message = "kubernetes_version must be an explicit major.minor value such as 1.34."
+  }
 }
 
 variable "node_instance_types" {

@@ -36,19 +36,27 @@ jobs:
       run:
         working-directory: infra/opentofu/aws
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          tofu_version: 1.12.1
+          persist-credentials: false
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: 1.12.5
       - run: tofu fmt -check -recursive
-      - run: tofu init -backend=false -input=false
+      - name: Generate signed provider checksum lock
+        run: tofu providers lock -platform=linux_amd64
+      - run: tofu init -backend=false -input=false -upgrade=false -lockfile=readonly
       - run: tofu validate
       - name: Validate example configuration files
         run: |
           set -euo pipefail
+          test -s .terraform.lock.hcl
           for file in staging.tfvars.example production.tfvars.example; do
             test -s "$file"
           done
+          grep -q 'expected_aws_account_id' staging.tfvars.example
+          grep -q 'kubernetes_version' staging.tfvars.example
+          grep -q 'monthly_budget_usd' staging.tfvars.example
 
   plan-or-apply:
     if: github.event_name == 'workflow_dispatch' && inputs.action != 'validate'
@@ -62,17 +70,27 @@ jobs:
       run:
         working-directory: infra/opentofu/aws
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          tofu_version: 1.12.1
+          persist-credentials: false
+
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: 1.12.5
+
+      - name: Validate expected AWS account
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo 'AWS_ACCOUNT_ID must be a twelve-digit protected environment variable.' >&2; exit 1; }
 
       - name: Authenticate to AWS with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_INFRA_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
           role-session-name: game-arena-infra-${{ github.run_id }}
 
       - name: Validate protected environment configuration
@@ -81,17 +99,25 @@ jobs:
           STATE_KMS_KEY_ID: ${{ vars.AWS_TF_STATE_KMS_KEY_ID }}
           TFVARS_B64: ${{ secrets.AWS_TFVARS_JSON_B64 }}
           ROLE_ARN: ${{ secrets.AWS_INFRA_ROLE_ARN }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           test -n "$STATE_BUCKET"
           test -n "$TFVARS_B64"
           test -n "$ROLE_ARN"
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          [ "$account_id" = "$EXPECTED_AWS_ACCOUNT_ID" ] || { echo "Authenticated AWS account $account_id does not match AWS_ACCOUNT_ID." >&2; exit 1; }
           printf '%s' "$TFVARS_B64" | base64 -d > environment.auto.tfvars.json
-          jq -e --arg environment "${{ inputs.environment }}" '.environment == $environment' environment.auto.tfvars.json >/dev/null
+          jq -e --arg environment "${{ inputs.environment }}" --arg account "$EXPECTED_AWS_ACCOUNT_ID" \
+            '.environment == $environment and .expected_aws_account_id == $account and (.kubernetes_version | type == "string") and (.monthly_budget_usd | type == "number")' \
+            environment.auto.tfvars.json >/dev/null
           chmod 600 environment.auto.tfvars.json
           if [ -n "$STATE_KMS_KEY_ID" ]; then
             echo "STATE_KMS_ARGUMENT=-backend-config=kms_key_id=$STATE_KMS_KEY_ID" >> "$GITHUB_ENV"
           fi
+
+      - name: Generate signed provider checksum lock
+        run: tofu providers lock -platform=linux_amd64
 
       - name: Initialize encrypted remote state
         env:
@@ -99,7 +125,7 @@ jobs:
           AWS_REGION: ${{ vars.AWS_REGION }}
         run: |
           set -euo pipefail
-          tofu init -input=false \
+          tofu init -input=false -upgrade=false -lockfile=readonly \
             -backend-config="bucket=$STATE_BUCKET" \
             -backend-config="key=game-arena/${{ inputs.environment }}/terraform.tfstate" \
             -backend-config="region=$AWS_REGION" \
@@ -113,10 +139,12 @@ jobs:
       - name: Render plan for review
         run: tofu show -no-color game-arena.tfplan > game-arena.tfplan.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: aws-${{ inputs.environment }}-infrastructure-plan-${{ github.run_id }}
-          path: infra/opentofu/aws/game-arena.tfplan.txt
+          path: |
+            infra/opentofu/aws/game-arena.tfplan.txt
+            infra/opentofu/aws/.terraform.lock.hcl
           retention-days: 30
 
       - name: Enforce apply controls
@@ -139,7 +167,7 @@ jobs:
           tofu output -json > outputs.json
           jq 'with_entries(select(.value.sensitive == false))' outputs.json | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: inputs.action == 'apply'
         with:
           name: aws-${{ inputs.environment }}-infrastructure-outputs-${{ github.run_id }}

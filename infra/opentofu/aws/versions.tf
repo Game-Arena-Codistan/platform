@@ -1,18 +1,18 @@
 terraform {
-  required_version = ">= 1.9.0"
+  required_version = "= 1.12.5"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.0"
+      version = "= 6.57.1"
     }
     random = {
       source  = "hashicorp/random"
-      version = "~> 3.6"
+      version = "= 3.9.0"
     }
     tls = {
       source  = "hashicorp/tls"
-      version = "~> 4.0"
+      version = "= 4.3.0"
     }
   }
 
@@ -20,7 +20,8 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
+  region              = var.aws_region
+  allowed_account_ids = [var.expected_aws_account_id]
 
   default_tags {
     tags = local.tags
