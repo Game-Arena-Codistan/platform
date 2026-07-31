@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {MemoryStore} from '../src/adapters/memory-store.mjs';
+import {PaymentService} from '../src/services/payments.mjs';
+import {SubscriptionReportService,parseReportFilters} from '../src/services/subscription-reports.mjs';
+
+const paidEvent=(payments,transaction,reference=`JC-${transaction.id}`)=>payments.applyEvent({transactionId:transaction.id,status:'paid',providerReference:reference,providerEventId:`event-${transaction.id}`,signatureValid:true,event:{billReference:transaction.id,amountMinor:transaction.amountPkr*100,currency:'PKR',merchantId:'mock-merchant'}});
+
+test('staging fixture totals reconcile across summary and exports',async()=>{
+  let now=Date.parse('2026-08-05T12:00:00+05:00');const clock=()=>now;const store=new MemoryStore();const provider={async createCheckout({transactionId,amountPkr}){return{providerReference:`JC-${transactionId}`,expected:{merchantId:'mock-merchant',billReference:transactionId,amountMinor:amountPkr*100,currency:'PKR'},checkout:{method:'mock'}};}};const payments=new PaymentService({store,provider,clock});const reports=new SubscriptionReportService({store,clock});
+  const recurring=store.findOrCreateUser({type:'phone',value:'03001000001'});const refunded=store.findOrCreateUser({type:'phone',value:'03001000002'});const manual=store.findOrCreateUser({type:'phone',value:'03001000003'});
+  const activation=await payments.checkout({userId:recurring.id,planId:'monthly',idempotencyKey:'activation'});paidEvent(payments,activation);now+=1000;const extension=await payments.checkout({userId:recurring.id,planId:'monthly',idempotencyKey:'extension'});paidEvent(payments,extension);now+=1000;const refundedPayment=await payments.checkout({userId:refunded.id,planId:'yearly',idempotencyKey:'refunded'});paidEvent(payments,refundedPayment);now+=1000;payments.refund(refundedPayment.id,{providerReference:'REFUND-1',reason:'fixture'});store.setEntitlement(manual.id,{tier:'premium',status:'active',origin:'manual_grant',sourceType:'manual_grant',sourceId:'fixture-manual',startsAt:now,expiresAt:now+31*86400000});
+  const filters=parseReportFilters(new URLSearchParams({from:'2026-08-01',to:'2026-08-31',aggregation:'daily',limit:'200'}),clock);const summary=reports.summary(filters);assert.equal(summary.kpis.grossCollectionsPkr,5597);assert.equal(summary.kpis.refundsPkr,4999);assert.equal(summary.kpis.netCollectionsPkr,598);assert.equal(summary.kpis.newPaidActivations,2);assert.equal(summary.kpis.successfulRenewals,1);assert.equal(summary.kpis.recurringCustomers,1);assert.equal(summary.kpis.monthlyRecurringRevenue.applicability,'not_applicable');
+  const paymentExport=reports.export('payments',filters,{actor:'admin:finance-fixture',roles:['finance']});assert.equal(paymentExport.rowCount,3);assert.match(paymentExport.body,/Game Arena\+ Monthly/);assert.equal(paymentExport.body.includes('fixture-manual'),false);
+  const subscriptionExport=reports.export('subscriptions',filters,{actor:'admin:finance-fixture',roles:['finance']});assert.match(subscriptionExport.body,/manual_grant/);assert.equal(store.reportExports.length,2);assert.equal(store.audit.events.filter(item=>item.action==='report.export_generated').length,2);
+});
