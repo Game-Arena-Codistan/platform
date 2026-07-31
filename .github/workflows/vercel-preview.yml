@@ -36,6 +36,10 @@ jobs:
             echo 'Vercel preview skipped: configure VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm install
+
       - name: Validate frontend
         working-directory: apps/web
         run: npm run ci
