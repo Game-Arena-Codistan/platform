@@ -1,0 +1,36 @@
+name: Generate dependency lockfiles
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/generate-lockfiles.yml'
+      - 'apps/api/package.json'
+      - 'apps/web/package.json'
+      - 'tests/e2e/package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve exact dependency trees
+        run: |
+          set -euo pipefail
+          for directory in apps/api apps/web tests/e2e; do
+            (cd "$directory" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launch-lockfiles-${{ github.run_id }}
+          path: |
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+            tests/e2e/package-lock.json
+          if-no-files-found: error
+          retention-days: 1
