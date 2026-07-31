@@ -18,7 +18,12 @@ data:
   OTP_PROVIDER_MODE: "REPLACE_OTP_PROVIDER_MODE"
   ALLOW_DEBUG_OTP: "REPLACE_ALLOW_DEBUG_OTP"
   JAZZCASH_MODE: "REPLACE_JAZZCASH_MODE"
+  ADMIN_AUTH_MODE: "REPLACE_ADMIN_AUTH_MODE"
+  SUPPORT_DELIVERY_MODE: "REPLACE_SUPPORT_DELIVERY_MODE"
+  ALLOW_EXTERNAL_GAMES: "REPLACE_ALLOW_EXTERNAL_GAMES"
+  COMPETITIONS_ENABLED: "REPLACE_COMPETITIONS_ENABLED"
   GAME_ARENA_MODE: live
+  GAME_ARENA_RELEASE_SHA: "REPLACE_IMAGE_TAG"
   GAME_ARENA_API_BASE_URL: /api
   GAME_ARENA_GAME_ORIGIN: "REPLACE_GAME_ORIGIN"
   GAME_ARENA_GAME_HOSTS: "REPLACE_GAME_HOSTS"
@@ -111,6 +116,7 @@ spec:
           ports: [{containerPort: 8080}]
           env:
             - {name: GAME_ARENA_FRAME_ANCESTORS, value: "REPLACE_PUBLIC_ORIGIN"}
+            - {name: GAME_ARENA_PLAYER_HOST, value: "REPLACE_PUBLIC_HOST"}
           readinessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 20}
           resources:
@@ -159,14 +165,25 @@ spec:
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
-metadata: {name: allow-platform-egress, namespace: game-arena}
+metadata: {name: allow-api-egress, namespace: game-arena}
 spec:
-  podSelector: {}
+  podSelector: {matchLabels: {app: game-arena-api}}
   policyTypes: [Egress]
   egress:
-    - to: [{namespaceSelector: {}}]
     - ports:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
         - {protocol: TCP, port: 443}
         - {protocol: TCP, port: 5432}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-game-origin-egress, namespace: game-arena}
+spec:
+  podSelector: {matchLabels: {app: game-arena-game-origin}}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+        - {protocol: TCP, port: 443}
