@@ -23,7 +23,7 @@ jobs:
         run: node scripts/check-cloud-deployment.mjs
       - name: API dependencies
         working-directory: apps/api
-        run: npm install --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: API checks
         working-directory: apps/api
         run: npm run ci
