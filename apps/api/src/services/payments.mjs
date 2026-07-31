@@ -12,21 +12,21 @@ const fingerprint=value=>JSON.stringify(value,Object.keys(value).sort());
 const iso=millis=>new Date(millis).toISOString();
 
 function ensureReportingState(store){
-  store.planVersions??=Object.values(PLAN_DEFINITIONS).map(plan=>({...plan,version:`${plan.id}-launch-v1`,status:'active',effectiveAt:'2026-07-30T00:00:00.000Z',retiredAt:null,scheduledAt:null}));
-  store.benefitLedger??=[];
-  store.reportExports??=[];
+  if(!Array.isArray(store.planVersions)||!store.planVersions.length)store.planVersions=Object.values(PLAN_DEFINITIONS).map(plan=>({...plan,version:`${plan.id}-launch-v1`,status:'active',effectiveAt:'2026-07-30T00:00:00.000Z',retiredAt:null,scheduledAt:null}));
+  if(!Array.isArray(store.benefitLedger))store.benefitLedger=[];
+  if(!Array.isArray(store.reportExports))store.reportExports=[];
 }
 
 export class PaymentService{
   constructor({store,provider,clock=()=>Date.now()}){this.store=store;this.provider=provider;this.clock=clock;ensureReportingState(store);}
-  plan(id){const plan=this.store.planVersions.find(item=>item.id===id&&item.status==='active')??PLAN_DEFINITIONS[id];if(!plan)throw Object.assign(new Error('Unknown premium plan.'),{status:400,code:'invalid_plan'});return{...plan,pricePkr:Number(plan.pricePkr??plan.price),durationMs:Number(plan.durationMs??Number(plan.durationDays)*DAY_MS),currency:plan.currency||'PKR'};}
+  plan(id){const plan=this.store.planVersions.find(item=>item.id===id&&item.status==='active');if(!plan)throw Object.assign(new Error('Unknown premium plan.'),{status:400,code:'invalid_plan'});return{...plan,pricePkr:Number(plan.pricePkr??plan.price),durationMs:Number(plan.durationMs??Number(plan.durationDays)*DAY_MS),currency:plan.currency||'PKR'};}
   scopedKey({userId,kind,productId,key}){const raw=String(key||'').trim();if(raw.length>200)throw Object.assign(new Error('Idempotency key is too long.'),{status:400,code:'invalid_idempotency_key'});return`${userId}:${kind}:${productId}:${raw||Math.floor(this.clock()/300000)}`;}
   existing(key,expected){const transaction=this.store.findTransactionByIdempotency(key);if(!transaction)return null;if(transaction.userId!==expected.userId||transaction.kind!==expected.kind||transaction.purchaseFingerprint!==expected.purchaseFingerprint)throw fail('Idempotency key was already used for another purchase.',409,'idempotency_conflict');return transaction;}
   membershipPurpose(userId){const prior=[...this.store.transactions.values()].some(item=>item.userId===userId&&item.kind==='membership'&&item.status==='paid');return prior?'extension':'activation';}
   planSnapshot(plan){return{id:plan.id,name:plan.name,version:plan.version||`${plan.id}-launch-v1`,pricePkr:plan.pricePkr,currency:plan.currency,durationDays:plan.durationDays??Math.round(plan.durationMs/DAY_MS),durationMs:plan.durationMs,billingMode:plan.billingMode||'single',benefitsVersion:plan.benefitsVersion||'launch-v1'};}
   safeStoredProvider(provider={}){return{providerReference:provider.providerReference,expected:provider.expected?{merchantId:provider.expected.merchantId,billReference:provider.expected.billReference,amountMinor:provider.expected.amountMinor,currency:provider.expected.currency}:undefined};}
   async checkout({userId,planId,idempotencyKey}){
-    const plan=this.plan(planId);const purpose=this.membershipPurpose(userId);const purchaseFingerprint=fingerprint({kind:'membership',planId,amountPkr:plan.pricePkr,purpose});const key=this.scopedKey({userId,kind:'membership',productId:planId,key:idempotencyKey});const prior=this.existing(key,{userId,kind:'membership',purchaseFingerprint});if(prior)return prior;
+    const plan=this.plan(planId);const purpose=this.membershipPurpose(userId);const purchaseFingerprint=fingerprint({kind:'membership',planId,amountPkr:plan.pricePkr});const key=this.scopedKey({userId,kind:'membership',productId:planId,key:idempotencyKey});const prior=this.existing(key,{userId,kind:'membership',purchaseFingerprint});if(prior)return prior;
     const now=this.clock();const transaction={id:randomUUID(),kind:'membership',purpose,userId,provider:'JazzCash',planId,planSnapshot:this.planSnapshot(plan),listAmountPkr:plan.pricePkr,amountPkr:plan.pricePkr,discountPkr:0,currency:plan.currency,status:'pending',providerStatus:'pending',idempotencyKey:key,purchaseFingerprint,createdAt:iso(now),initiatedAt:iso(now),updatedAt:iso(now),attempts:1};
     const provider=await this.provider.createCheckout({transactionId:transaction.id,referenceType:'membership',referenceId:planId,amountPkr:plan.pricePkr,description:`Game Arena+ ${planId}`});Object.assign(transaction,this.safeStoredProvider(provider));this.store.createTransaction(transaction);this.store.audit.write({actor:userId,action:'payment.checkout_created',targetType:'transaction',targetId:transaction.id,metadata:{kind:'membership',purpose,planId,amountPkr:plan.pricePkr,currency:plan.currency}});return{...transaction,checkout:provider.checkout};
   }
