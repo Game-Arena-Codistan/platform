@@ -41,13 +41,16 @@ jobs:
           persist-credentials: false
       - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
         with:
-          tofu_version: 1.12.1
+          tofu_version: 1.12.5
       - run: tofu fmt -check -recursive
-      - run: tofu init -backend=false -input=false -upgrade=false
+      - name: Generate signed provider checksum lock
+        run: tofu providers lock -platform=linux_amd64
+      - run: tofu init -backend=false -input=false -upgrade=false -lockfile=readonly
       - run: tofu validate
       - name: Validate example configuration files
         run: |
           set -euo pipefail
+          test -s .terraform.lock.hcl
           for file in staging.tfvars.example production.tfvars.example; do
             test -s "$file"
           done
@@ -73,7 +76,7 @@ jobs:
 
       - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
         with:
-          tofu_version: 1.12.1
+          tofu_version: 1.12.5
 
       - name: Validate expected AWS account
         env:
@@ -113,13 +116,16 @@ jobs:
             echo "STATE_KMS_ARGUMENT=-backend-config=kms_key_id=$STATE_KMS_KEY_ID" >> "$GITHUB_ENV"
           fi
 
+      - name: Generate signed provider checksum lock
+        run: tofu providers lock -platform=linux_amd64
+
       - name: Initialize encrypted remote state
         env:
           STATE_BUCKET: ${{ vars.AWS_TF_STATE_BUCKET }}
           AWS_REGION: ${{ vars.AWS_REGION }}
         run: |
           set -euo pipefail
-          tofu init -input=false -upgrade=false \
+          tofu init -input=false -upgrade=false -lockfile=readonly \
             -backend-config="bucket=$STATE_BUCKET" \
             -backend-config="key=game-arena/${{ inputs.environment }}/terraform.tfstate" \
             -backend-config="region=$AWS_REGION" \
@@ -136,7 +142,9 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: aws-${{ inputs.environment }}-infrastructure-plan-${{ github.run_id }}
-          path: infra/opentofu/aws/game-arena.tfplan.txt
+          path: |
+            infra/opentofu/aws/game-arena.tfplan.txt
+            infra/opentofu/aws/.terraform.lock.hcl
           retention-days: 30
 
       - name: Enforce apply controls
