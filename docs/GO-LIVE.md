@@ -5,12 +5,12 @@
 Do not begin public rollout until these are complete:
 
 - Approved operator identity, support/privacy contacts, privacy notice, terms, reward rules and tournament rules
-- Original licensed game builds or written mirroring permission; launch set individually certified
-- Production domain, TLS, database, object storage/CDN, monitoring and backup restore test
+- Original licensed game builds or written mirroring permission; launch set individually certified and published to the controlled origin
+- AWS production domain, TLS, RDS, EKS, ECR, monitoring, deployment evidence and backup restore test
 - Approved OTP sender/provider with primary and secondary delivery
 - JazzCash merchant credentials, callback verification, settlement/reconciliation test and written recurring-billing decision
 - Named incident, finance, security, support and launch owners
-- Physical-device/network/accessibility evidence in issue #41
+- Physical-device, network, accessibility, security and rollback evidence recorded in issue #48
 - Zero unresolved critical/high security, payment, entitlement or ledger findings
 
 ## Release stages
@@ -54,7 +54,7 @@ Stop expansion and consider rollback when any of these occur:
 - Complete one OTP journey per channel/provider
 - Complete JazzCash paid, failed, cancelled and pending journeys
 - Verify reconciliation and premium expiry dates
-- Verify admin access through MFA/SSO and audit events
+- Verify private admin access and audit events
 - Confirm Optional analytics remains off by default
 
 ### During rollout
@@ -74,7 +74,7 @@ Stop expansion and consider rollback when any of these occur:
 ## Final go/no-go record
 
 - Release SHA and image digests
-- Environment and domains
+- AWS environment and domains
 - Launch game list and versions
 - Automated CI links
 - Manual qualification evidence
@@ -83,3 +83,5 @@ Stop expansion and consider rollback when any of these occur:
 - Known low/medium risks with owners
 - Rollback owner and trigger
 - Final decision, approvers and timestamp
+
+Use issue #48 for AWS deployment, qualification and go-live evidence; #40 for game rights/publication; and #17 for live JazzCash integration.
