@@ -2,7 +2,12 @@ FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json ./
-RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
+RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund \
+ && npm cache clean --force \
+ && mkdir -p /app/certs \
+ && wget -q -O /app/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+ && test -s /app/certs/rds-global-bundle.pem \
+ && chown -R node:node /app/certs
 COPY --chown=node:node src ./src
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node migrations ./migrations
