@@ -1,1 +1,42 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="robots" content="noindex,nofollow"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"><link rel="stylesheet" href="./styles.css"><title>Game Arena Operations</title></head><body><header><div><b>Game Arena</b><span>Operations</span></div><button id="refresh" type="button">Refresh</button></header><main><section id="auth" class="panel"><h1>Operations access</h1><p>Production access is provided by the approved MFA/SSO gateway. A local key is supported only in isolated development and test environments; roles are always assigned by the API.</p><form id="local-auth"><label>Local administrator key<input name="key" type="password" autocomplete="off"></label><button type="submit">Use local credentials</button></form><p id="auth-status"></p></section><section id="console" hidden><nav aria-label="Operations sections"><button data-view="overview">Overview</button><button data-view="users">Users</button><button data-view="payments">Payments</button><button data-view="games">Games</button><button data-view="reviews">Reviews</button><button data-view="audit">Audit</button></nav><section id="view" class="panel" aria-live="polite"></section></section></main><div id="toast" role="status"></div><script src="./config.js"></script><script type="module" src="./app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'">
+  <link rel="stylesheet" href="./styles.css">
+  <title>Game Arena Operations</title>
+</head>
+<body>
+<header><div><b>Game Arena</b><span>Operations &amp; Reporting</span></div><button id="refresh" type="button">Refresh</button></header>
+<main>
+  <section id="auth" class="panel">
+    <h1>Operations access</h1>
+    <p>Production access is provided by the approved MFA/SSO gateway. A local key is supported only in isolated development and test environments; roles and capabilities are always assigned by the API.</p>
+    <form id="local-auth"><label>Local administrator key<input name="key" type="password" autocomplete="off"></label><button type="submit">Use local credentials</button></form>
+    <p id="auth-status" class="error"></p>
+  </section>
+  <section id="console" hidden>
+    <nav aria-label="Operations sections">
+      <button data-view="overview">Overview</button>
+      <button data-view="reports" data-capability="reports.read">Reports</button>
+      <button data-view="payments" data-capability="reports.read">Payments</button>
+      <button data-view="subscriptions" data-capability="subscription.read">Paid passes</button>
+      <button data-view="recurring" data-capability="reports.read">Recurring customers</button>
+      <button data-view="reconciliation" data-capability="reports.read">Reconciliation</button>
+      <button data-view="benefits" data-capability="reports.read">Benefit costs</button>
+      <button data-view="exports" data-capability="reports.export">Exports</button>
+      <button data-view="users">Users</button>
+      <button data-view="games">Games</button>
+      <button data-view="reviews">Reviews</button>
+      <button data-view="audit">Audit</button>
+    </nav>
+    <section id="view" class="panel" aria-live="polite"></section>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<script src="./config.js"></script><script type="module" src="./app.js"></script>
+</body>
+</html>
