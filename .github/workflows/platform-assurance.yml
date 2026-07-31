@@ -21,6 +21,9 @@ jobs:
         run: node scripts/security-check.mjs
       - name: Cloud deployment checks
         run: node scripts/check-cloud-deployment.mjs
+      - name: API dependencies
+        working-directory: apps/api
+        run: npm install --no-audit --no-fund
       - name: API checks
         working-directory: apps/api
         run: npm run ci

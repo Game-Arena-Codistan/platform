@@ -1,66 +1,51 @@
 # Game Arena AWS deployment
 
-This is the primary staging and production deployment path for Game Arena. It provisions isolated AWS environments with OpenTofu and promotes immutable application releases through protected GitHub Actions environments.
+AWS is the authoritative staging and production target. The repository defines isolated environments with OpenTofu and promotes immutable application releases through protected GitHub Actions.
 
-The repository automation is complete, but execution still requires an authorized AWS account owner, approved hostnames, licensed game builds, OTP/JazzCash credentials, legal approval and manual launch qualification.
+The automation is complete. Execution still requires an authorized AWS account, approved hostnames, production configuration, licensed games, provider credentials and qualification evidence.
 
 ## Architecture
 
-Each environment is isolated and contains:
+Each environment contains:
 
-- an encrypted VPC spanning at least two Availability Zones;
-- public subnets for the AWS Application Load Balancer;
+- an encrypted VPC across at least two Availability Zones;
+- public subnets for the Application Load Balancer;
 - private subnets and NAT egress for EKS nodes and PostgreSQL;
-- an encrypted Amazon EKS cluster with managed nodes, control-plane logs and access entries;
+- encrypted Amazon EKS with managed nodes, access entries and control-plane logs;
 - AWS Load Balancer Controller with a dedicated IRSA role;
-- private encrypted Amazon RDS for PostgreSQL with an AWS-managed master password;
+- private encrypted RDS PostgreSQL with an AWS-managed master password;
 - ACM certificates validated through Route 53;
 - immutable environment-specific ECR repositories for `api`, `web`, `admin` and `games`;
 - Secrets Manager for application/provider configuration;
 - SSM Parameter Store for non-secret deployment discovery;
 - an encrypted, versioned S3 deployment-evidence bucket.
 
-Staging and production must use different GitHub Environments, IAM roles, OpenTofu state keys, VPC CIDRs, EKS clusters, RDS instances, application secrets and ECR repository prefixes.
+Staging and production use separate GitHub Environments, IAM roles, state keys, VPCs, EKS clusters, RDS instances, application secrets and ECR prefixes.
 
-## One-time AWS and GitHub bootstrap
+## One-time bootstrap
 
-The first bootstrap cannot be performed by GitHub OIDC because the trust relationship does not exist yet. An AWS administrator must create:
+An AWS administrator must create:
 
 1. the GitHub OIDC identity provider for `https://token.actions.githubusercontent.com` with audience `sts.amazonaws.com`;
-2. a staging infrastructure role and production infrastructure role;
-3. a staging deployment role and production deployment role;
+2. staging and production infrastructure roles;
+3. staging and production deployment roles;
 4. an encrypted, versioned S3 state bucket with public access blocked;
-5. a customer-managed KMS key for state encryption, when required by the organization.
+5. a customer-managed KMS key for state encryption when required.
 
-Restrict each role trust policy to this repository and its matching GitHub Environment. The environment subject format is:
+Restrict each role to this repository and its matching GitHub Environment:
 
 ```text
 repo:Game-Arena-Codistan/platform:environment:staging
 repo:Game-Arena-Codistan/platform:environment:production
 ```
 
-Use short-lived OIDC sessions only. Do not create AWS access keys for the workflows.
+Use short-lived OIDC sessions only. Do not create AWS access keys for workflows.
 
-The infrastructure role needs the permissions required to manage the resources under `infra/opentofu/aws`. The deployment role needs, at minimum:
+The deployment role requires scoped access to EKS, the environment SSM prefix, RDS/application secrets, ECR, Route 53, ACM/ELB metadata, the deployment-evidence bucket and applicable KMS keys. Production also needs read access to the staging evidence marker used for promotion.
 
-- `eks:DescribeCluster` and permission to obtain an EKS token;
-- the EKS access entry created by OpenTofu;
-- read access to the environment SSM prefix;
-- read access to the RDS and application secrets;
-- ECR image read/write and scan-result access for the four environment repositories;
-- Route 53 record changes for the approved hosted zone;
-- read access to ACM and ELB metadata;
-- read/write access to the environment deployment-evidence bucket;
-- KMS use for the environment secret, database and evidence keys;
-- for the production role, read access to the staging SSM prefix and staging deployment-evidence marker used by promotion.
+## Protected GitHub Environments
 
-Scope IAM permissions to the account, Region, resource prefixes and repository environments wherever AWS supports it.
-
-## Required GitHub Environments
-
-Create protected GitHub Environments named `staging` and `production`.
-
-Both environments require:
+Create `staging` and `production` Environments.
 
 ### Secrets
 
@@ -68,50 +53,46 @@ Both environments require:
 - `AWS_DEPLOY_ROLE_ARN`
 - `AWS_TFVARS_JSON_B64`
 
-`AWS_TFVARS_JSON_B64` is the base64-encoded JSON form of the environment's OpenTofu variables. Start from the matching example under `infra/opentofu/aws`.
+`AWS_TFVARS_JSON_B64` is the base64-encoded JSON form of the matching example under `infra/opentofu/aws`.
 
 ### Variables
 
 - `AWS_REGION`
 - `AWS_TF_STATE_BUCKET`
-- `AWS_TF_STATE_KMS_KEY_ID` when a customer-managed state key is used
+- `AWS_TF_STATE_KMS_KEY_ID` when required
 - `AWS_CONFIG_PREFIX`, normally `/game-arena/staging` or `/game-arena/production`
 - `AWS_STAGING_CONFIG_PREFIX=/game-arena/staging` in production
 - `OTP_PROVIDER_MODE`
 - `JAZZCASH_MODE`
 - `ALLOW_DEBUG_OTP`
 
-Create the repository-level variable `AWS_STAGING_ENABLED=false` initially. Change it to `true` only after staging infrastructure, OIDC roles, Secrets Manager and DNS configuration are ready. This prevents expected release builds from triggering a deployment against an unconfigured AWS account.
-
-Use these provider values:
+Keep repository variable `AWS_STAGING_ENABLED=false` until staging infrastructure, OIDC roles, Secrets Manager and DNS are ready.
 
 | Environment | OTP | JazzCash | Debug OTP |
-| --- | --- | --- | --- |
-| Staging before provider onboarding | `mock` | `mock` | `true` |
-| Staging provider qualification | `http` | `hosted` | `false` |
+|---|---|---|---|
+| Early staging | `mock` | `mock` | `true` |
+| Provider qualification | `http` | `hosted` | `false` |
 | Production | `http` | `hosted` | `false` |
 
-Production must have required reviewers. Infrastructure apply, production promotion and production rollback should require approval from authorized operators.
+Production must have required reviewers. Infrastructure apply, production promotion and production rollback require authorized approval.
 
 ## Infrastructure workflow
 
 Workflow: **AWS infrastructure**
 
-Pull requests automatically run formatting, initialization without a backend and provider-schema validation.
-
-For an environment:
+Pull requests run formatting, backend-free initialization and provider-schema validation. For each environment:
 
 1. run `plan`;
-2. review the retained text plan and cost/resource implications;
+2. review and retain the text plan and cost/resource implications;
 3. run `apply` from `main` with confirmation `APPLY`;
-4. retain the non-sensitive outputs artifact;
-5. populate the generated application secret before enabling real providers.
+4. retain non-sensitive outputs;
+5. populate the generated application secret before enabling providers.
 
-The S3 backend uses native lock files. Do not run two infrastructure operations against the same environment simultaneously.
+The S3 backend uses native lock files. Do not run concurrent operations against one environment.
 
 ## Application secret
 
-OpenTofu creates an application secret with safe bootstrap values. Update it in Secrets Manager rather than GitHub. Preserve the following JSON keys:
+OpenTofu creates an application secret with safe bootstrap values. Update it in Secrets Manager, preserving these keys:
 
 ```json
 {
@@ -132,88 +113,63 @@ OpenTofu creates an application secret with safe bootstrap values. Update it in 
 }
 ```
 
-Production deployment fails unless OTP mode is `http`, JazzCash mode is `hosted`, debug OTP is disabled, and the primary OTP plus JazzCash merchant values are populated.
+Production deployment fails unless OTP is `http`, JazzCash is `hosted`, debug OTP is disabled, and required primary OTP and JazzCash values are populated.
 
-JazzCash remains a fixed-duration single-charge implementation. Do not enable or advertise automatic renewal without written provider confirmation and an approved code/product change.
+JazzCash remains a fixed-duration single-charge implementation. Do not advertise automatic renewal without written provider confirmation and an approved implementation/product change.
 
-## Automated staging deployment
+## AWS staging deployment
 
-Workflow: **AWS staging deployment**
-
-After **Build and publish images** succeeds on `main`, and repository variable `AWS_STAGING_ENABLED` is `true`, the staging workflow automatically:
+After **Build and publish images** succeeds on `main` and `AWS_STAGING_ENABLED=true`, **AWS staging deployment**:
 
 1. selects the exact 40-character commit SHA;
-2. assumes the staging AWS role through OIDC;
+2. assumes the staging role through OIDC;
 3. discovers infrastructure through SSM;
-4. reads database and application secrets from Secrets Manager;
+4. reads database/application secrets from Secrets Manager;
 5. installs or upgrades the pinned AWS Load Balancer Controller;
-6. copies the immutable images from GHCR into staging ECR;
-7. renders Kubernetes manifests with staging configuration and ECR image references;
-8. runs backwards-compatible database migrations;
-9. deploys API, web, admin and controlled game origin;
-10. waits for all rollouts;
-11. upserts Route 53 aliases to the ALB;
+6. promotes immutable images from GHCR into staging ECR;
+7. renders Kubernetes manifests with ECR references;
+8. runs backwards-compatible migrations;
+9. deploys API, web, admin and game origin;
+10. waits for rollouts;
+11. upserts Route 53 aliases;
 12. verifies internal readiness, external TLS endpoints and security headers;
-13. retains GitHub and encrypted S3 deployment evidence.
+13. retains GitHub and encrypted S3 evidence.
 
-A manual staging dispatch is available for redeploying a selected commit already present on `main`.
+A manual dispatch can redeploy a selected commit reachable from `main`.
 
 ## Production promotion
 
-Workflow: **AWS production promotion**
-
-Production does not deploy automatically from a branch push. The operator supplies:
+**AWS production promotion** requires:
 
 - the full commit SHA;
-- the staging qualification record;
-- the approved change or go-live record;
+- a staging qualification reference;
+- an approved change/go-live reference;
 - confirmation `PROMOTE`.
 
-The workflow verifies that:
+The workflow verifies that the SHA is reachable from `main`, the same SHA has a healthy staging marker, production modes/secrets are valid, immutable ECR images exist, no critical/high ECR findings are reported, and the protected production Environment approves the job.
 
-- the SHA is reachable from `main`;
-- the same SHA has an AWS staging deployment marker;
-- the provider modes and required production secrets are valid;
-- immutable ECR images exist;
-- no critical or high ECR scan findings are reported;
-- the protected production Environment has approved the job.
-
-It then runs migrations, deploys the exact qualified images, verifies health and records production evidence.
+It then runs compatible migrations, deploys the exact qualified images, verifies health and records production evidence.
 
 ## Rollback
 
-Workflow: **AWS rollback**
+**AWS rollback** requires a previously healthy SHA, an incident/change reference and confirmation `ROLLBACK`. It verifies the historical marker, skips migrations and redeploys the prior immutable images.
 
-Supply a previously healthy full SHA, an incident/change record and confirmation `ROLLBACK`. The workflow verifies the historical deployment marker, skips database migrations and redeploys the earlier immutable application images.
+Never perform a destructive database rollback during application rollback.
 
-Never perform a destructive database rollback during an application rollback. Database changes must remain backwards-compatible through the supported rollback window.
+## DNS, certificates and game isolation
 
-## DNS and certificates
+OpenTofu requests one ACM certificate containing the player/API hostname and the controlled game-origin hostname and validates it through Route 53. Deployment waits for the ALB and upserts aliases to the ALB canonical hosted zone.
 
-OpenTofu requests one ACM certificate containing the player/API hostname and the controlled game-origin hostname, and validates it in Route 53. The deployment workflow waits for the ALB and upserts Route 53 alias records to the ALB canonical hosted zone.
+The game origin must remain separate so sandboxed games cannot inherit player-origin privileges.
 
-The game origin must remain separate from the player origin so sandboxed games cannot inherit the player application's origin privileges.
+## Evidence and launch gates
 
-## Evidence and qualification
+Every deployment records environment, commit SHA, actor, workflow run/attempt, public/game origins, ALB hostname, migration/rollback flags, non-sensitive qualification references and Kubernetes snapshots.
 
-Every deployment records:
+Only three open execution gates remain:
 
-- environment and commit SHA;
-- actor, workflow run and attempt;
-- player and game origins;
-- ALB hostname;
-- migration and rollback flags;
-- non-sensitive qualification/change references;
-- Kubernetes deployment, pod, service, ingress and event snapshots.
+- **Issue #40:** licensed game builds/rights, controlled-origin publication and game certification.
+- **Issue #48:** AWS provisioning, OTP/operator/legal configuration, staging/manual/security/load/backup evidence and protected production promotion.
+- **Issue #17:** live JazzCash merchant fields, callback/refund/reconciliation integration and end-to-end verification.
 
-Repository automation does not replace manual launch evidence. Before public production traffic, complete issues #17, #26–#30, #40, #41 and #48, including:
-
-- licensed game builds or written mirroring permission;
-- real OTP and JazzCash qualification;
-- legal and consumer-disclosure approval;
-- physical-device, browser, network and accessibility testing;
-- staging penetration and game-sandbox review;
-- deployed peak-load testing;
-- backup restore, application rollback and kill-switch rehearsal;
-- named support, finance, security, incident and launch owners;
-- controlled rollout and recorded go/no-go decisions.
+Never place credentials, signed agreements or customer data in issues or repository files.

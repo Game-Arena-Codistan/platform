@@ -5,13 +5,13 @@
 | Area | Gate |
 |---|---|
 | Frontend | Syntax, commercial baseline, catalogue references, shell-size budget, static HTTP smoke and container build |
-| API | Syntax, route tests, OTP/session/CSRF, payment idempotency, entitlement activation, rewards, account lifecycle and admin authorization |
+| API | Syntax, route tests, OTP/session/CSRF, trusted-proxy abuse controls, payment idempotency, entitlement activation, rewards, account lifecycle and admin authorization |
 | Games | Catalogue counts, manifest validation, static scanner, immutable packaging, Bridge schemas, origin container and scheduled entry-point probes |
-| Security | Repository credential patterns, dependency pinning, wildcard messaging, browser auth storage, unsafe sandbox flags and production container builds |
-| Infrastructure | Docker Compose rendering, Kubernetes manifest presence and migration runner |
-| Performance | Dependency-free API load profile with error-rate and p95 thresholds; report retained as CI artifact |
+| Security | Repository credential patterns, dependency pinning, unfinished markers, wildcard messaging, browser auth storage, unsafe sandbox flags and production container builds |
+| Infrastructure | Docker Compose rendering, Kubernetes manifests, migration runner, AWS OpenTofu validation and production-delivery policy checks |
+| Performance | Dependency-free API load profile with error-rate and p95 thresholds; report retained as a CI artifact |
 
-All automated checks must pass on the release commit. The external game host probe is informational while the host blocks automated runners; controlled-origin builds must pass strict probes.
+All automated checks must pass on the release commit. External game-host probes remain informational until approved builds are published to the controlled origin; controlled-origin builds must pass strict probes.
 
 ## Supported test matrix
 
@@ -56,4 +56,4 @@ All automated checks must pass on the release commit. The external game host pro
 
 ## Evidence record
 
-For each device/network row record date, tester, build SHA, OS/browser, network profile, journey, result, screenshots/video where permitted, issue links and retest result. Manual evidence is tracked by GitHub issue #41.
+For each device/network row record date, tester, build SHA, OS/browser, network profile, journey, result, screenshots/video where permitted, defect links and retest result. AWS staging, manual qualification, security, provider, backup/restore and go-live evidence are consolidated in GitHub issue #48. Game-build certification and publication are tracked in #40; live JazzCash merchant verification is tracked in #17.
