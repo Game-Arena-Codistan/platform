@@ -59,13 +59,30 @@ assert(!deploy.includes('ADMIN_API_KEYS'),'.github/workflows/aws-deploy.yml must
 assert(!deploy.includes('admin_api_keys'),'.github/workflows/aws-deploy.yml must not read legacy admin_api_keys.');
 
 const versions=text('infra/opentofu/aws/versions.tf');
-for(const marker of ['required_version = "= 1.12.1"','version = "= 6.57.1"','version = "= 3.9.0"','version = "= 4.3.0"']){
-  assert(versions.includes(marker),`OpenTofu dependency pin missing: ${marker}`);
+for(const marker of [
+  'required_version = "= 1.12.1"',
+  'version = "= 6.57.1"',
+  'version = "= 3.9.0"',
+  'version = "= 4.3.0"',
+  'allowed_account_ids = [var.expected_aws_account_id]'
+]){
+  assert(versions.includes(marker),`OpenTofu dependency or account pin missing: ${marker}`);
+}
+
+const variables=text('infra/opentofu/aws/variables.tf');
+assert(/variable "kubernetes_version" \{[\s\S]*?type\s*=\s*string[\s\S]*?validation \{/m.test(variables),'kubernetes_version must be an explicitly validated required variable.');
+assert(!/variable "kubernetes_version" \{[\s\S]*?default\s*=/m.test(variables),'kubernetes_version must not have a default.');
+
+const operations=text('infra/opentofu/aws/operations-variables.tf');
+for(const name of ['operations_alert_email','github_runtime_role_arn']){
+  const block=operations.match(new RegExp(`variable "${name}" \\{([\\s\\S]*?)\\n\\}`));
+  assert(Boolean(block),`Missing required variable ${name}.`);
+  if(block)assert(!/default\s*=|nullable\s*=/.test(block[1]),`${name} must be required and non-nullable.`);
 }
 
 const controls=text('infra/opentofu/aws/pre-staging-controls.tf');
-for(const marker of ['expected_aws_account_id','monthly_budget_usd','aws_budgets_budget','aws_account_matches_environment','explicit_eks_version']){
-  assert(controls.includes(marker),`Pre-staging control missing: ${marker}`);
+for(const marker of ['expected_aws_account_id','monthly_budget_usd','aws_budgets_budget','terraform_data','precondition','data.aws_caller_identity.current.account_id']){
+  assert(controls.includes(marker),`Blocking pre-staging control missing: ${marker}`);
 }
 
 for(const path of ['infra/opentofu/aws/staging.tfvars.example','infra/opentofu/aws/production.tfvars.example']){
