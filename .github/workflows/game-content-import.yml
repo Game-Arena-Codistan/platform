@@ -1,19 +1,24 @@
-name: Import game content
+name: Import and publish game content
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Import a single ZIP or read all rich links from the submission sheet
+        description: Import a single ZIP or read approved rich links from the submission sheet
         required: true
         type: choice
         options: [single, spreadsheet]
+      environment:
+        description: Protected artifact environment
+        required: true
+        type: choice
+        options: [staging, production]
       zip_url:
         description: HTTPS/Google Drive ZIP URL for single mode
         required: false
         type: string
       manifest_json:
-        description: Single-mode manifest JSON; version may be "auto"
+        description: Single-mode manifest JSON; version may be auto
         required: false
         type: string
       spreadsheet_id:
@@ -33,43 +38,47 @@ on:
         required: false
         default: '1'
         type: string
-      dry_run:
-        description: Validate without committing packaged content
+      publish:
+        description: Publish reviewed immutable artifacts to the selected AWS environment
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 concurrency:
-  group: game-content-import
+  group: game-content-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
   import:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Prepare isolated artifact workspace
+        run: mkdir -p /tmp/game-arena-artifacts apps/game-ops/reports catalogue/releases
       - name: Import one remote build
         if: inputs.mode == 'single'
         env:
           ZIP_URL: ${{ inputs.zip_url }}
           MANIFEST_JSON: ${{ inputs.manifest_json }}
-          DRY_RUN: ${{ inputs.dry_run }}
           GAME_ARENA_ACTOR: github-actions:${{ github.actor }}
         run: |
           set -euo pipefail
           test -n "$ZIP_URL" && test -n "$MANIFEST_JSON"
-          mkdir -p apps/game-ops/reports
-          args=(--zip-url "$ZIP_URL" --manifest-json "$MANIFEST_JSON" --output-root apps/game-origin/public --audit-root apps/game-ops/reports/audit)
-          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
-          node apps/game-ops/src/import-remote.mjs "${args[@]}" | tee apps/game-ops/reports/single-import.json
-      - name: Import rich sheet links
+          node apps/game-ops/src/import-remote.mjs \
+            --zip-url "$ZIP_URL" \
+            --manifest-json "$MANIFEST_JSON" \
+            --output-root /tmp/game-arena-artifacts \
+            --audit-root apps/game-ops/reports/audit | tee apps/game-ops/reports/single-import.json
+      - name: Import approved sheet builds
         if: inputs.mode == 'spreadsheet'
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON_B64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_B64 }}
@@ -77,37 +86,72 @@ jobs:
           SHEET_NAME: ${{ inputs.sheet_name }}
           SLUG: ${{ inputs.slug }}
           LIMIT: ${{ inputs.limit }}
-          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           test -n "$GOOGLE_SERVICE_ACCOUNT_JSON_B64" && test -n "$SPREADSHEET_ID" && test -n "$SHEET_NAME"
-          args=(--spreadsheet-id "$SPREADSHEET_ID" --sheet-name "$SHEET_NAME" --limit "$LIMIT" --output-root apps/game-origin/public --artwork-root apps/game-origin/public/artwork --audit-root apps/game-ops/reports/audit --report apps/game-ops/reports/catalogue-import.json)
+          args=(--spreadsheet-id "$SPREADSHEET_ID" --sheet-name "$SHEET_NAME" --limit "$LIMIT" --output-root /tmp/game-arena-artifacts --artwork-root /tmp/game-arena-artifacts/artwork --audit-root apps/game-ops/reports/audit --report apps/game-ops/reports/catalogue-import.json)
           if [ -n "$SLUG" ]; then args+=(--slug "$SLUG"); fi
-          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
           node apps/game-ops/src/import-catalogue.mjs "${args[@]}"
-      - name: Validate generated platform content
+      - name: Validate generated artifacts
         run: |
+          set -euo pipefail
           cd apps/game-ops && npm run ci
-          cd ../web && npm install && npm run ci
-          cd ../api && npm install && npm run ci
+          cd ../web && npm install --no-audit --no-fund && npm run ci
+          cd ../api && npm install --no-audit --no-fund && npm run ci
+          test -d /tmp/game-arena-artifacts/games
+          find /tmp/game-arena-artifacts/games -name game-manifest.json -print -quit | grep -q .
+      - name: Create review metadata
+        run: |
+          set -euo pipefail
+          while IFS= read -r manifest; do
+            slug="$(jq -er .slug "$manifest")"; version="$(jq -er .version "$manifest")"
+            mkdir -p "catalogue/releases/$slug"
+            jq '{schemaVersion,slug,title,version,entrypoint,buildSha256,totalBytes,fileCount,permissions,bridgeVersion,minDeviceTier,rolloutPercentage,publishedAt,publishedBy,scan}' "$manifest" > "catalogue/releases/$slug/$version.json"
+          done < <(find /tmp/game-arena-artifacts/games -name game-manifest.json -type f | sort)
+          find catalogue/releases -type f -name '*.json' -print | sort > apps/game-ops/reports/release-metadata.txt
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: game-content-import-${{ github.run_id }}
-          path: apps/game-ops/reports
+          name: reviewed-game-artifacts-${{ inputs.environment }}-${{ github.run_id }}
+          path: |
+            /tmp/game-arena-artifacts
+            apps/game-ops/reports
+            catalogue/releases
           retention-days: 30
-      - name: Open review pull request
-        if: inputs.dry_run == false
+          if-no-files-found: error
+      - name: Authenticate to AWS for protected publication
+        if: inputs.publish
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GAME_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: game-arena-content-${{ github.run_id }}
+      - name: Publish immutable game versions
+        if: inputs.publish
+        env:
+          CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
+        run: |
+          set -euo pipefail
+          prefix="${CONFIG_PREFIX_INPUT:-/game-arena/${{ inputs.environment }}}"
+          bucket="$(aws ssm get-parameter --name "$prefix/game-artifact-bucket" --query Parameter.Value --output text)"
+          while IFS= read -r manifest; do
+            slug="$(jq -er .slug "$manifest")"; version="$(jq -er .version "$manifest")"
+            source="$(dirname "$manifest")"
+            destination="s3://$bucket/games/$slug/$version/"
+            aws s3api head-object --bucket "$bucket" --key "games/$slug/$version/game-manifest.json" >/dev/null 2>&1 && { echo "Immutable version already exists: $slug@$version" >&2; exit 1; }
+            aws s3 sync "$source/" "$destination" --only-show-errors --cache-control 'public,max-age=31536000,immutable' --sse aws:kms
+          done < <(find /tmp/game-arena-artifacts/games -name game-manifest.json -type f | sort)
+      - name: Open metadata review pull request
+        if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          branch="content/game-import-${GITHUB_RUN_ID}"
+          branch="content/game-metadata-${GITHUB_RUN_ID}"
           git switch -c "$branch"
-          git config user.name 'game-arena-content-bot'
-          git config user.email 'game-arena-content-bot@users.noreply.github.com'
-          git add apps/game-origin/public apps/game-ops/reports
-          git diff --cached --quiet && { echo 'No importable content was generated.' >&2; exit 1; }
-          git commit -m 'Games: import approved controlled-origin builds'
+          git config user.name game-arena-content-bot
+          git config user.email game-arena-content-bot@users.noreply.github.com
+          git add catalogue/releases apps/game-ops/reports
+          git diff --cached --quiet && { echo 'No release metadata was generated.' >&2; exit 1; }
+          git commit -m 'Games: record reviewed immutable releases'
           git push --set-upstream origin "$branch"
-          gh pr create --base main --head "$branch" --title 'Games: review controlled-origin content import' --body $'Automated content-import run.\n\nReview the audit reports, game inventory, external domains, runtime behavior and rights evidence before merging. This workflow never publishes directly to main.'
+          gh pr create --base main --head "$branch" --title 'Games: review immutable release metadata' --body $'Artifacts were published through the protected AWS content role.\n\nThis PR contains only manifests, digests and non-sensitive audit evidence; no game binaries or source archives are committed to the platform repository.'
