@@ -1,6 +1,6 @@
 # Game Arena
 
-Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swipe-based discovery, a curated free and premium catalogue, OTP accounts, fixed-duration JazzCash checkout, Arena Coins, challenges, leaderboards, multiplayer rooms and tournaments.
+Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swipe-based discovery, a curated free and premium catalogue, OTP accounts, fixed-duration JazzCash checkout, Arena Coins, challenges, leaderboards, multiplayer room coordination and tournaments.
 
 ## Product model
 
@@ -20,7 +20,7 @@ Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swi
 - 10% member top-up discount
 - PKR 299 monthly or PKR 4,999 yearly
 
-Checkout is implemented as a single JazzCash charge. Automatic renewal must not be promised unless the merchant arrangement, provider capability and customer disclosure are approved and implemented.
+Checkout is designed as a single JazzCash charge. Automatic renewal must not be promised unless merchant capability, provider terms, customer disclosure and a separately reviewed implementation are approved.
 
 ## Repository
 
@@ -31,12 +31,12 @@ apps/web/             Player-facing PWA
 apps/api/             Platform API, migrations and service adapters
 apps/admin/           Private operations console
 apps/game-ops/        Game validation, scanning and packaging
-apps/game-origin/     Isolated immutable game server
+apps/game-origin/     Isolated demo/static game server
 packages/game-bridge/ Game Bridge v1 SDK and schemas
 examples/             Reference game integration
 infra/                Local Compose, Kubernetes and AWS OpenTofu
 catalogue/            Imported catalogue audit artifacts
-docs/                 Architecture, security, operations and launch runbooks
+docs/                 Architecture, audits, security, operations and launch runbooks
 .github/workflows/    Quality, previews, images and protected AWS delivery
 ```
 
@@ -73,45 +73,50 @@ node ../../scripts/security-check.mjs
 node ../../scripts/check-cloud-deployment.mjs
 ```
 
-GitHub Actions additionally run player browser journeys, API and game-runtime qualification, production container builds, image SBOM/provenance publication, AWS OpenTofu validation and deployment-policy checks.
+Existing GitHub Actions run frontend, API, game-runtime, container, load, AWS OpenTofu and deployment-policy checks. The final audit identified additional production-path tests and fixes that must be added before production qualification.
 
 ## Architecture boundaries
 
-- Games are untrusted, scanned, versioned and served from a separate origin.
-- Game Bridge messages require the exact source window, expected origin and v1 schema.
-- Games request rewards; only the API can create ledger entries.
-- Browser payment returns never activate premium; verified provider events do.
-- Production authentication uses opaque HttpOnly cookies plus CSRF and origin controls.
-- Production requires PostgreSQL. The current durable service intentionally uses one API writer replica; horizontal API writes require a later normalized repository migration.
+- Games are untrusted and must be scanned, versioned and served from a separate controlled origin.
+- Game Bridge messages require the expected source window, origin model and v1 schema.
+- Games request rewards; only the API may commit ledger entries.
+- Browser payment-return handling must not be authoritative; provider notification and reconciliation must validate the stored transaction.
+- Production player authentication uses opaque HttpOnly cookies plus CSRF and origin controls.
+- Production administration must use identities with server-bound roles and MFA/SSO; local shared-key mode is development-only.
+- Production requires transactionally durable PostgreSQL repositories. The current whole-state snapshot adapter is not the final production persistence model.
 - Optional product analytics is off by default and excludes identity, OTP, session and payment fields.
-- The API uses the proxy-appended client address for abuse controls so a leading spoofed `X-Forwarded-For` value cannot bypass limits.
 
 ## Delivery
 
-- **Frontend previews:** `.github/workflows/vercel-preview.yml` deploys `apps/web` to Vercel in mock mode. It does not expose backend, OTP or payment credentials.
-- **Release images:** `.github/workflows/release.yml` publishes commit-addressed API, web, admin and game-origin images with provenance and SBOM metadata.
-- **AWS infrastructure:** `.github/workflows/aws-infrastructure.yml` validates, plans and applies the reviewed OpenTofu AWS stack through protected GitHub Environments and OIDC.
+- **Frontend previews:** `.github/workflows/vercel-preview.yml` deploys the PWA in mock mode.
+- **Release images:** `.github/workflows/release.yml` publishes commit-addressed images with provenance and SBOM metadata.
+- **AWS infrastructure:** `.github/workflows/aws-infrastructure.yml` validates, plans and applies the reviewed OpenTofu stack through protected GitHub Environments and OIDC.
 - **AWS staging:** `.github/workflows/aws-staging.yml` deploys immutable images and records evidence.
-- **AWS production:** `.github/workflows/aws-production.yml` accepts only an explicitly confirmed SHA with staging evidence and protected approval.
+- **AWS production:** `.github/workflows/aws-production.yml` requires a confirmed SHA, staging evidence and protected approval.
 - **Rollback:** `.github/workflows/aws-rollback.yml` redeploys a previously healthy immutable SHA without destructive database rollback.
+
+## Current readiness
+
+**Initial AWS staging provisioning may proceed now** with the demo game, mock OTP and mock JazzCash. That deployment is an infrastructure shakeout for EKS, RDS, DNS, TLS, migrations, image delivery and rollback—not final qualification.
+
+Before a release can be qualified for production, the P0 items in [`docs/FINAL-GO-LIVE-AUDIT.md`](docs/FINAL-GO-LIVE-AUDIT.md) must be merged and redeployed. They cover:
+
+1. server-bound administrator identity and roles;
+2. transactional PostgreSQL durability;
+3. JazzCash ownership, expected-value and return/callback invariants;
+4. production CSP, controlled-game origin and service-worker configuration caching;
+5. mandatory play proof and competition feature gating;
+6. safe ZIP preflight and a scalable game source/artifact delivery model.
+
+After those code fixes, production still requires licensed games, actual AWS deployment and qualification, real OTP providers, live JazzCash merchant integration, legal/operator approval, monitoring and paging, backup/rollback evidence and physical-device testing.
 
 See:
 
+- [`docs/FINAL-GO-LIVE-AUDIT.md`](docs/FINAL-GO-LIVE-AUDIT.md)
 - [`docs/AWS-DEPLOYMENT.md`](docs/AWS-DEPLOYMENT.md)
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md)
-- [`docs/REPOSITORY-AUDIT.md`](docs/REPOSITORY-AUDIT.md)
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
 - [`docs/SECURITY-VERIFICATION.md`](docs/SECURITY-VERIFICATION.md)
 - [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md)
 - [`docs/GO-LIVE.md`](docs/GO-LIVE.md)
-
-## Completion boundary
-
-Repository implementation is complete for the launch-candidate scope. Only three execution gates remain open:
-
-1. **Game content deployment and rights** — issue #40.
-2. **AWS environment deployment and production qualification** — issue #48.
-3. **Live JazzCash merchant integration and verification** — issue #17.
-
-OTP credentials, DNS/TLS, legal/operator approvals, physical-device evidence, backup/restore rehearsal and named launch owners are production-environment inputs or qualification evidence under issue #48. They are not unimplemented repository features.
