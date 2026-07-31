@@ -96,8 +96,8 @@ jobs:
         run: |
           set -euo pipefail
           cd apps/game-ops && npm run ci
-          cd ../web && npm install --no-audit --no-fund && npm run ci
-          cd ../api && npm install --no-audit --no-fund && npm run ci
+          cd ../web && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
+          cd ../api && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
           test -d /tmp/game-arena-artifacts/games
           find /tmp/game-arena-artifacts/games -name game-manifest.json -print -quit | grep -q .
       - name: Create review metadata
