@@ -1,6 +1,6 @@
 import {Pool} from 'pg';
 import {readdir,readFile} from 'node:fs/promises';
-const connectionString=process.env.DATABASE_URL;if(!connectionString)throw new Error('DATABASE_URL is required.');const tls=String(process.env.DATABASE_SSL).toLowerCase()==='true';const ca=process.env.DATABASE_CA_PEM||'';if(tls&&!ca)throw new Error('DATABASE_CA_PEM is required when DATABASE_SSL=true.');const pool=new Pool({connectionString,ssl:tls?{ca,rejectUnauthorized:true}:undefined,max:1});
+const connectionString=process.env.DATABASE_URL;if(!connectionString)throw new Error('DATABASE_URL is required.');const tls=String(process.env.DATABASE_SSL).toLowerCase()==='true';let ca=process.env.DATABASE_CA_PEM||'';if(tls&&!ca){try{ca=await readFile('/app/certs/rds-global-bundle.pem','utf8');}catch{throw new Error('A trusted RDS CA bundle is required when DATABASE_SSL=true.');}}const pool=new Pool({connectionString,ssl:tls?{ca,rejectUnauthorized:true}:undefined,max:1});
 function transactionalBody(sql){return sql.replace(/^\s*BEGIN\s*;?/i,'').replace(/COMMIT\s*;?\s*$/i,'').trim();}
 try{
   await pool.query('CREATE TABLE IF NOT EXISTS schema_migrations(version text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now())');const applied=new Set((await pool.query('SELECT version FROM schema_migrations')).rows.map(row=>row.version));
