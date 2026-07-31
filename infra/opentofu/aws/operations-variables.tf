@@ -10,6 +10,18 @@ variable "operations_alert_email" {
   }
 }
 
+variable "github_runtime_role_arn" {
+  description = "Optional GitHub OIDC role used for namespace-scoped post-deployment controls. Production requires a separate role."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.github_runtime_role_arn == null || can(regex("^arn:[^:]+:iam::[0-9]{12}:role/.+$", var.github_runtime_role_arn))
+    error_message = "github_runtime_role_arn must be a valid IAM role ARN or null."
+  }
+}
+
 variable "waf_rate_limit_per_five_minutes" {
   description = "Maximum requests from one source IP in a five-minute WAF evaluation window."
   type        = number
@@ -44,5 +56,12 @@ check "production_has_alert_destination" {
   assert {
     condition     = var.environment != "production" || var.operations_alert_email != null
     error_message = "Production requires an operated alert destination."
+  }
+}
+
+check "production_has_scoped_runtime_role" {
+  assert {
+    condition     = var.environment != "production" || var.github_runtime_role_arn != null
+    error_message = "Production requires a separate namespace-scoped GitHub runtime role."
   }
 }
