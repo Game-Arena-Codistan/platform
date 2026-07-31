@@ -55,3 +55,11 @@ jobs:
       change_record: ${{ inputs.change_record }}
       deployment_reason: Approved production promotion
     secrets: inherit
+
+  runtime-controls:
+    needs: deploy
+    if: needs.deploy.result == 'success'
+    uses: ./.github/workflows/aws-runtime-controls.yml
+    with:
+      environment: production
+    secrets: inherit
