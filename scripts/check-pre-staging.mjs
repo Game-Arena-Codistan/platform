@@ -75,13 +75,18 @@ assert(!deploy.includes('admin_api_keys'),'.github/workflows/aws-deploy.yml must
 
 const versions=text('infra/opentofu/aws/versions.tf');
 for(const marker of [
-  'required_version = "= 1.12.1"',
+  'required_version = "= 1.12.5"',
   'version = "= 6.57.1"',
   'version = "= 3.9.0"',
   'version = "= 4.3.0"',
   'allowed_account_ids = [var.expected_aws_account_id]'
 ]){
   assert(versions.includes(marker),`OpenTofu dependency or account pin missing: ${marker}`);
+}
+
+const infrastructure=text('.github/workflows/aws-infrastructure.yml');
+for(const marker of ['tofu_version: 1.12.5','tofu providers lock -platform=linux_amd64','-lockfile=readonly','.terraform.lock.hcl']){
+  assert(infrastructure.includes(marker),`AWS infrastructure workflow is missing provider lock evidence: ${marker}`);
 }
 
 const variables=text('infra/opentofu/aws/variables.tf');
