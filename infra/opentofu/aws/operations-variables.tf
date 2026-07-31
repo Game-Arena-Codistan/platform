@@ -1,5 +1,5 @@
 variable "operations_alert_email" {
-  description = "Optional operated email endpoint subscribed to the encrypted operations SNS topic. The subscription must be confirmed outside OpenTofu."
+  description = "Operated email endpoint subscribed to the encrypted operations SNS topic. The subscription must be confirmed outside OpenTofu."
   type        = string
   default     = null
   nullable    = true
@@ -11,7 +11,7 @@ variable "operations_alert_email" {
 }
 
 variable "github_runtime_role_arn" {
-  description = "Optional GitHub OIDC role used for namespace-scoped post-deployment controls. Production requires a separate role."
+  description = "GitHub OIDC role used for namespace-scoped post-deployment controls."
   type        = string
   default     = null
   nullable    = true
@@ -52,16 +52,16 @@ check "production_eks_api_is_restricted" {
   }
 }
 
-check "production_has_alert_destination" {
+check "environment_has_alert_destination" {
   assert {
-    condition     = var.environment != "production" || var.operations_alert_email != null
-    error_message = "Production requires an operated alert destination."
+    condition     = var.operations_alert_email != null
+    error_message = "Every deployed environment requires an operated alert destination."
   }
 }
 
-check "production_has_scoped_runtime_role" {
+check "environment_has_scoped_runtime_role" {
   assert {
-    condition     = var.environment != "production" || var.github_runtime_role_arn != null
-    error_message = "Production requires a separate namespace-scoped GitHub runtime role."
+    condition     = var.github_runtime_role_arn != null
+    error_message = "Every deployed environment requires a separate namespace-scoped GitHub runtime role."
   }
 }
