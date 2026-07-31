@@ -86,33 +86,37 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.image_tag }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
 
-      - name: Validate immutable release selection
+      - name: Validate immutable release and AWS target
         env:
           IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           [[ "$IMAGE_TAG_INPUT" =~ ^[0-9a-f]{40}$ ]] || { echo 'image_tag must be a full 40-character commit SHA.' >&2; exit 1; }
+          [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo 'AWS_ACCOUNT_ID must be a twelve-digit protected environment variable.' >&2; exit 1; }
           git fetch origin main --prune
           git merge-base --is-ancestor "$IMAGE_TAG_INPUT" origin/main || { echo 'Selected SHA is not reachable from main.' >&2; exit 1; }
 
       - name: Authenticate to AWS with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
           role-session-name: game-arena-deploy-${{ github.run_id }}
 
       - name: Resolve AWS environment configuration
@@ -120,6 +124,7 @@ jobs:
           CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
           ENVIRONMENT_INPUT: ${{ inputs.environment }}
           IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
           OTP_MODE_INPUT: ${{ vars.OTP_PROVIDER_MODE }}
           JAZZCASH_MODE_INPUT: ${{ vars.JAZZCASH_MODE }}
           ALLOW_DEBUG_OTP_INPUT: ${{ vars.ALLOW_DEBUG_OTP }}
@@ -143,6 +148,7 @@ jobs:
           evidence_bucket="$(parameter deployment-evidence-bucket)"
           ecr_prefix="$(parameter ecr-prefix)"
           account_id="$(aws sts get-caller-identity --query Account --output text)"
+          [ "$account_id" = "$EXPECTED_AWS_ACCOUNT_ID" ] || { echo "Authenticated AWS account $account_id does not match AWS_ACCOUNT_ID." >&2; exit 1; }
           ecr_registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
           if [ "$ENVIRONMENT_INPUT" = staging ]; then
@@ -215,7 +221,6 @@ jobs:
           database_url="postgresql://${encoded_user}:${encoded_password}@${DB_ENDPOINT}:${DB_PORT}/${DB_NAME}?sslmode=require"
 
           value() { jq -er --arg key "$1" '.[$key] // ""' <<<"$app_secret"; }
-          admin_api_keys="$(value admin_api_keys)"
           otp_primary_name="$(value otp_primary_name)"
           otp_primary_endpoint="$(value otp_primary_endpoint)"
           otp_primary_api_key="$(value otp_primary_api_key)"
@@ -230,7 +235,6 @@ jobs:
           topup_offers_json="$(value topup_offers_json)"
           voucher_codes_json="$(value voucher_codes_json)"
 
-          test -n "$admin_api_keys"
           test -n "$jazzcash_webhook_secret"
           jq -e 'type == "array"' <<<"$topup_offers_json" >/dev/null
           jq -e 'type == "object"' <<<"$voucher_codes_json" >/dev/null
@@ -246,13 +250,13 @@ jobs:
             fi
           fi
 
-          for secret in "$db_user" "$db_password" "$database_url" "$admin_api_keys" \
+          for secret in "$db_user" "$db_password" "$database_url" \
             "$otp_primary_api_key" "$otp_secondary_api_key" "$jazzcash_webhook_secret" \
             "$jazzcash_merchant_id" "$jazzcash_password" "$jazzcash_integrity_salt"; do
             [ -z "$secret" ] || echo "::add-mask::$secret"
           done
 
-          python - "$database_url" "$admin_api_keys" "$otp_primary_name" "$otp_primary_endpoint" \
+          python - "$database_url" "$otp_primary_name" "$otp_primary_endpoint" \
             "$otp_primary_api_key" "$otp_secondary_name" "$otp_secondary_endpoint" \
             "$otp_secondary_api_key" "$jazzcash_webhook_secret" "$jazzcash_merchant_id" \
             "$jazzcash_password" "$jazzcash_integrity_salt" "$jazzcash_action_url" \
@@ -261,11 +265,11 @@ jobs:
           from pathlib import Path
 
           names = [
-              "DATABASE_URL", "ADMIN_API_KEYS", "OTP_PRIMARY_NAME", "OTP_PRIMARY_ENDPOINT",
-              "OTP_PRIMARY_API_KEY", "OTP_SECONDARY_NAME", "OTP_SECONDARY_ENDPOINT",
-              "OTP_SECONDARY_API_KEY", "JAZZCASH_WEBHOOK_SECRET", "JAZZCASH_MERCHANT_ID",
-              "JAZZCASH_PASSWORD", "JAZZCASH_INTEGRITY_SALT", "JAZZCASH_ACTION_URL",
-              "TOPUP_OFFERS_JSON", "VOUCHER_CODES_JSON",
+              "DATABASE_URL", "OTP_PRIMARY_NAME", "OTP_PRIMARY_ENDPOINT", "OTP_PRIMARY_API_KEY",
+              "OTP_SECONDARY_NAME", "OTP_SECONDARY_ENDPOINT", "OTP_SECONDARY_API_KEY",
+              "JAZZCASH_WEBHOOK_SECRET", "JAZZCASH_MERCHANT_ID", "JAZZCASH_PASSWORD",
+              "JAZZCASH_INTEGRITY_SALT", "JAZZCASH_ACTION_URL", "TOPUP_OFFERS_JSON",
+              "VOUCHER_CODES_JSON",
           ]
           values = sys.argv[1:]
           if len(values) != len(names):
@@ -479,7 +483,7 @@ jobs:
           aws s3 cp /tmp/game-arena-evidence/ "s3://${DEPLOYMENT_EVIDENCE_BUCKET}/${prefix}/${GITHUB_RUN_ID}/" --recursive
           aws s3 cp /tmp/game-arena-evidence/deployment.json "s3://${DEPLOYMENT_EVIDENCE_BUCKET}/${prefix}/latest.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: aws-${{ inputs.environment }}-deployment-${{ inputs.image_tag }}-${{ github.run_id }}
           path: /tmp/game-arena-evidence
