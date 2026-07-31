@@ -42,8 +42,35 @@ jobs:
           test -n "$QUALIFICATION_RECORD"
           test -n "$CHANGE_RECORD"
 
+  provider-guard:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Authenticate to AWS with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_RUNTIME_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: game-arena-production-guard-${{ github.run_id }}
+      - name: Verify administrator and support configuration
+        env:
+          CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
+        run: |
+          set -euo pipefail
+          prefix="${CONFIG_PREFIX_INPUT:-/game-arena/production}"
+          secret_arn="$(aws ssm get-parameter --name "$prefix/runtime-controls-secret-arn" --query Parameter.Value --output text)"
+          runtime="$(aws secretsmanager get-secret-value --secret-id "$secret_arn" --query SecretString --output text)"
+          proxy="$(jq -er '.admin_proxy_secret // ""' <<<"$runtime")"
+          roles="$(jq -er '.admin_identity_roles_json // "{}"' <<<"$runtime")"
+          endpoint="$(jq -er '.support_delivery_endpoint // ""' <<<"$runtime")"
+          support_secret="$(jq -er '.support_delivery_secret // ""' <<<"$runtime")"
+          test -n "$proxy"
+          jq -e 'type == "object" and length > 0' <<<"$roles" >/dev/null
+          test -n "$support_secret"
+          case "$endpoint" in https://*) ;; *) echo 'Production support delivery endpoint must use HTTPS.' >&2; exit 1 ;; esac
+
   deploy:
-    needs: guard
+    needs: [guard, provider-guard]
     uses: ./.github/workflows/aws-deploy.yml
     with:
       environment: production
@@ -54,4 +81,12 @@ jobs:
       qualification_record: ${{ inputs.qualification_record }}
       change_record: ${{ inputs.change_record }}
       deployment_reason: Approved production promotion
+    secrets: inherit
+
+  runtime-controls:
+    needs: deploy
+    if: needs.deploy.result == 'success'
+    uses: ./.github/workflows/aws-runtime-controls.yml
+    with:
+      environment: production
     secrets: inherit

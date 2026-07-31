@@ -18,13 +18,13 @@ spec:
           ports: [{containerPort: 8080}]
           env:
             - {name: GAME_ARENA_ADMIN_API_BASE_URL, value: /api}
-            - {name: GAME_ARENA_ADMIN_AUTH_MODE, value: local-key}
+            - {name: GAME_ARENA_ADMIN_AUTH_MODE, value: signed-headers}
           readinessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /healthz, port: 8080}, periodSeconds: 20}
           resources:
             requests: {cpu: 25m, memory: 32Mi}
             limits: {cpu: 250m, memory: 128Mi}
-          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: false, capabilities: {drop: [ALL]}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
 ---
 apiVersion: v1
 kind: Service

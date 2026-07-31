@@ -1,1 +1,1 @@
-window.GAME_ARENA_CONFIG=window.GAME_ARENA_CONFIG||{mode:'mock',apiBaseUrl:'',gameOrigin:'',gameHosts:[]};
+window.GAME_ARENA_CONFIG=window.GAME_ARENA_CONFIG||{mode:'mock',apiBaseUrl:'',gameOrigin:'',gameHosts:[],releaseSha:'preview',analyticsEndpoint:''};

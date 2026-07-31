@@ -30,6 +30,14 @@ jobs:
       deployment_reason: Automatic deployment after immutable image publication
     secrets: inherit
 
+  automatic-controls:
+    needs: automatic
+    if: needs.automatic.result == 'success'
+    uses: ./.github/workflows/aws-runtime-controls.yml
+    with:
+      environment: staging
+    secrets: inherit
+
   manual:
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/aws-deploy.yml
@@ -40,4 +48,12 @@ jobs:
       require_staging_evidence: false
       rollback: false
       deployment_reason: Manual staging deployment
+    secrets: inherit
+
+  manual-controls:
+    needs: manual
+    if: needs.manual.result == 'success'
+    uses: ./.github/workflows/aws-runtime-controls.yml
+    with:
+      environment: staging
     secrets: inherit
