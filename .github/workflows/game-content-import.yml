@@ -58,8 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Prepare isolated artifact workspace
@@ -109,7 +109,7 @@ jobs:
             jq '{schemaVersion,slug,title,version,entrypoint,buildSha256,totalBytes,fileCount,permissions,bridgeVersion,minDeviceTier,rolloutPercentage,publishedAt,publishedBy,scan}' "$manifest" > "catalogue/releases/$slug/$version.json"
           done < <(find /tmp/game-arena-artifacts/games -name game-manifest.json -type f | sort)
           find catalogue/releases -type f -name '*.json' -print | sort > apps/game-ops/reports/release-metadata.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reviewed-game-artifacts-${{ inputs.environment }}-${{ github.run_id }}
           path: |
@@ -120,7 +120,7 @@ jobs:
           if-no-files-found: error
       - name: Authenticate to AWS for protected publication
         if: inputs.publish
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_GAME_PUBLISH_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}

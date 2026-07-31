@@ -36,8 +36,8 @@ jobs:
       run:
         working-directory: infra/opentofu/aws
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: 1.12.1
       - run: tofu fmt -check -recursive
@@ -62,14 +62,14 @@ jobs:
       run:
         working-directory: infra/opentofu/aws
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: 1.12.1
 
       - name: Authenticate to AWS with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_INFRA_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -113,7 +113,7 @@ jobs:
       - name: Render plan for review
         run: tofu show -no-color game-arena.tfplan > game-arena.tfplan.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: aws-${{ inputs.environment }}-infrastructure-plan-${{ github.run_id }}
           path: infra/opentofu/aws/game-arena.tfplan.txt
@@ -139,7 +139,7 @@ jobs:
           tofu output -json > outputs.json
           jq 'with_entries(select(.value.sensitive == false))' outputs.json | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: inputs.action == 'apply'
         with:
           name: aws-${{ inputs.environment }}-infrastructure-outputs-${{ github.run_id }}
