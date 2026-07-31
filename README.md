@@ -20,7 +20,7 @@ Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swi
 - 10% member top-up discount
 - PKR 299 monthly or PKR 4,999 yearly
 
-Checkout is designed as a single JazzCash charge. Automatic renewal must not be promised unless merchant capability, provider terms, customer disclosure and a separately reviewed implementation are approved.
+Checkout is a single JazzCash charge. Automatic renewal must not be promised unless merchant capability, provider terms, customer disclosure and a separately reviewed implementation are approved.
 
 ## Repository
 
@@ -31,91 +31,83 @@ apps/web/             Player-facing PWA
 apps/api/             Platform API, migrations and service adapters
 apps/admin/           Private operations console
 apps/game-ops/        Game validation, scanning and packaging
-apps/game-origin/     Isolated demo/static game server
+apps/game-origin/     Isolated demo and immutable-artifact gateway
 packages/game-bridge/ Game Bridge v1 SDK and schemas
 examples/             Reference game integration
 infra/                Local Compose, Kubernetes and AWS OpenTofu
-catalogue/            Imported catalogue audit artifacts
-docs/                 Architecture, audits, security, operations and launch runbooks
-.github/workflows/    Quality, previews, images and protected AWS delivery
+catalogue/            Reviewed game release metadata and digests
+docs/                 Architecture, security, operations and launch runbooks
+.github/workflows/    Quality, previews, content and protected AWS delivery
 ```
 
-## Run the complete local stack
+## Run locally
 
 ```bash
 cd infra
 docker compose up --build
 ```
 
-- Player platform: `http://localhost:8080`
+- Player: `http://localhost:8080`
 - API: `http://localhost:8081`
 - Controlled game origin: `http://localhost:8082`
 - Operations console: `http://localhost:8083`
 - Local operations key: `local-admin-key` unless overridden
 - Demo OTP: `123456`
-- JazzCash: mock mode only
-
-The frontend can also run independently:
-
-```bash
-cd apps/web
-npm run dev
-```
+- JazzCash: mock mode
 
 ## Validate
 
 ```bash
-cd apps/web && npm run ci
-cd ../api && npm install --no-audit --no-fund && npm run ci
+cd apps/web && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
+cd ../api && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
 cd ../game-ops && npm run ci
 cd ../../packages/game-bridge && npm run ci
 node ../../scripts/security-check.mjs
 node ../../scripts/check-cloud-deployment.mjs
 ```
 
-Existing GitHub Actions run frontend, API, game-runtime, container, load, AWS OpenTofu and deployment-policy checks. The final audit identified additional production-path tests and fixes that must be added before production qualification.
+GitHub Actions additionally run real PostgreSQL durability tests, API load tests, Chromium/Firefox/WebKit journeys, game archive/runtime QA, CodeQL, production container builds, AWS OpenTofu validation and protected deployment-policy checks.
 
 ## Architecture boundaries
 
-- Games are untrusted and must be scanned, versioned and served from a separate controlled origin.
+- Games are untrusted, preflighted before extraction, scanned, versioned and served from a separate origin.
+- Production game binaries are immutable `slug/version` objects in private S3, delivered through CloudFront and the isolated game hostname; they are not committed to platform Git history.
 - Game Bridge messages require the expected source window, origin model and v1 schema.
-- Games request rewards; only the API may commit ledger entries.
-- Browser payment-return handling must not be authoritative; provider notification and reconciliation must validate the stored transaction.
+- Games request rewards; only the API commits ledger entries, and every completion requires the exact server-issued nonce and game version.
+- Browser payment returns never activate purchases. Authoritative notifications must match the stored merchant, bill reference, amount and currency.
 - Production player authentication uses opaque HttpOnly cookies plus CSRF and origin controls.
-- Production administration must use identities with server-bound roles and MFA/SSO; local shared-key mode is development-only.
-- Production requires transactionally durable PostgreSQL repositories. The current whole-state snapshot adapter is not the final production persistence model.
-- Optional product analytics is off by default and excludes identity, OTP, session and payment fields.
+- Production administration uses signed identity-proxy assertions, server-bound roles and a private MFA/SSO access layer. Shared keys are development-only.
+- The launch API is a single-writer modular monolith. Acknowledged mutations wait for an atomic PostgreSQL commit, restart durability is tested and stale concurrent writers are rejected.
+- Migrations may use the RDS administrator credential; the running API is switched to a restricted application role after deployment.
+- Uncertified external games and valuable competitions are disabled by default in production.
+- Product analytics is off by default and excludes identity, OTP, session and payment fields.
 
 ## Delivery
 
 - **Frontend previews:** `.github/workflows/vercel-preview.yml` deploys the PWA in mock mode.
 - **Release images:** `.github/workflows/release.yml` publishes commit-addressed images with provenance and SBOM metadata.
 - **AWS infrastructure:** `.github/workflows/aws-infrastructure.yml` validates, plans and applies the reviewed OpenTofu stack through protected GitHub Environments and OIDC.
-- **AWS staging:** `.github/workflows/aws-staging.yml` deploys immutable images and records evidence.
-- **AWS production:** `.github/workflows/aws-production.yml` requires a confirmed SHA, staging evidence and protected approval.
+- **AWS staging:** `.github/workflows/aws-staging.yml` deploys immutable images, applies runtime controls and records evidence.
+- **Runtime controls:** `.github/workflows/aws-runtime-controls.yml` installs the least-privilege database role, injects protected admin/support settings, applies WAF/TLS/access logs and verifies workloads.
+- **Game publication:** `.github/workflows/game-content-import.yml` publishes reviewed immutable game versions and opens metadata-only PRs.
+- **AWS production:** `.github/workflows/aws-production.yml` requires the qualified SHA, staging evidence, provider readiness and protected approval.
 - **Rollback:** `.github/workflows/aws-rollback.yml` redeploys a previously healthy immutable SHA without destructive database rollback.
 
-## Current readiness
+## Readiness
 
-**Initial AWS staging provisioning may proceed now** with the demo game, mock OTP and mock JazzCash. That deployment is an infrastructure shakeout for EKS, RDS, DNS, TLS, migrations, image delivery and rollback—not final qualification.
+Repository-controlled launch blockers are implemented. The platform is ready for AWS staging provisioning, provider configuration, representative licensed-game import and full qualification.
 
-Before a release can be qualified for production, the P0 items in [`docs/FINAL-GO-LIVE-AUDIT.md`](docs/FINAL-GO-LIVE-AUDIT.md) must be merged and redeployed. They cover:
+The remaining completion boundary requires external inputs and execution:
 
-1. server-bound administrator identity and roles;
-2. transactional PostgreSQL durability;
-3. JazzCash ownership, expected-value and return/callback invariants;
-4. production CSP, controlled-game origin and service-worker configuration caching;
-5. mandatory play proof and competition feature gating;
-6. safe ZIP preflight and a scalable game source/artifact delivery model.
-
-After those code fixes, production still requires licensed games, actual AWS deployment and qualification, real OTP providers, live JazzCash merchant integration, legal/operator approval, monitoring and paging, backup/rollback evidence and physical-device testing.
+1. **#17:** live JazzCash merchant credentials, field mapping, settlement/refund/reconciliation evidence.
+2. **#40:** licensed game archives, rights evidence, immutable publication and device/runtime certification.
+3. **#48:** actual AWS account provisioning, OTP/provider values, legal/operator contacts, staging evidence and controlled production rollout.
 
 See:
 
-- [`docs/FINAL-GO-LIVE-AUDIT.md`](docs/FINAL-GO-LIVE-AUDIT.md)
+- [`docs/DEPLOYMENT-HANDOFF.md`](docs/DEPLOYMENT-HANDOFF.md)
 - [`docs/AWS-DEPLOYMENT.md`](docs/AWS-DEPLOYMENT.md)
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
-- [`docs/PRODUCTION-READINESS.md`](docs/PRODUCTION-READINESS.md)
+- [`docs/FINAL-GO-LIVE-AUDIT.md`](docs/FINAL-GO-LIVE-AUDIT.md)
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
 - [`docs/SECURITY-VERIFICATION.md`](docs/SECURITY-VERIFICATION.md)
 - [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md)
