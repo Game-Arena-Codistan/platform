@@ -1,0 +1,24 @@
+environment = "staging"
+aws_region  = "ap-south-1"
+vpc_cidr    = "10.40.0.0/16"
+
+route53_zone_id = "Z0000000000000000000"
+public_host      = "staging.play.gamearena.example"
+game_host        = "staging.games.gamearena.example"
+
+# Role created during the one-time GitHub OIDC bootstrap.
+github_deploy_role_arn = "arn:aws:iam::123456789012:role/game-arena-staging-deploy"
+
+single_nat_gateway           = true
+node_instance_types          = ["t3.medium"]
+node_min                     = 2
+node_desired                 = 2
+node_max                     = 4
+database_instance_class      = "db.t4g.medium"
+database_multi_az            = false
+database_deletion_protection = false
+
+tags = {
+  Owner      = "Game Arena"
+  CostCenter = "game-arena"
+}
