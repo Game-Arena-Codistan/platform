@@ -41,8 +41,8 @@ variable "node_size" {
 }
 
 variable "node_min" {
-  type        = number
-  default     = 2
+  type    = number
+  default = 2
   validation {
     condition     = var.node_min >= 1
     error_message = "DOKS autoscaling requires at least one node."
@@ -50,8 +50,8 @@ variable "node_min" {
 }
 
 variable "node_max" {
-  type        = number
-  default     = 4
+  type    = number
+  default = 4
   validation {
     condition     = var.node_max >= var.node_min
     error_message = "node_max must be greater than or equal to node_min."
@@ -65,13 +65,13 @@ variable "database_version" {
 }
 
 variable "database_size" {
-  type        = string
-  default     = "db-s-1vcpu-1gb"
+  type    = string
+  default = "db-s-1vcpu-1gb"
 }
 
 variable "database_nodes" {
-  type        = number
-  default     = 1
+  type    = number
+  default = 1
   validation {
     condition     = var.database_nodes >= 1
     error_message = "database_nodes must be at least one."
@@ -79,21 +79,21 @@ variable "database_nodes" {
 }
 
 variable "database_storage_autoscale" {
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "maintenance_day" {
-  type        = string
-  default     = "sunday"
+  type    = string
+  default = "sunday"
 }
 
 variable "maintenance_start_utc" {
-  type        = string
-  default     = "02:00"
+  type    = string
+  default = "02:00"
 }
 
 variable "tags" {
-  type        = list(string)
-  default     = ["game-arena", "managed-by-opentofu"]
+  type    = list(string)
+  default = ["game-arena", "managed-by-opentofu"]
 }
