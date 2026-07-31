@@ -8,8 +8,10 @@ const ANALYTICS=new Set(['route_view','game_impression','game_play_intent','game
 const SENSITIVE=/(phone|email|otp|token|secret|payment|identifier|session|cnic|address)/i;
 const fail=(message,status=400,code='invalid_request')=>Object.assign(new Error(message),{status,code});
 const DAY_MS=86400000;
+const EXPORT_ROW_LIMIT=10000;
 function sendCsv(res,result,cors){res.writeHead(200,{...cors,'content-type':result.contentType,'content-disposition':`attachment; filename="${result.filename}"`,'cache-control':'no-store','x-report-schema-version':result.audit.schemaVersion,'x-report-row-count':String(result.rowCount)});res.end(result.body);}
 function currentPlan(store,id){return store.planVersions.find(item=>item.id===id);}
+function assertExportBound(reports,reportType,filters){if(reportType==='summary')return;const bounded={...filters,cursor:0,limit:1};const report=reportType==='payments'?reports.paymentLedger(bounded):reportType==='subscriptions'?reports.subscriptionLedger(bounded):reportType==='recurring-customers'?reports.recurringCustomers(bounded):reportType==='reconciliation'?reports.reconciliation(bounded):reports.benefitCosts(bounded);const total=Number(report.page?.total||0);if(total>EXPORT_ROW_LIMIT)throw fail(`Report contains ${total} rows, above the ${EXPORT_ROW_LIMIT} row export limit. Narrow the date range or filters.`,413,'report_export_too_large');}
 
 export function createSupplementalApp({config,store}){
   const admin=(req,roles)=>authenticateAdmin(req,config,roles);
@@ -38,7 +40,7 @@ export function createSupplementalApp({config,store}){
       if(method==='GET'&&path==='/v1/admin/reports/benefit-costs'){const principal=admin(req,['admin','finance','support','operator']);requireCapability(principal,'reports.read');return reply(200,reports.benefitCosts(parseReportFilters(url.searchParams)));}
       if(method==='GET'&&path==='/v1/admin/reports/exports'){const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');return reply(200,reports.exportHistory(parseReportFilters(url.searchParams)));}
       const exportMatch=path.match(/^\/v1\/admin\/reports\/exports\/(summary|payments|subscriptions|recurring-customers|reconciliation|benefit-costs)$/);
-      if(method==='GET'&&exportMatch){const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');return sendCsv(res,reports.export(exportMatch[1],parseReportFilters(url.searchParams),principal),cors);}
+      if(method==='GET'&&exportMatch){const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');const filters=parseReportFilters(url.searchParams);assertExportBound(reports,exportMatch[1],filters);return sendCsv(res,reports.export(exportMatch[1],filters,principal),cors);}
       if(method==='GET'&&path==='/v1/admin/games'){admin(req,['admin','operator','support','security']);return reply(200,{games:store.games.map(game=>({...game,state:game.status,versions:[{version:game.version||'external',gameUrl:game.gameUrl,status:game.status}]})),reports:[]});}
       if(method==='GET'&&path==='/v1/admin/reviews'){admin(req,['admin','operator','support','security','finance']);return reply(200,{results:store.scoreEvents.filter(item=>item.status==='review'||item.status==='rejected').slice(-500),adjustments:[...store.adjustments.values()].filter(item=>item.status==='pending_approval'),reconciliationCases:reports.reconciliation(parseReportFilters(new URLSearchParams('preset=last30&limit=100'))).rows});}
       return false;
