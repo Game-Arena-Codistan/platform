@@ -1,6 +1,7 @@
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 ENV PORT=8080 \
     GAME_ARENA_FRAME_ANCESTORS="https://gamearena.pk https://*.gamearena.pk" \
+    GAME_ARENA_PLAYER_HOST="gamearena.pk" \
     GAME_ARENA_ARTIFACT_ORIGIN="http://127.0.0.1:9"
 USER root
 COPY nginx.conf /etc/nginx/templates/default.conf.template
