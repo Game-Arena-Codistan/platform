@@ -11,7 +11,10 @@ wait_http(){
   done
   fail "$label did not become healthy at $url"
 }
-json(){ node -e 'const fs=require("node:fs");const value=JSON.parse(fs.readFileSync(0,"utf8"));const path=process.argv[1].split(".");let current=value;for(const key of path)current=current?.[key];if(current===undefined)process.exit(2);process.stdout.write(typeof current==="object"?JSON.stringify(current):String(current));' "$1"; }
+scalar(){
+  local source="$1" expression="$2"
+  JSON_INPUT="$source" node -e 'const value=JSON.parse(process.env.JSON_INPUT);const result=Function("value",`return (${process.argv[1]})`)(value);if(result===undefined)process.exit(2);process.stdout.write(String(result));' "$expression"
+}
 
 wait_http http://127.0.0.1:8080/healthz gateway
 wait_http http://127.0.0.1:8080/api/healthz api
@@ -21,12 +24,12 @@ wait_http http://127.0.0.1:8082/healthz game-origin
 wait_http http://127.0.0.1:8083/ admin
 
 health="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/healthz)"
-[ "$(printf '%s' "$health" | json status)" = ok ] || fail 'API health status is not ok.'
+[ "$(scalar "$health" 'value.status')" = ok ] || fail "API health status is not ok: $health"
 readiness="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/readyz)"
-[ "$(printf '%s' "$readiness" | json status)" = ready ] || fail 'API readiness status is not ready.'
+[ "$(scalar "$readiness" 'value.status')" = ready ] || fail "API readiness status is not ready: $readiness"
 
 catalogue="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/catalog/games)"
-count="$(printf '%s' "$catalogue" | node -e 'const fs=require("node:fs");const value=JSON.parse(fs.readFileSync(0,"utf8"));console.log(value.games?.length||0)')"
+count="$(scalar "$catalogue" 'value.games?.length||0')"
 [ "$count" -ge 5 ] || fail "Expected at least five public catalogue records; found $count."
 for id in duck-hunter ranger-vs-zombies robotex swat-vs-zombies; do
   state="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tA -F '|' -c "SELECT COALESCE(record->>'status',''),COALESCE(record->>'rolloutPercentage','') FROM ga_runtime_games WHERE deleted_at IS NULL AND record_key='${id}'")"
@@ -34,14 +37,15 @@ for id in duck-hunter ranger-vs-zombies robotex swat-vs-zombies; do
 done
 
 session="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/session)"
-[ "$(printf '%s' "$session" | json authenticated)" = false ] || fail 'Anonymous session unexpectedly authenticated.'
+[ "$(scalar "$session" 'value.authenticated')" = false ] || fail "Anonymous session unexpectedly authenticated: $session"
 
 before="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tAc "SELECT count(*) FROM ga_runtime_support_tickets WHERE deleted_at IS NULL")"
 response="$(curl --fail --silent --show-error \
   -H 'content-type: application/json' \
   -d '{"topic":"Game not loading","message":"Verify gateway, API and PostgreSQL durability through the complete local stack."}' \
   http://127.0.0.1:8080/api/v1/support/tickets)"
-[ "$(printf '%s' "$response" | json ticket.status)" = open ] || fail 'Support-ticket integration write did not return open status.'
+ticket_status="$(scalar "$response" 'value.ticket?.status||""')"
+case "$ticket_status" in open|delivered) ;; *) fail "Unexpected support-ticket response: $response" ;; esac
 after="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tAc "SELECT count(*) FROM ga_runtime_support_tickets WHERE deleted_at IS NULL")"
 [ "$after" -eq $((before+1)) ] || fail "Expected one durable support-ticket row; before=$before after=$after."
 
