@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {PostgresStore} from '../src/adapters/postgres-store.mjs';
 import {NORMALIZED_POSTGRES_MODEL} from '../src/lib/persistence-readiness.mjs';
 
 const connectionString=process.env.TEST_DATABASE_URL||process.env.DATABASE_URL||'';
-const options={connectionString,ssl:false};
 
 test('normalized PostgreSQL repositories refresh committed rows and reject stale writers',{skip:!connectionString},async()=>{
+  const {PostgresStore}=await import('../src/adapters/postgres-store.mjs');
+  const options={connectionString,ssl:false};
   const first=await PostgresStore.connect(options);
   const second=await PostgresStore.connect(options);
   try{
