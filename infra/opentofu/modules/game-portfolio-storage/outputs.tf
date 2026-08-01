@@ -1,0 +1,10 @@
+output "source_bucket_name" { value = aws_s3_bucket.source.id }
+output "source_bucket_arn" { value = aws_s3_bucket.source.arn }
+output "source_kms_key_arn" { value = aws_kms_key.source.arn }
+output "artifact_bucket_name" { value = aws_s3_bucket.artifact.id }
+output "artifact_bucket_arn" { value = aws_s3_bucket.artifact.arn }
+output "artifact_kms_key_arn" { value = aws_kms_key.artifact.arn }
+output "inventory_bucket_name" { value = aws_s3_bucket.inventory.id }
+output "cloudfront_distribution_id" { value = aws_cloudfront_distribution.artifact.id }
+output "cloudfront_distribution_arn" { value = aws_cloudfront_distribution.artifact.arn }
+output "cloudfront_domain_name" { value = aws_cloudfront_distribution.artifact.domain_name }
