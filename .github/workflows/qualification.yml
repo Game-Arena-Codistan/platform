@@ -5,6 +5,7 @@ on:
       - 'apps/api/**'
       - 'apps/web/**'
       - 'infra/**'
+      - 'scripts/check-indexed-postgres-reports.mjs'
       - '.github/workflows/qualification.yml'
   workflow_dispatch:
 permissions:
@@ -87,6 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Enforce indexed PostgreSQL report routing
+        run: node scripts/check-indexed-postgres-reports.mjs
       - name: Validate Compose configuration
         working-directory: infra
         run: docker compose -f docker-compose.yml config --quiet
