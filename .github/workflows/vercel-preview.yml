@@ -1,26 +1,28 @@
 name: Vercel frontend preview
 
 on:
-  pull_request:
-    paths:
-      - apps/web/**
-      - .github/workflows/vercel-preview.yml
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or full commit SHA to preview
+        required: false
+        default: main
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: vercel-preview-${{ github.event.pull_request.number || github.ref }}
+  group: vercel-preview-${{ inputs.ref }}
   cancel-in-progress: true
 
 jobs:
   preview:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64, game-arena-ci]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: {node-version: 22}
