@@ -28,7 +28,10 @@ permissions:
 
 jobs:
   guard:
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Confirm rollback target
         env:
