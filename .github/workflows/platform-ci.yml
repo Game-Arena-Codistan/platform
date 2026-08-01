@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   platform-ci:
-    if: vars.SELF_HOSTED_CI_ENABLED == 'true'
+    if: vars.SELF_HOSTED_CI_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, windows, x64, game-arena-ci]
     timeout-minutes: 45
     defaults:
