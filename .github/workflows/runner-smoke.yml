@@ -13,8 +13,11 @@ concurrency:
 jobs:
   runner-smoke:
     name: runner-smoke
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -24,7 +27,7 @@ jobs:
       - name: Verify tools and capacity
         run: bash scripts/check-self-hosted-runner.sh
 
-      - name: Prove PostgreSQL container execution
+      - name: Prove PostgreSQL Linux-container execution
         run: |
           name="game-arena-ci-${GITHUB_RUN_ID}-postgres"
           docker run -d --name "$name" \
@@ -57,6 +60,7 @@ jobs:
             echo "- Node: \`$(node --version)\`"
             echo "- Docker: \`$(docker --version)\`"
             echo "- OpenTofu: \`$(tofu version -json | jq -r .terraform_version)\`"
+            echo '- Container mode: Linux containers through Docker Desktop'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Clean self-hosted runner
