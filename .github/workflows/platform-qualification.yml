@@ -1,6 +1,9 @@
 name: Platform Qualification
 
 on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
     paths-ignore:
@@ -20,12 +23,13 @@ permissions:
   packages: read
 
 concurrency:
-  group: platform-qualification-${{ github.ref }}
+  group: platform-qualification-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   platform-qualification:
     name: platform-qualification
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'launch-gate')
     runs-on: [self-hosted, linux, x64, game-arena-ci]
     timeout-minutes: 180
     services:
