@@ -6,6 +6,7 @@ const OVERFLOW_ROWS=MAX_REPORT_ROWS+1;
 const fail=(message,status=413,code='report_query_too_large')=>Object.assign(new Error(message),{status,code});
 const uniqueById=rows=>[...new Map(rows.filter(Boolean).map(item=>[item.id??item.version??JSON.stringify(item),item])).values()];
 const normalizedPayment=item=>({...item,paidAt:item.paidAt??item.completedAt??null,completedAt:item.completedAt??item.paidAt??null});
+const searchPattern=value=>`%${String(value).toLowerCase()}%`;
 
 function push(values,value){values.push(value);return `$${values.length}`;}
 function bounded(rows,label){
@@ -43,7 +44,7 @@ export class PostgresSubscriptionReportService{
     if(filters.planId)conditions.push(`plan_id=${push(values,filters.planId)}`);
     if(filters.paymentStatus){const status=push(values,filters.paymentStatus);conditions.push(`(internal_status=${status} OR provider_status=${status})`);}
     if(filters.purpose)conditions.push(`purpose=${push(values,filters.purpose)}`);
-    if(filters.query){const query=push(values,`%${filters.query}%`);conditions.push(`(lower(id::text) LIKE ${query} OR lower(user_id::text) LIKE ${query} OR lower(COALESCE(provider_reference,'')) LIKE ${query})`);}
+    if(filters.query){const query=push(values,searchPattern(filters.query));conditions.push(`(lower(id::text) LIKE ${query} OR lower(user_id::text) LIKE ${query} OR lower(COALESCE(provider_reference,'')) LIKE ${query})`);}
     const result=await this.pool.query(`SELECT safe_record FROM ga_payment_attempts
       WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC,id DESC LIMIT ${OVERFLOW_ROWS}`,values);
     return bounded(result.rows.map(row=>normalizedPayment(row.safe_record)),'Payment report');
@@ -57,7 +58,7 @@ export class PostgresSubscriptionReportService{
     if(filters.subscriptionStatus)conditions.push(`status=${push(values,filters.subscriptionStatus)}`);
     if(filters.autoRenew==='true'||filters.autoRenew==='false')conditions.push(`auto_renew=${push(values,filters.autoRenew==='true')}`);
     if(filters.query){
-      const query=push(values,`%${filters.query}%`);
+      const query=push(values,searchPattern(filters.query));
       conditions.push(`(lower(id::text) LIKE ${query} OR lower(user_id::text) LIKE ${query} OR EXISTS(
         SELECT 1 FROM ga_runtime_identities identity
         WHERE identity.deleted_at IS NULL AND identity.record->>'userId'=ga_subscription_periods.user_id::text
@@ -71,7 +72,7 @@ export class PostgresSubscriptionReportService{
 
   async reconciliationRows(filters){
     const values=[];const conditions=[rangeClause(filters,['created_at','updated_at'],values)];
-    if(filters.query){const query=push(values,`%${filters.query}%`);conditions.push(`(lower(id::text) LIKE ${query} OR lower(COALESCE(transaction_id::text,'')) LIKE ${query} OR lower(reason) LIKE ${query})`);}
+    if(filters.query){const query=push(values,searchPattern(filters.query));conditions.push(`(lower(id::text) LIKE ${query} OR lower(COALESCE(transaction_id::text,'')) LIKE ${query} OR lower(reason) LIKE ${query})`);}
     const result=await this.pool.query(`SELECT safe_record FROM ga_reconciliation_cases
       WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC,id DESC LIMIT ${OVERFLOW_ROWS}`,values);
     return bounded(result.rows.map(row=>row.safe_record),'Reconciliation report');
@@ -79,7 +80,7 @@ export class PostgresSubscriptionReportService{
 
   async benefitRows(filters){
     const values=[];const conditions=[rangeClause(filters,['created_at','updated_at'],values)];
-    if(filters.query){const query=push(values,`%${filters.query}%`);conditions.push(`(lower(id::text) LIKE ${query} OR lower(user_id::text) LIKE ${query} OR lower(benefit_type) LIKE ${query})`);}
+    if(filters.query){const query=push(values,searchPattern(filters.query));conditions.push(`(lower(id::text) LIKE ${query} OR lower(user_id::text) LIKE ${query} OR lower(benefit_type) LIKE ${query})`);}
     const result=await this.pool.query(`SELECT safe_record FROM ga_benefit_ledger
       WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC,id DESC LIMIT ${OVERFLOW_ROWS}`,values);
     return bounded(result.rows.map(row=>row.safe_record),'Benefit report');
