@@ -34,7 +34,7 @@ jobs:
     runs-on: [self-hosted, windows, x64, game-arena-ci]
     defaults:
       run:
-        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+        shell: C:/Progra~1/Git/bin/bash.exe --noprofile --norc -eo pipefail {0}
         working-directory: infra/opentofu/aws
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -76,7 +76,7 @@ jobs:
       id-token: write
     defaults:
       run:
-        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+        shell: C:/Progra~1/Git/bin/bash.exe --noprofile --norc -eo pipefail {0}
         working-directory: infra/opentofu/aws
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
