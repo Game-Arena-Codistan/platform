@@ -30,14 +30,16 @@ count="$(printf '%s' "$catalogue" | node -e 'const fs=require("node:fs");const v
 [ "$count" -ge 5 ] || fail "Expected at least five catalogue records; found $count."
 CATALOGUE_JSON="$catalogue" node -e '
 const value=JSON.parse(process.env.CATALOGUE_JSON);
-const pilots=["duck-hunter","ranger-vs-zombies","robotex","swat-vs-zombies"];
-for(const id of pilots){
-  const game=value.games.find(item=>item.id===id);
-  if(!game||game.status!=="paused"||Number(game.rolloutPercentage)!==0){
-    console.error(`Pilot ${id} is not pinned paused at rollout 0.`);
+for(const id of ["duck-hunter","ranger-vs-zombies","robotex","swat-vs-zombies"]){
+  if(!value.games.some(item=>item.id===id)){
+    console.error(`Pilot ${id} is missing from the public catalogue.`);
     process.exit(1);
   }
 }'
+for id in duck-hunter ranger-vs-zombies robotex swat-vs-zombies; do
+  state="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tA -F '|' -c "SELECT COALESCE(record->>'status',''),COALESCE(record->>'rolloutPercentage','') FROM ga_runtime_games WHERE deleted_at IS NULL AND record_key='${id}'")"
+  [ "$state" = 'paused|0' ] || fail "Pilot $id is not pinned paused at rollout 0 in PostgreSQL; found '$state'."
+done
 
 session="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/session)"
 [ "$(printf '%s' "$session" | json authenticated)" = false ] || fail 'Anonymous session unexpectedly authenticated.'
