@@ -1,0 +1,197 @@
+name: Platform Qualification
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      run_network_probe:
+        description: Probe approved external game entry points
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+concurrency:
+  group: platform-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  platform-qualification:
+    name: platform-qualification
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: game_arena_test
+          POSTGRES_PASSWORD: game_arena_test
+          POSTGRES_DB: game_arena_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U game_arena_test -d game_arena_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      CI: '1'
+      DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:55432/game_arena_test
+      TEST_DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:55432/game_arena_test
+      DATABASE_SSL: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          clean: true
+
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Repository controls
+        run: |
+          node scripts/check-workflow-runners.mjs
+          node scripts/security-check.mjs
+          node scripts/check-pre-staging.mjs
+          node scripts/check-cloud-deployment.mjs
+
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Apply clean PostgreSQL migrations
+        working-directory: apps/api
+        run: node scripts/migrate.mjs
+
+      - name: Run complete API and durability suite
+        working-directory: apps/api
+        run: |
+          npm run ci
+          node --test test/postgres.test.mjs
+
+      - name: Run launch-profile API load test
+        working-directory: apps/api
+        env:
+          TARGET_URL: http://127.0.0.1:8081
+          DURATION_SECONDS: 10
+          CONCURRENCY: 25
+          MAX_P95_MS: 500
+          MAX_ERROR_RATE: 0.01
+        run: |
+          NODE_ENV=test PORT=8081 OTP_PROVIDER_MODE=mock JAZZCASH_MODE=mock ALLOW_DEBUG_OTP=true REQUIRE_DATABASE=false \
+            node src/server.mjs > "/tmp/game-arena-api-${GITHUB_RUN_ID}.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:8081/healthz >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8081/healthz >/dev/null
+          npm run load
+
+      - name: Install and validate player
+        working-directory: apps/web
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm test
+          npm run build
+
+      - name: Validate game operations and bridge
+        run: |
+          (cd apps/game-ops && npm run ci)
+          (cd packages/game-bridge && npm run ci)
+          (cd apps/admin && npm run ci)
+
+      - name: Probe approved external games
+        if: github.event_name == 'workflow_dispatch' && inputs.run_network_probe
+        working-directory: apps/game-ops
+        env:
+          GAME_PROBE_STRICT: '1'
+        run: npm run probe
+
+      - name: Build production containers
+        run: |
+          docker build --label "game-arena.ci.run=${GITHUB_RUN_ID}" -t "game-arena-api:ci-${GITHUB_RUN_ID}" apps/api
+          docker build --label "game-arena.ci.run=${GITHUB_RUN_ID}" -t "game-arena-web:ci-${GITHUB_RUN_ID}" apps/web
+          docker build --label "game-arena.ci.run=${GITHUB_RUN_ID}" -t "game-arena-admin:ci-${GITHUB_RUN_ID}" apps/admin
+          docker build --label "game-arena.ci.run=${GITHUB_RUN_ID}" -t "game-arena-games:ci-${GITHUB_RUN_ID}" apps/game-origin
+
+      - name: Validate Compose and Kubernetes configuration
+        run: |
+          docker compose -f infra/docker-compose.yml config --quiet
+          test -s infra/kubernetes/platform.yaml
+          grep -q 'kind: Deployment' infra/kubernetes/platform.yaml
+          grep -q 'REPLACE_IMAGE_TAG' infra/kubernetes/platform.yaml
+
+      - name: Install browser-test dependencies
+        working-directory: tests/e2e
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install chromium firefox webkit
+
+      - name: Run Chromium, Firefox and WebKit journeys
+        working-directory: tests/e2e
+        run: npm test
+
+      - name: Validate OpenTofu
+        run: |
+          test "$(tofu version -json | jq -r .terraform_version)" = "1.12.5"
+          tofu -chdir=infra/opentofu/aws init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infra/opentofu/aws validate
+
+      - name: Analyze JavaScript with CodeQL
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
+        with:
+          category: /language:javascript-typescript
+          output: codeql-results
+          upload: never
+
+      - name: Write qualification summary
+        if: always()
+        run: |
+          mkdir -p reports
+          {
+            echo '# Platform qualification'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Runner: \`${RUNNER_NAME}\`"
+            echo '- Database: PostgreSQL 16'
+            echo '- Browsers: Chromium, Firefox, WebKit'
+            echo '- OpenTofu: 1.12.5'
+            echo '- CodeQL: security-extended'
+            echo '- Hosted runner minutes: not used'
+          } | tee reports/platform-qualification-summary.md
+          cat reports/platform-qualification-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload non-sensitive qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: platform-qualification-${{ github.sha }}
+          path: |
+            reports/
+            apps/api/reports/
+            apps/game-ops/reports/
+            tests/e2e/report/
+            codeql-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
