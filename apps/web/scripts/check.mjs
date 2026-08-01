@@ -10,6 +10,7 @@ const css=await readFile(join(root,'styles/tokens.css'),'utf8')+await readFile(j
 const vercel=await readFile(join(root,'vercel.json'),'utf8');
 const demo=await readFile(join(root,'demo-games/arena-dash/index.html'),'utf8');
 const runtime=await readFile(join(root,'deploy/40-game-arena-config.sh'),'utf8');
+const data=await readFile(join(root,'src/data.js'),'utf8');
 if(!html.includes('Content-Security-Policy')||!html.includes('viewport-fit=cover')||!html.includes('role="status"'))throw new Error('Security or accessibility shell requirements missing.');
 if(!css.includes('prefers-reduced-motion'))throw new Error('Reduced-motion support missing.');
 if(!vercel.includes('npm run build')||!vercel.includes('"outputDirectory":"dist"'))throw new Error('Vercel must build the bundled dist directory.');
@@ -18,6 +19,10 @@ for(const marker of ['https://*','http://localhost:*','http://127.0.0.1:*','[ "$
   if(!runtime.includes(marker))throw new Error(`Runtime origin guard missing: ${marker}`);
 }
 if(runtime.includes('http://*)'))throw new Error('Runtime origin guard must never allow arbitrary HTTP origins.');
+for(const marker of [
+  "controlledPilotIds=['duck-hunter','ranger-vs-zombies','robotex','swat-vs-zombies']",
+  'filter(game=>!controlledPilots.has(game.id))'
+])if(!data.includes(marker))throw new Error(`Mock preview pilot privacy guard missing: ${marker}`);
 const scripts=(await readdir(join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')).map(file=>join(root,'src',file));
 for(const file of [...scripts,join(root,'sw.js'),join(root,'scripts/build.mjs')]){const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(result.status!==0)throw new Error(`${file}: ${result.stderr}`);}
 const budgetFiles=['index.html','styles/tokens.css','styles/app.css','styles/responsive.css',...scripts.map(file=>relative(root,file))];
