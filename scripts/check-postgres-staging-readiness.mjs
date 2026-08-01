@@ -1,6 +1,7 @@
 import {readFileSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 
+const trackingIssue='issue #52';
 const adapterRoot='apps/api/src/adapters';
 const paths=readdirSync(adapterRoot)
   .filter(name=>name.includes('postgres')&&name.endsWith('.mjs'))
@@ -28,10 +29,10 @@ const failures=forbidden.filter(([,pattern])=>pattern.test(source)).map(([name])
 for(const [name,pattern] of required)if(!pattern.test(source))failures.push(`missing ${name}`);
 
 if(failures.length){
-  console.error('PostgreSQL staging readiness failed:');
+  console.error(`PostgreSQL staging readiness failed (${trackingIssue}):`);
   failures.forEach(item=>console.error(`- ${item}`));
   console.error(`Inspected: ${paths.join(', ')}`);
   process.exit(1);
 }
 
-console.log(`PostgreSQL staging readiness passed across ${paths.length} adapter file(s).`);
+console.log(`PostgreSQL staging readiness passed across ${paths.length} adapter file(s); ${trackingIssue} repository gate satisfied.`);
