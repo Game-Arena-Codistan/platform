@@ -16,8 +16,11 @@ concurrency:
 jobs:
   journey:
     if: vars.AWS_STAGING_ENABLED == 'true'
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     environment: staging
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
