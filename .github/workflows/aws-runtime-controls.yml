@@ -24,8 +24,11 @@ concurrency:
 
 jobs:
   apply:
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
