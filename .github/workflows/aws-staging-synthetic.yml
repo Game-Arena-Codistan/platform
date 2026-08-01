@@ -16,12 +16,14 @@ concurrency:
 jobs:
   journey:
     if: vars.AWS_STAGING_ENABLED == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
     environment: staging
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
       - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
       - name: Validate expected AWS account
         env:
@@ -75,51 +77,29 @@ jobs:
       - name: Run authenticated player, proof and payment journey
         run: |
           set -euo pipefail
-          jar=/tmp/game-arena-synthetic.cookies
+          jar="/tmp/game-arena-${GITHUB_RUN_ID}-synthetic.cookies"
           identifier=03000000001
-          otp="$(curl --fail --silent --show-error "$API_URL/v1/auth/otp" \
-            -H 'content-type: application/json' \
-            --data "{\"identifier\":\"$identifier\"}")"
+          otp="$(curl --fail --silent --show-error "$API_URL/v1/auth/otp" -H 'content-type: application/json' --data "{\"identifier\":\"$identifier\"}")"
           challenge="$(jq -er .challengeId <<<"$otp")"
           code="$(jq -er .debugCode <<<"$otp")"
-          verified="$(curl --fail --silent --show-error -c "$jar" "$API_URL/v1/auth/otp/verify" \
-            -H 'content-type: application/json' \
-            --data "{\"challengeId\":\"$challenge\",\"code\":\"$code\"}")"
+          verified="$(curl --fail --silent --show-error -c "$jar" "$API_URL/v1/auth/otp/verify" -H 'content-type: application/json' --data "{\"challengeId\":\"$challenge\",\"code\":\"$code\"}")"
           csrf="$(jq -er .csrfToken <<<"$verified")"
           before="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/session")"
           jq -e '.authenticated == true' <<<"$before" >/dev/null
-
           catalogue="$(curl --fail --silent --show-error "$API_URL/v1/catalog/games")"
           game_id="$(jq -er '.games[0].id' <<<"$catalogue")"
-          play="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/play-sessions" \
-            -H 'content-type: application/json' \
-            -H "origin: $PLAYER_URL" \
-            -H "x-csrf-token: $csrf" \
-            --data "{\"gameId\":\"$game_id\"}")"
+          play="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/play-sessions" -H 'content-type: application/json' -H "origin: $PLAYER_URL" -H "x-csrf-token: $csrf" --data "{\"gameId\":\"$game_id\"}")"
           play_id="$(jq -er .playSessionId <<<"$play")"
           nonce="$(jq -er .nonce <<<"$play")"
           version="$(jq -er .gameVersion <<<"$play")"
           sleep 2
           completed_at="$(date +%s%3N)"
-          completion="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/play-sessions/$play_id/complete" \
-            -H 'content-type: application/json' \
-            -H "origin: $PLAYER_URL" \
-            -H "x-csrf-token: $csrf" \
-            --data "{\"score\":1,\"durationMs\":2000,\"completedAt\":$completed_at,\"gameVersion\":\"$version\",\"nonce\":\"$nonce\"}")"
+          completion="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/play-sessions/$play_id/complete" -H 'content-type: application/json' -H "origin: $PLAYER_URL" -H "x-csrf-token: $csrf" --data "{\"score\":1,\"durationMs\":2000,\"completedAt\":$completed_at,\"gameVersion\":\"$version\",\"nonce\":\"$nonce\"}")"
           jq -e '.accepted == true and .status == "verified"' <<<"$completion" >/dev/null
-
-          checkout="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/payments/jazzcash/checkout" \
-            -H 'content-type: application/json' \
-            -H "origin: $PLAYER_URL" \
-            -H "x-csrf-token: $csrf" \
-            -H 'idempotency-key: aws-staging-synthetic-monthly-v1' \
-            --data '{"planId":"monthly"}')"
+          checkout="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/payments/jazzcash/checkout" -H 'content-type: application/json' -H "origin: $PLAYER_URL" -H "x-csrf-token: $csrf" -H 'idempotency-key: aws-staging-synthetic-monthly-v1' --data '{"planId":"monthly"}')"
           transaction="$(jq -er .transactionId <<<"$checkout")"
           jq -e '.status == "pending"' <<<"$checkout" >/dev/null
-          curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-            "$API_URL/v1/payments/jazzcash/return" \
-            -H 'content-type: application/json' \
-            --data "{\"transactionId\":\"$transaction\",\"status\":\"paid\",\"amountMinor\":29900,\"currency\":\"PKR\"}" | grep -q '^303$'
+          curl --silent --show-error --output /dev/null --write-out '%{http_code}' "$API_URL/v1/payments/jazzcash/return" -H 'content-type: application/json' --data "{\"transactionId\":\"$transaction\",\"status\":\"paid\",\"amountMinor\":29900,\"currency\":\"PKR\"}" | grep -q '^303$'
           status="$(curl --fail --silent --show-error -b "$jar" "$API_URL/v1/payments/$transaction")"
           jq -e '.status == "pending"' <<<"$status" >/dev/null
           {
@@ -158,3 +138,6 @@ jobs:
             echo '- API restart durability: passed'
             echo '- WAF/TLS/artifact controls: passed'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
