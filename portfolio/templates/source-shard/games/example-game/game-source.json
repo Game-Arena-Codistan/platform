@@ -1,0 +1,30 @@
+{
+  "schemaVersion":"1.0.0",
+  "slug":"example-game",
+  "engine":"html5",
+  "runtimeClass":"static",
+  "discoveredAt":"2026-08-01T00:00:00.000Z",
+  "packages":[
+    {
+      "kind":"original",
+      "relativePath":"archives/example-game-original.zip",
+      "sha256":"0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes":0,
+      "fileCount":0,
+      "archiveState":"planned",
+      "vaultKey":null
+    }
+  ],
+  "reviewableSource":{
+    "state":"pending",
+    "shard":"replace-shard-name",
+    "path":"games/example-game/",
+    "blockedReason":null
+  },
+  "provenance":{
+    "sourceOwner":null,
+    "rightsReference":null,
+    "inventoryReference":"replace-inventory-reference",
+    "notes":"Replace this example before importing a real title."
+  }
+}
