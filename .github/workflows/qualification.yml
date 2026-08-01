@@ -4,7 +4,10 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'apps/admin/**'
+      - 'apps/game-origin/**'
       - 'infra/**'
+      - 'scripts/compose-integration.sh'
       - 'scripts/check-indexed-postgres-reports.mjs'
       - '.github/workflows/qualification.yml'
   workflow_dispatch:
@@ -60,7 +63,7 @@ jobs:
           NODE_ENV: test
           PORT: 8081
           OTP_PROVIDER_MODE: mock
-          JAZZCASH_MODE: mock
+          JAZCASH_MODE: mock
           ALLOW_DEBUG_OTP: "true"
           REQUIRE_DATABASE: "false"
         run: |
@@ -84,6 +87,33 @@ jobs:
       - name: Stop API
         if: always()
         run: kill $(cat /tmp/game-arena-api.pid) || true
+  compose-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build and start complete local stack
+        run: docker compose -f infra/docker-compose.yml up --build --detach
+      - name: Run gateway, service and persistence journeys
+        run: bash scripts/compose-integration.sh
+      - name: Capture Compose evidence
+        if: always()
+        run: |
+          mkdir -p reports/compose
+          docker compose -f infra/docker-compose.yml ps --all > reports/compose/ps.txt
+          docker compose -f infra/docker-compose.yml logs --no-color > reports/compose/logs.txt 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-integration-${{ github.sha }}
+          path: reports/compose
+          retention-days: 30
+      - name: Remove Compose resources
+        if: always()
+        run: docker compose -f infra/docker-compose.yml down --volumes --remove-orphans
   configuration:
     runs-on: ubuntu-latest
     steps:
