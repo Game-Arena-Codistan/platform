@@ -1,4 +1,6 @@
 import {readFile} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
+import {loadContentLimits,publicContentLimits} from './limits.mjs';
 
 const EOCD=0x06054b50;
 const CENTRAL=0x02014b50;
@@ -18,8 +20,11 @@ function safePath(name){
   return normalized.replace(/^\.\//,'');
 }
 
-export async function preflightZip(archivePath,{maxEntries=2500,maxExpandedBytes=25*1024*1024,maxCompressionRatio=250}={}){
+export async function preflightZip(archivePath,overrides={}){
+  const limits=loadContentLimits(process.env,overrides);
+  const {maxEntries,maxExpandedBytes,maxCompressionRatio,maxCompressedBytes}=limits;
   const buffer=await readFile(archivePath);
+  if(buffer.length>maxCompressedBytes)throw new Error(`Compressed archive exceeds ${maxCompressedBytes} bytes.`);
   const eocd=locateEocd(buffer);
   const disk=buffer.readUInt16LE(eocd+4);const centralDisk=buffer.readUInt16LE(eocd+6);
   const entriesOnDisk=buffer.readUInt16LE(eocd+8);const totalEntries=buffer.readUInt16LE(eocd+10);
@@ -28,7 +33,7 @@ export async function preflightZip(archivePath,{maxEntries=2500,maxExpandedBytes
   if(totalEntries===0xffff||centralSize===0xffffffff||centralOffset===0xffffffff)throw new Error('ZIP64 archives are not supported.');
   if(totalEntries>maxEntries)throw new Error(`ZIP contains ${totalEntries} entries; limit is ${maxEntries}.`);
   if(centralOffset+centralSize>eocd||centralOffset<0)throw new Error('ZIP central directory is invalid.');
-  const seen=new Set();const entries=[];let expandedBytes=0;let offset=centralOffset;
+  const seen=new Set();const entries=[];let expandedBytes=0;let offset=centralOffset;let observedMaxCompressionRatio=1;
   for(let index=0;index<totalEntries;index++){
     if(offset+46>buffer.length||buffer.readUInt32LE(offset)!==CENTRAL)throw new Error('ZIP central directory entry is malformed.');
     const versionMadeBy=buffer.readUInt16LE(offset+4);const flags=buffer.readUInt16LE(offset+8);const compression=buffer.readUInt16LE(offset+10);
@@ -46,9 +51,19 @@ export async function preflightZip(archivePath,{maxEntries=2500,maxExpandedBytes
     const collision=name.normalize('NFKC').toLowerCase();if(seen.has(collision))throw new Error(`Duplicate or case-colliding ZIP path: ${name}`);seen.add(collision);
     expandedBytes+=uncompressedBytes;if(expandedBytes>maxExpandedBytes)throw new Error(`ZIP expanded size exceeds ${maxExpandedBytes} bytes.`);
     if(!directory&&compressedBytes===0&&uncompressedBytes>0)throw new Error(`Suspicious zero-byte compressed entry: ${name}`);
-    if(compressedBytes>0&&uncompressedBytes/compressedBytes>maxCompressionRatio)throw new Error(`Suspicious compression ratio for ${name}.`);
-    entries.push({name,directory,compressedBytes,uncompressedBytes,mode,compression});offset=end;
+    const ratio=compressedBytes>0?uncompressedBytes/compressedBytes:(uncompressedBytes===0?1:Infinity);
+    if(ratio>maxCompressionRatio)throw new Error(`Suspicious compression ratio for ${name}.`);
+    observedMaxCompressionRatio=Math.max(observedMaxCompressionRatio,ratio);
+    entries.push({name,directory,compressedBytes,uncompressedBytes,mode,compression,compressionRatio:Number(ratio.toFixed(3))});offset=end;
   }
   if(offset!==centralOffset+centralSize)throw new Error('ZIP central directory size does not match its entries.');
-  return{entries,summary:{entries:entries.length,expandedBytes,compressedBytes:buffer.length}};
+  const htmlEntries=entries.filter(item=>!item.directory&&item.name.toLowerCase().endsWith('.html')).map(item=>item.name);
+  const rootIndex=htmlEntries.find(name=>name.toLowerCase()==='index.html')??null;
+  const oneDirectoryIndex=htmlEntries.find(name=>name.split('/').length===2&&name.toLowerCase().endsWith('/index.html'))??null;
+  return{entries,summary:{entries:entries.length,expandedBytes,compressedBytes:buffer.length,maxCompressionRatio:Number(observedMaxCompressionRatio.toFixed(3)),rootIndex,oneDirectoryIndex,htmlEntries,limits:publicContentLimits(limits)}};
+}
+
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+  const archivePath=process.argv[2];if(!archivePath)throw new Error('Usage: node src/zip-preflight.mjs <game.zip>');
+  console.log(JSON.stringify((await preflightZip(archivePath)).summary,null,2));
 }

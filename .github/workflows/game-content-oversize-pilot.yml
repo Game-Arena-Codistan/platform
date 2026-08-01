@@ -1,0 +1,192 @@
+name: Import four oversized game pilots
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Draft GitHub release containing the normalized pilot assets
+        required: true
+        type: string
+      publish_to_staging:
+        description: Publish scanner-approved immutable builds to staging
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: game-content-oversize-pilot-staging
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    environment: staging
+    timeout-minutes: 90
+    env:
+      GAME_ARENA_MAX_COMPRESSED_BYTES: '134217728'
+      GAME_ARENA_MAX_EXPANDED_BYTES: '536870912'
+      GAME_ARENA_MAX_ENTRIES: '5000'
+      GAME_ARENA_MAX_COMPRESSION_RATIO: '250'
+      GAME_ARENA_EXTRACTION_TIMEOUT_MS: '120000'
+      GAME_ARENA_FREE_SPACE_RESERVE_BYTES: '1073741824'
+      GAME_ARENA_ACTOR: github-actions:${{ github.actor }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Prepare isolated pilot workspace
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "game-arena-pilot-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Force -Path $root, "$root\ingress", "$root\artifacts", "$root\audit", "apps\game-ops\reports", "catalogue\releases" | Out-Null
+          "PILOT_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Download and verify private release assets
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = & node apps/game-ops/src/download-pilot-release.mjs `
+            --tag "${{ inputs.release_tag }}" `
+            --registry catalogue/pilots/oversize-four.json `
+            --output "$env:PILOT_ROOT\ingress" 2>&1
+          if ($LASTEXITCODE -ne 0) { $output | Write-Host; throw 'Pilot release download or digest verification failed.' }
+          $output | Tee-Object -FilePath "apps\game-ops\reports\pilot-download.json"
+
+      - name: Preflight, scan and package all four builds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = & node apps/game-ops/src/import-pilot-release.mjs `
+            --registry catalogue/pilots/oversize-four.json `
+            --ingress "$env:PILOT_ROOT\ingress" `
+            --output "$env:PILOT_ROOT\artifacts" `
+            --audit "$env:PILOT_ROOT\audit" `
+            --report "apps\game-ops\reports\oversize-pilot-import.json" 2>&1
+          if ($LASTEXITCODE -ne 0) { $output | Write-Host; throw 'Pilot preflight, scan or packaging failed.' }
+          $output | Write-Host
+
+      - name: Validate game operations package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location apps/game-ops
+          try {
+            & npm run ci
+            if ($LASTEXITCODE -ne 0) { throw 'Game operations validation failed.' }
+          } finally { Pop-Location }
+
+      - name: Create review-only release metadata
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "$env:PILOT_ROOT\artifacts\games" -Filter game-manifest.json -Recurse | Sort-Object FullName | ForEach-Object {
+            $manifest = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+            if ($manifest.rolloutPercentage -ne 0) { throw "Pilot rollout must remain zero: $($manifest.slug)" }
+            $target = "catalogue\releases\$($manifest.slug)"
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            $review = [ordered]@{
+              schemaVersion=$manifest.schemaVersion; slug=$manifest.slug; title=$manifest.title; version=$manifest.version
+              entrypoint=$manifest.entrypoint; buildSha256=$manifest.buildSha256; totalBytes=$manifest.totalBytes
+              fileCount=$manifest.fileCount; permissions=$manifest.permissions; bridgeVersion=$manifest.bridgeVersion
+              minDeviceTier=$manifest.minDeviceTier; rolloutPercentage=0; publishedAt=$manifest.publishedAt
+              publishedBy=$manifest.publishedBy; scan=$manifest.scan; productionActivation=$false
+              ingressRelease="${{ inputs.release_tag }}"
+            }
+            $review | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath "$target\$($manifest.version).json" -Encoding utf8
+          }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oversized-game-pilot-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/game-arena-pilot-${{ github.run_id }}/audit
+            apps/game-ops/reports
+            catalogue/releases
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Validate protected AWS account
+        if: inputs.publish_to_staging
+        shell: pwsh
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          if ($env:EXPECTED_AWS_ACCOUNT_ID -notmatch '^\d{12}$') { throw 'AWS_ACCOUNT_ID must be a twelve-digit protected staging variable.' }
+
+      - name: Authenticate to AWS through staging OIDC role
+        if: inputs.publish_to_staging
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_GAME_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: game-arena-oversize-pilot-${{ github.run_id }}
+
+      - name: Publish immutable pilot versions to staging
+        if: inputs.publish_to_staging
+        shell: pwsh
+        env:
+          CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          $account = aws sts get-caller-identity --query Account --output text
+          if ($LASTEXITCODE -ne 0 -or $account -ne $env:EXPECTED_AWS_ACCOUNT_ID) { throw "Unexpected AWS account: $account" }
+          $prefix = if ($env:CONFIG_PREFIX_INPUT) { $env:CONFIG_PREFIX_INPUT } else { '/game-arena/staging' }
+          $bucket = aws ssm get-parameter --name "$prefix/game-artifact-bucket" --query Parameter.Value --output text
+          if ($LASTEXITCODE -ne 0 -or -not $bucket) { throw 'Unable to resolve staging game artifact bucket.' }
+          Get-ChildItem -Path "$env:PILOT_ROOT\artifacts\games" -Filter game-manifest.json -Recurse | Sort-Object FullName | ForEach-Object {
+            $manifest = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+            $key = "games/$($manifest.slug)/$($manifest.version)/game-manifest.json"
+            $head = & aws s3api head-object --bucket $bucket --key $key 2>&1
+            $headExit = $LASTEXITCODE
+            if ($headExit -eq 0) {
+              $remoteManifestPath = Join-Path $env:PILOT_ROOT "remote-$($manifest.slug)-manifest.json"
+              & aws s3 cp "s3://$bucket/$key" $remoteManifestPath --only-show-errors
+              if ($LASTEXITCODE -ne 0) { throw "Unable to verify existing immutable version: $($manifest.slug)" }
+              $remote = Get-Content -LiteralPath $remoteManifestPath -Raw | ConvertFrom-Json
+              if ($remote.buildSha256 -ne $manifest.buildSha256) { throw "Immutable version collision: $($manifest.slug)@$($manifest.version)" }
+              Write-Host "Verified existing matching immutable version: $($manifest.slug)@$($manifest.version)"
+            } else {
+              $headText = $head | Out-String
+              if ($headText -notmatch '(?i)(Not Found|404|NoSuchKey)') { throw "S3 existence check failed for $($manifest.slug): $headText" }
+              $source = Split-Path -LiteralPath $_.FullName -Parent
+              & aws s3 sync "$source\" "s3://$bucket/games/$($manifest.slug)/$($manifest.version)/" --only-show-errors --cache-control "public,max-age=31536000,immutable" --sse aws:kms
+              if ($LASTEXITCODE -ne 0) { throw "S3 publication failed: $($manifest.slug)" }
+            }
+          }
+
+      - name: Open metadata review pull request
+        if: inputs.publish_to_staging
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-Git([string[]]$Arguments) { & git @Arguments; if ($LASTEXITCODE -ne 0) { throw "git failed: $($Arguments -join ' ')" } }
+          $branch = "content/oversize-pilot-$env:GITHUB_RUN_ID"
+          Invoke-Git @('switch','-c',$branch)
+          Invoke-Git @('config','user.name','game-arena-content-bot')
+          Invoke-Git @('config','user.email','game-arena-content-bot@users.noreply.github.com')
+          Invoke-Git @('add','catalogue/releases','apps/game-ops/reports')
+          & git diff --cached --quiet
+          $diffExit = $LASTEXITCODE
+          if ($diffExit -eq 0) { throw 'No release metadata was generated.' }
+          if ($diffExit -ne 1) { throw "git diff failed with exit code $diffExit" }
+          Invoke-Git @('commit','-m','Games: record four oversized pilot releases')
+          Invoke-Git @('push','--set-upstream','origin',$branch)
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+          $body = @{ title='Games: review four oversized pilot releases'; head=$branch; base='main'; body="Four scanner-approved immutable builds were published to staging. Rollout remains 0% and production activation is disabled. Tracks #79." } | ConvertTo-Json
+          Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/pulls" -Headers $headers -Body $body -ContentType 'application/json' | ConvertTo-Json -Depth 5
+
+      - name: Clean pilot workspace
+        if: always()
+        shell: pwsh
+        run: Remove-Item -LiteralPath "$env:PILOT_ROOT" -Recurse -Force -ErrorAction SilentlyContinue

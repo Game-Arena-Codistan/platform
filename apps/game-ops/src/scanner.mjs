@@ -1,6 +1,7 @@
 import {lstat,readdir,readFile} from 'node:fs/promises';
 import {extname,join,relative} from 'node:path';
 import {createHash} from 'node:crypto';
+import {loadContentLimits} from './limits.mjs';
 
 const TEXT_EXTENSIONS=new Set(['.html','.htm','.js','.mjs','.css','.json','.xml','.txt','.svg']);
 const BLOCKED_EXTENSIONS=new Set(['.php','.cgi','.pl','.py','.rb','.sh','.bash','.exe','.dll','.so','.dylib','.jar','.war','.class','.bat','.cmd','.ps1']);
@@ -27,7 +28,8 @@ async function walk(root,current=root,files=[]){
   return files;
 }
 
-export async function scanBuild(root,{maxFiles=2500,maxExpandedBytes=25*1024*1024}={}){
+export async function scanBuild(root,overrides={}){
+  const limits=loadContentLimits(process.env,overrides);const {maxEntries:maxFiles,maxExpandedBytes}=limits;
   const files=await walk(root);const errors=[];const warnings=[];let totalBytes=0;const inventory=[];
   if(files.length>maxFiles)errors.push({code:'file_count_limit',message:`Build has ${files.length} files; limit is ${maxFiles}.`});
   for(const file of files){
@@ -43,5 +45,5 @@ export async function scanBuild(root,{maxFiles=2500,maxExpandedBytes=25*1024*102
   }
   if(totalBytes>maxExpandedBytes)errors.push({code:'expanded_size_limit',message:`Expanded size ${totalBytes} exceeds ${maxExpandedBytes}.`});
   inventory.sort((a,b)=>a.path.localeCompare(b.path));
-  return{ok:errors.length===0,summary:{files:files.length,totalBytes,errors:errors.length,warnings:warnings.length},errors,warnings,inventory};
+  return{ok:errors.length===0,summary:{files:files.length,totalBytes,errors:errors.length,warnings:warnings.length,limits:{maxFiles,maxExpandedBytes}},errors,warnings,inventory};
 }
