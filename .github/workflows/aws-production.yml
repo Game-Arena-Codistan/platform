@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   guard:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
     steps:
       - name: Confirm intentional production promotion
         env:
@@ -43,7 +43,7 @@ jobs:
           test -n "$CHANGE_RECORD"
 
   provider-guard:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
     environment: production
     steps:
       - name: Validate expected AWS account
