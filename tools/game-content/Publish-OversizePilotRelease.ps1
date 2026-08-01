@@ -68,8 +68,8 @@ try {
     Remove-Item -LiteralPath $probeOut,$probeErr -Force -ErrorAction SilentlyContinue
     try {
         $probe = Start-Process -FilePath $ghPath -ArgumentList @("release","view",$ReleaseTag,"--repo",$Repository,"--json","isDraft","--jq",".isDraft") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr
-        $probeOutput = if (Test-Path -LiteralPath $probeOut) { (Get-Content -LiteralPath $probeOut -Raw).Trim() } else { "" }
-        $probeError = if (Test-Path -LiteralPath $probeErr) { (Get-Content -LiteralPath $probeErr -Raw).Trim() } else { "" }
+        $probeOutput = if (Test-Path -LiteralPath $probeOut) { ([string](Get-Content -LiteralPath $probeOut -Raw -ErrorAction SilentlyContinue)).Trim() } else { "" }
+        $probeError = if (Test-Path -LiteralPath $probeErr) { ([string](Get-Content -LiteralPath $probeErr -Raw -ErrorAction SilentlyContinue)).Trim() } else { "" }
 
         if ($probe.ExitCode -ne 0) {
             if ($probeError -and $probeError -notmatch '(?i)release not found|not found|http 404') {
