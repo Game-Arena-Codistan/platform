@@ -1,0 +1,126 @@
+name: Game portfolio metadata
+
+on:
+  pull_request:
+    paths:
+      - 'portfolio/**'
+      - 'apps/game-ops/src/portfolio-*.mjs'
+      - 'apps/game-ops/test/portfolio.test.mjs'
+      - 'infra/opentofu/modules/game-portfolio-storage/**'
+      - 'scripts/check-game-portfolio.mjs'
+      - '.github/workflows/game-portfolio-metadata.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected GitHub Environment
+        required: true
+        type: choice
+        options: [staging, production]
+      action:
+        description: Reconcile only or publish reviewed metadata snapshot
+        required: true
+        type: choice
+        options: [reconcile, publish-metadata]
+      confirmation:
+        description: Type PUBLISH-METADATA for publication
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Validate portfolio contracts and examples
+        run: |
+          node scripts/check-game-portfolio.mjs
+          cd apps/game-ops
+          npm test -- --test-name-pattern=portfolio
+
+  reconcile:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: game-portfolio-metadata-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Validate protected target
+        env:
+          EXPECTED_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
+          SOURCE_BUCKET: ${{ vars.GAME_SOURCE_VAULT_BUCKET }}
+          ARTIFACT_BUCKET: ${{ vars.GAME_ARTIFACT_BUCKET }}
+          ACTION_INPUT: ${{ inputs.action }}
+          CONFIRMATION_INPUT: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_ACCOUNT" =~ ^[0-9]{12}$ ]]
+          test -n "$SOURCE_BUCKET"
+          test -n "$ARTIFACT_BUCKET"
+          if [ "$ACTION_INPUT" = publish-metadata ]; then
+            [ "$CONFIRMATION_INPUT" = PUBLISH-METADATA ] || { echo 'Publication requires PUBLISH-METADATA confirmation.' >&2; exit 1; }
+          fi
+      - name: Authenticate with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_GAME_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: game-portfolio-${{ github.run_id }}
+      - name: Capture object inventories
+        env:
+          SOURCE_BUCKET: ${{ vars.GAME_SOURCE_VAULT_BUCKET }}
+          ARTIFACT_BUCKET: ${{ vars.GAME_ARTIFACT_BUCKET }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports/portfolio
+          aws s3api list-objects-v2 --bucket "$SOURCE_BUCKET" --prefix sources/ --output json > reports/portfolio/source-inventory.json
+          aws s3api list-objects-v2 --bucket "$ARTIFACT_BUCKET" --prefix games/ --output json > reports/portfolio/artifact-inventory.json
+      - name: Reconcile reviewed metadata
+        run: |
+          set -euo pipefail
+          node apps/game-ops/src/portfolio-cli.mjs reconcile \
+            --catalogue portfolio/examples/catalogue.jsonl \
+            --sources portfolio/examples/sources.jsonl \
+            --releases portfolio/examples/releases.jsonl \
+            --source-inventory reports/portfolio/source-inventory.json \
+            --artifact-inventory reports/portfolio/artifact-inventory.json \
+            --output reports/portfolio/reconciliation.json
+      - name: Publish immutable metadata snapshot
+        if: inputs.action == 'publish-metadata'
+        env:
+          ARTIFACT_BUCKET: ${{ vars.GAME_ARTIFACT_BUCKET }}
+        run: |
+          set -euo pipefail
+          prefix="metadata/${GITHUB_SHA}"
+          aws s3 cp portfolio/ "s3://${ARTIFACT_BUCKET}/${prefix}/portfolio/" --recursive --only-show-errors \
+            --sse aws:kms --sse-kms-key-id "${{ vars.GAME_ARTIFACT_KMS_KEY_ARN }}"
+          aws s3 cp reports/portfolio/reconciliation.json "s3://${ARTIFACT_BUCKET}/${prefix}/reconciliation.json" --only-show-errors \
+            --sse aws:kms --sse-kms-key-id "${{ vars.GAME_ARTIFACT_KMS_KEY_ARN }}"
+          aws s3api head-object --bucket "$ARTIFACT_BUCKET" --key "${prefix}/reconciliation.json" >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: game-portfolio-${{ inputs.environment }}-${{ github.sha }}-${{ github.run_id }}
+          path: reports/portfolio
+          retention-days: 30
+          if-no-files-found: error
