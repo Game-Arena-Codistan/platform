@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "status": "awaiting-account",
+  "awsStagingEnabled": false,
+  "repository": "Game-Arena-Codistan/platform",
+  "account": {
+    "id": "000000000000",
+    "region": "ap-south-1",
+    "administratorOwner": "",
+    "billingOwner": ""
+  },
+  "dns": {
+    "hostedZoneId": "",
+    "playerHostname": "",
+    "apiHostname": "",
+    "gameHostname": "",
+    "adminHostname": ""
+  },
+  "github": {
+    "stagingEnvironment": "staging",
+    "productionEnvironment": "production",
+    "requiredReviewers": []
+  },
+  "operations": {
+    "alertEmail": "",
+    "monthlyBudgetUsd": 250
+  },
+  "state": {
+    "bucketName": "",
+    "kmsKeyId": ""
+  },
+  "oidcRoles": {
+    "infrastructureRoleArn": "",
+    "deploymentRoleArn": "",
+    "runtimeControlsRoleArn": "",
+    "gamePublishRoleArn": ""
+  },
+  "staging": {
+    "configPrefix": "/game-arena/staging",
+    "kubernetesVersion": "1.35",
+    "otpProviderMode": "mock",
+    "jazzCashMode": "mock",
+    "allowDebugOtp": true
+  },
+  "requiredBeforeEnable": [
+    "approved account and region",
+    "protected GitHub staging environment",
+    "state bucket and optional KMS key",
+    "four repository-scoped OIDC roles",
+    "reviewed staging tfvars",
+    "application secret",
+    "runtime-controls secret",
+    "controlled DNS names",
+    "alert email and monthly budget"
+  ],
+  "secretsExcluded": [
+    "AWS credentials",
+    "OTP API keys",
+    "JazzCash merchant values",
+    "database passwords",
+    "administrator proxy secrets",
+    "signed rights agreements",
+    "customer data"
+  ]
+}
