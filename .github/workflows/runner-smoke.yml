@@ -1,0 +1,60 @@
+name: Runner Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-smoke:
+    if: vars.SELF_HOSTED_CI_ENABLED == 'true'
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: C:/Progra~1/Git/bin/bash.exe --noprofile --norc -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          clean: true
+      - name: Verify runner prerequisites
+        run: bash scripts/check-self-hosted-runner.sh
+      - name: Prove Docker and PostgreSQL
+        run: |
+          name="game-arena-smoke-${GITHUB_RUN_ID}"
+          docker run -d --name "$name" \
+            --label "game-arena.ci.run=${GITHUB_RUN_ID}" \
+            -e POSTGRES_PASSWORD=smoke \
+            -e POSTGRES_USER=smoke \
+            -e POSTGRES_DB=smoke \
+            postgres:16-alpine
+          for attempt in $(seq 1 60); do
+            docker exec "$name" pg_isready -U smoke -d smoke && break
+            sleep 1
+          done
+          docker exec "$name" psql -U smoke -d smoke -v ON_ERROR_STOP=1 -c 'CREATE TABLE smoke(id integer PRIMARY KEY); INSERT INTO smoke VALUES(1); SELECT * FROM smoke;'
+      - name: Prove browser tooling
+        working-directory: tests/e2e
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install chromium
+          node -e "import('@playwright/test').then(()=>console.log('Playwright import passed.'))"
+      - name: Prove OpenTofu provider access
+        run: |
+          tofu -chdir=infra/opentofu/aws init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infra/opentofu/aws validate
+      - name: Record smoke summary
+        if: always()
+        run: |
+          {
+            echo '## Runner smoke'
+            echo "- Runner: $RUNNER_NAME"
+            echo "- OS: $RUNNER_OS"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Result: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
