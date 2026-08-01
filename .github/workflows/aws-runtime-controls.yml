@@ -24,12 +24,14 @@ concurrency:
 
 jobs:
   apply:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
       - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
       - name: Validate expected AWS account
         env:
@@ -162,31 +164,12 @@ jobs:
             exit 1
           fi
 
-          patch="$(jq -n \
-            --arg database "$database_app_url" \
-            --arg proxy "$admin_proxy_secret" \
-            --arg roles "$admin_identity_roles_json" \
-            --arg supportEndpoint "$support_delivery_endpoint" \
-            --arg supportSecret "$support_delivery_secret" \
-            --arg holds "$legal_hold_user_ids" \
-            '{data:{DATABASE_URL:($database|@base64),ADMIN_PROXY_SECRET:($proxy|@base64),ADMIN_IDENTITY_ROLES_JSON:($roles|@base64),SUPPORT_DELIVERY_ENDPOINT:($supportEndpoint|@base64),SUPPORT_DELIVERY_SECRET:($supportSecret|@base64),LEGAL_HOLD_USER_IDS:($holds|@base64)}}')"
+          patch="$(jq -n --arg database "$database_app_url" --arg proxy "$admin_proxy_secret" --arg roles "$admin_identity_roles_json" --arg supportEndpoint "$support_delivery_endpoint" --arg supportSecret "$support_delivery_secret" --arg holds "$legal_hold_user_ids" '{data:{DATABASE_URL:($database|@base64),ADMIN_PROXY_SECRET:($proxy|@base64),ADMIN_IDENTITY_ROLES_JSON:($roles|@base64),SUPPORT_DELIVERY_ENDPOINT:($supportEndpoint|@base64),SUPPORT_DELIVERY_SECRET:($supportSecret|@base64),LEGAL_HOLD_USER_IDS:($holds|@base64)}}')"
           kubectl -n game-arena patch secret game-arena-secrets --type merge -p "$patch"
-          kubectl -n game-arena set env deployment/api \
-            ADMIN_AUTH_MODE=signed-headers \
-            SUPPORT_DELIVERY_MODE="$support_mode" \
-            ALLOW_EXTERNAL_GAMES="$external_games" \
-            COMPETITIONS_ENABLED=false
+          kubectl -n game-arena set env deployment/api ADMIN_AUTH_MODE=signed-headers SUPPORT_DELIVERY_MODE="$support_mode" ALLOW_EXTERNAL_GAMES="$external_games" COMPETITIONS_ENABLED=false
           kubectl -n game-arena rollout restart deployment/api
-
-          kubectl -n game-arena set env deployment/game-origin \
-            GAME_ARENA_ARTIFACT_ORIGIN="https://${ARTIFACT_DOMAIN}" \
-            GAME_ARENA_PLAYER_HOST="$PUBLIC_HOST" \
-            GAME_ARENA_FRAME_ANCESTORS="https://${PUBLIC_HOST}"
-          kubectl -n game-arena annotate ingress game-arena-aws \
-            alb.ingress.kubernetes.io/wafv2-acl-arn="$PUBLIC_WAF_ARN" \
-            alb.ingress.kubernetes.io/ssl-policy=ELBSecurityPolicy-TLS13-1-2-2021-06 \
-            alb.ingress.kubernetes.io/load-balancer-attributes="routing.http2.enabled=true,idle_timeout.timeout_seconds=60,access_logs.s3.enabled=true,access_logs.s3.bucket=${ACCESS_LOG_BUCKET},access_logs.s3.prefix=alb" \
-            --overwrite
+          kubectl -n game-arena set env deployment/game-origin GAME_ARENA_ARTIFACT_ORIGIN="https://${ARTIFACT_DOMAIN}" GAME_ARENA_PLAYER_HOST="$PUBLIC_HOST" GAME_ARENA_FRAME_ANCESTORS="https://${PUBLIC_HOST}"
+          kubectl -n game-arena annotate ingress game-arena-aws alb.ingress.kubernetes.io/wafv2-acl-arn="$PUBLIC_WAF_ARN" alb.ingress.kubernetes.io/ssl-policy=ELBSecurityPolicy-TLS13-1-2-2021-06 alb.ingress.kubernetes.io/load-balancer-attributes="routing.http2.enabled=true,idle_timeout.timeout_seconds=60,access_logs.s3.enabled=true,access_logs.s3.bucket=${ACCESS_LOG_BUCKET},access_logs.s3.prefix=alb" --overwrite
           kubectl -n game-arena rollout status deployment/api --timeout=600s
           kubectl -n game-arena rollout status deployment/game-origin --timeout=600s
       - name: Verify effective controls
@@ -200,3 +183,6 @@ jobs:
           api="$(kubectl -n game-arena get deployment api -o json)"
           jq -e '[.spec.template.spec.containers[0].env[] | select(.name=="ADMIN_AUTH_MODE")][0].value == "signed-headers"' <<<"$api" >/dev/null
           curl --fail --silent --show-error --retry 6 --retry-all-errors "https://${PUBLIC_HOST}/api/readyz" | jq -e '.status == "ready"' >/dev/null
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
