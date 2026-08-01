@@ -4,8 +4,9 @@ import {open,readFile,stat} from 'node:fs/promises';
 import {isIP} from 'node:net';
 import {Readable,Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
+import {DEFAULT_CONTENT_LIMITS} from './limits.mjs';
 
-const DEFAULT_MAX_BYTES=25*1024*1024;
+const DEFAULT_MAX_BYTES=DEFAULT_CONTENT_LIMITS.maxCompressedBytes;
 const MAX_REDIRECTS=5;
 
 function ipv4Private(host){
