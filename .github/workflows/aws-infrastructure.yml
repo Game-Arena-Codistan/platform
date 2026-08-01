@@ -26,14 +26,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: aws-infrastructure-${{ inputs.environment || 'validation' }}
+  group: aws-infrastructure-${{ github.event.pull_request.number || inputs.environment || 'validation' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     defaults:
       run:
+        shell: bash
         working-directory: infra/opentofu/aws
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -68,13 +69,14 @@ jobs:
   plan-or-apply:
     if: github.event_name == 'workflow_dispatch' && inputs.action != 'validate'
     needs: validate
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write
     defaults:
       run:
+        shell: bash
         working-directory: infra/opentofu/aws
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
