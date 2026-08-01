@@ -5,6 +5,7 @@ const MAX_REPORT_ROWS=10000;
 const OVERFLOW_ROWS=MAX_REPORT_ROWS+1;
 const fail=(message,status=413,code='report_query_too_large')=>Object.assign(new Error(message),{status,code});
 const uniqueById=rows=>[...new Map(rows.filter(Boolean).map(item=>[item.id??item.version??JSON.stringify(item),item])).values()];
+const normalizedPayment=item=>({...item,paidAt:item.paidAt??item.completedAt??null,completedAt:item.completedAt??item.paidAt??null});
 
 function push(values,value){values.push(value);return `$${values.length}`;}
 function bounded(rows,label){
@@ -45,15 +46,13 @@ export class PostgresSubscriptionReportService{
     if(filters.query){const query=push(values,`%${filters.query}%`);conditions.push(`(lower(id::text) LIKE ${query} OR lower(user_id::text) LIKE ${query} OR lower(COALESCE(provider_reference,'')) LIKE ${query})`);}
     const result=await this.pool.query(`SELECT safe_record FROM ga_payment_attempts
       WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC,id DESC LIMIT ${OVERFLOW_ROWS}`,values);
-    return bounded(result.rows.map(row=>row.safe_record),'Payment report');
+    return bounded(result.rows.map(row=>normalizedPayment(row.safe_record)),'Payment report');
   }
 
   async subscriptions(filters){
-    const values=[];const conditions=[`(
-      activation_at < ${push(values,filters.toExclusiveIso)}::timestamptz
-      AND COALESCE(expires_at,current_period_ends_at,updated_at) >= ${push(values,filters.fromIso)}::timestamptz
-      OR updated_at >= $2::timestamptz AND updated_at < $1::timestamptz
-    )`];
+    const values=[];const to=push(values,filters.toExclusiveIso);const from=push(values,filters.fromIso);
+    const conditions=[`((activation_at < ${to}::timestamptz AND COALESCE(expires_at,current_period_ends_at,updated_at) >= ${from}::timestamptz)
+      OR (updated_at >= ${from}::timestamptz AND updated_at < ${to}::timestamptz))`];
     if(filters.planId)conditions.push(`plan_id=${push(values,filters.planId)}`);
     if(filters.subscriptionStatus)conditions.push(`status=${push(values,filters.subscriptionStatus)}`);
     if(filters.autoRenew==='true'||filters.autoRenew==='false')conditions.push(`auto_renew=${push(values,filters.autoRenew==='true')}`);
@@ -104,7 +103,7 @@ export class PostgresSubscriptionReportService{
       transactions=await this.transactions(filters,{membershipOnly:type==='summary'||type==='subscriptions'||type==='recurring-customers',extensionsOnly:type==='recurring-customers'});
     }
     if(['summary','subscriptions','recurring-customers'].includes(type))subscriptions=await this.subscriptions(filters);
-    if(type==='subscriptions'&&subscriptions.length){
+    if((type==='subscriptions'||type==='recurring-customers')&&subscriptions.length){
       const userIds=[...new Set(subscriptions.map(item=>item.userId).filter(Boolean))];
       transactions=uniqueById([...transactions,...await this.transactions(filters,{userIds,membershipOnly:true})]);
     }
@@ -118,6 +117,13 @@ export class PostgresSubscriptionReportService{
 
     snapshot.transactions=new Map(transactions.map(item=>[item.id,item]));
     snapshot.entitlementHistory=subscriptions;
+    snapshot.entitlements=new Map();
+    for(const item of subscriptions){
+      const current=snapshot.entitlements.get(item.userId);
+      const itemTime=Number(item.updatedAt??item.expiresAt??item.startsAt??0);
+      const currentTime=Number(current?.updatedAt??current?.expiresAt??current?.startsAt??0);
+      if(!current||itemTime>=currentTime)snapshot.entitlements.set(item.userId,item);
+    }
     const userIds=[...new Set([
       ...transactions.map(item=>item.userId),...subscriptions.map(item=>item.userId),
       ...snapshot.benefitLedger.map(item=>item.userId)
