@@ -24,6 +24,11 @@ for(const path of files){
   assert(!/AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/.test(source),`${path} must not use long-lived AWS keys.`);
 }
 
+for(const path of ['.github/workflows/platform-ci.yml','.github/workflows/platform-qualification.yml']){
+  if(!existsSync(path))continue;
+  assert(text(path).includes('github.event.pull_request.head.repo.full_name == github.repository'),`${path} must prevent fork-controlled code from reaching the persistent runner.`);
+}
+
 if(existsSync('.github/workflows/platform-ci.yml')){
   const source=text('.github/workflows/platform-ci.yml');
   for(const marker of [
@@ -60,9 +65,10 @@ if(existsSync('.github/workflows/runner-smoke.yml')){
   }
 }
 
-for(const path of ['scripts/check-self-hosted-runner.sh','scripts/cleanup-self-hosted-runner.sh','docs/SELF-HOSTED-CI.md']){
-  assert(existsSync(path),`Missing self-hosted CI support artifact: ${path}`);
-}
+for(const path of [
+  'scripts/check-self-hosted-runner.sh','scripts/cleanup-self-hosted-runner.sh',
+  'scripts/register-game-arena-runner.ps1','docs/SELF-HOSTED-CI.md'
+])assert(existsSync(path),`Missing self-hosted CI support artifact: ${path}`);
 
 if(failures.length){
   console.error(`Self-hosted workflow gate failed with ${failures.length} finding(s):`);
