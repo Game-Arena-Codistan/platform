@@ -1,15 +1,15 @@
 name: AWS staging deployment
 
 on:
-  workflow_run:
-    workflows: ['Build and publish images']
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       image_tag:
-        description: Full commit SHA; defaults to current main SHA
+        description: Full commit SHA to deploy; defaults to current main SHA
         required: false
+        type: string
+      confirmation:
+        description: Enter STAGE to continue
+        required: true
         type: string
 
 permissions:
@@ -17,29 +17,25 @@ permissions:
   packages: read
   id-token: write
 
+concurrency:
+  group: aws-staging-deployment
+  cancel-in-progress: false
+
 jobs:
-  automatic:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && vars.AWS_STAGING_ENABLED == 'true'
-    uses: ./.github/workflows/aws-deploy.yml
-    with:
-      environment: staging
-      image_tag: ${{ github.event.workflow_run.head_sha }}
-      run_migrations: true
-      require_staging_evidence: false
-      rollback: false
-      deployment_reason: Automatic deployment after immutable image publication
-    secrets: inherit
+  guard:
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    steps:
+      - name: Confirm intentional staging deployment
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = STAGE || { echo 'confirmation must be STAGE.' >&2; exit 1; }
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'image_tag must be a full 40-character commit SHA.' >&2; exit 1; }
 
-  automatic-controls:
-    needs: automatic
-    if: needs.automatic.result == 'success'
-    uses: ./.github/workflows/aws-runtime-controls.yml
-    with:
-      environment: staging
-    secrets: inherit
-
-  manual:
-    if: github.event_name == 'workflow_dispatch'
+  deploy:
+    needs: guard
     uses: ./.github/workflows/aws-deploy.yml
     with:
       environment: staging
@@ -47,12 +43,12 @@ jobs:
       run_migrations: true
       require_staging_evidence: false
       rollback: false
-      deployment_reason: Manual staging deployment
+      deployment_reason: Explicit protected staging deployment
     secrets: inherit
 
-  manual-controls:
-    needs: manual
-    if: needs.manual.result == 'success'
+  runtime-controls:
+    needs: deploy
+    if: needs.deploy.result == 'success'
     uses: ./.github/workflows/aws-runtime-controls.yml
     with:
       environment: staging
