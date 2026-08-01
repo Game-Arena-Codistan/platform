@@ -62,7 +62,7 @@ inspect(mocks);
 
 if(mocks.examples.otpRequested.debugCode!=='123456')throw new Error('Preview OTP must remain the documented mock code.');
 if(mocks.examples.topups.offers.length<3)throw new Error('Mock top-up contract requires at least three offers.');
-for(const slug of ['duck-hunter','ranger-vs-zombies','robotex']){
+for(const slug of ['duck-hunter','ranger-vs-zombies','robotex','swat-vs-zombies']){
   const game=mocks.examples.catalogue.games.find(item=>item.id===slug);
   if(!game||game.status!=='paused'||game.rolloutPercentage!==0)throw new Error(`${slug} must stay paused at zero rollout in the handoff fixture.`);
 }
