@@ -17,8 +17,10 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) { throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')" }
 }
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "GitHub CLI (gh) is required. Install it, then run: gh auth login" }
-Invoke-Checked gh @("auth","status")
+$ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+if (-not $ghCommand) { throw "GitHub CLI (gh) is required. Install it, then run: gh auth login" }
+$ghPath = $ghCommand.Source
+Invoke-Checked $ghPath @("auth","status")
 
 $games = @(
     [ordered]@{ slug="duck-hunter"; title="Duck Hunter"; deploy="Modified (No - Links, MoreGames Button, Share Buttons)\01.Duck Hunter\Duck Hunter.zip"; original="Original\01.Duck Hunter"; modified="Modified (No - Links, MoreGames Button, Share Buttons)\01.Duck Hunter"; bytes=31974209; sha256="33864d4654a9c7e96f1d073159b9fbcbc8df5f81c167530eca4575dfb08638c5" },
@@ -61,23 +63,38 @@ try {
     [ordered]@{schemaVersion=1;releaseTag=$ReleaseTag;createdAt=(Get-Date).ToUniversalTime().ToString("o");productionActivation=$false;assets=$assets} |
         ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
-    $isDraft = & gh release view $ReleaseTag --repo $Repository --json isDraft --jq .isDraft 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Invoke-Checked gh @("release","create",$ReleaseTag,"--repo",$Repository,"--draft","--title","Game Arena four-game pilot ingress","--notes","Private immutable ingress and source snapshots for issue #79. Production activation is disabled.")
-    } elseif ($isDraft -ne "true") {
-        throw "Existing release must remain draft/private: $ReleaseTag"
-    } else {
-        Write-Host "Resuming existing draft release: $ReleaseTag" -ForegroundColor Yellow
+    $probeOut = Join-Path $env:TEMP ("{0}-release-probe.stdout.txt" -f $ReleaseTag)
+    $probeErr = Join-Path $env:TEMP ("{0}-release-probe.stderr.txt" -f $ReleaseTag)
+    Remove-Item -LiteralPath $probeOut,$probeErr -Force -ErrorAction SilentlyContinue
+    try {
+        $probe = Start-Process -FilePath $ghPath -ArgumentList @("release","view",$ReleaseTag,"--repo",$Repository,"--json","isDraft","--jq",".isDraft") -NoNewWindow -Wait -PassThru -RedirectStandardOutput $probeOut -RedirectStandardError $probeErr
+        $probeOutput = if (Test-Path -LiteralPath $probeOut) { (Get-Content -LiteralPath $probeOut -Raw).Trim() } else { "" }
+        $probeError = if (Test-Path -LiteralPath $probeErr) { (Get-Content -LiteralPath $probeErr -Raw).Trim() } else { "" }
+
+        if ($probe.ExitCode -ne 0) {
+            if ($probeError -and $probeError -notmatch '(?i)release not found|not found|http 404') {
+                throw "Unable to inspect release ${ReleaseTag}: $probeError"
+            }
+            Invoke-Checked $ghPath @("release","create",$ReleaseTag,"--repo",$Repository,"--draft","--title","Game Arena four-game pilot ingress","--notes","Private immutable ingress and source snapshots for issue #79. Production activation is disabled.")
+        } elseif ($probeOutput -ne "true") {
+            throw "Existing release must remain draft/private: $ReleaseTag"
+        } else {
+            Write-Host "Resuming existing draft release: $ReleaseTag" -ForegroundColor Yellow
+        }
     }
+    finally {
+        Remove-Item -LiteralPath $probeOut,$probeErr -Force -ErrorAction SilentlyContinue
+    }
+
     foreach ($asset in Get-ChildItem -LiteralPath $work -File | Sort-Object Name) {
-        Invoke-Checked gh @("release","upload",$ReleaseTag,$asset.FullName,"--repo",$Repository,"--clobber")
+        Invoke-Checked $ghPath @("release","upload",$ReleaseTag,$asset.FullName,"--repo",$Repository,"--clobber")
     }
 
     Write-Host "Release created and uploaded: $ReleaseTag" -ForegroundColor Green
     Write-Host "https://github.com/$Repository/releases/tag/$ReleaseTag"
 
     if (-not $SkipWorkflowDispatch) {
-        Invoke-Checked gh @("workflow","run","game-content-oversize-pilot.yml","--repo",$Repository,"--ref",$WorkflowRef,"-f","release_tag=$ReleaseTag","-f","publish_to_staging=true")
+        Invoke-Checked $ghPath @("workflow","run","game-content-oversize-pilot.yml","--repo",$Repository,"--ref",$WorkflowRef,"-f","release_tag=$ReleaseTag","-f","publish_to_staging=true")
         Write-Host "Staging workflow dispatched on ref $WorkflowRef." -ForegroundColor Green
     }
 }
