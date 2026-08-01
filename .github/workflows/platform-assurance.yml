@@ -23,6 +23,8 @@ jobs:
         run: node scripts/security-check.mjs
       - name: Pre-staging controls
         run: node scripts/check-pre-staging.mjs
+      - name: Frontend-backend contract
+        run: node scripts/check-api-contract.mjs
       - name: Cloud deployment checks
         run: node scripts/check-cloud-deployment.mjs
       - name: API dependencies
