@@ -3,6 +3,7 @@ import {loadConfig} from './config.mjs';
 import {createApp} from './app.mjs';
 import {createMvpApp} from './mvp-app.mjs';
 import {createSupplementalApp} from './admin-app.mjs';
+import {createPostgresReportApp} from './postgres-report-app.mjs';
 import {MemoryStore} from './adapters/memory-store.mjs';
 import {assertNormalizedPostgresRuntime} from './lib/persistence-readiness.mjs';
 import {JazzCashAdapter} from './adapters/jazzcash.mjs';
@@ -45,6 +46,7 @@ const supportDelivery=new SupportDelivery({mode:config.supportMode,endpoint:conf
 const primary=createApp({config,store,jazzcash,otpDelivery,payments,rewardPolicy});
 const mvp=createMvpApp({config,store,payments,supportDelivery});
 const supplemental=createSupplementalApp({config,store});
+const postgresReports=createPostgresReportApp({config,pool:store.pool});
 
 function durableResponse(res){
   res.persistencePromise=Promise.resolve();
@@ -86,6 +88,7 @@ async function dispatch(req,res){
   await store.refresh?.();
   durableResponse(res);
   try{
+    if(postgresReports&&await postgresReports(req,res)!==false)return;
     if(await supplemental(req,res)!==false)return;
     if(await mvp(req,res)!==false)return;
     await primary(req,res);
@@ -136,7 +139,8 @@ server.maxRequestsPerSocket=1000;
 server.listen(config.port,'0.0.0.0',()=>console.log(JSON.stringify({
   level:'info',message:'Game Arena API listening',port:config.port,mode:config.nodeEnv,
   database:config.databaseUrl?'postgres':'memory',persistenceModel:store.persistenceModel||'memory',
-  payments:config.jazzcashMode,otp:config.otpProviderMode,support:config.supportMode,externalGames:config.allowExternalGames
+  reports:postgresReports?'postgresql-indexed':'memory',payments:config.jazzcashMode,otp:config.otpProviderMode,
+  support:config.supportMode,externalGames:config.allowExternalGames
 })));
 
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{

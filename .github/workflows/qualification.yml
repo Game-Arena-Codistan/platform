@@ -5,6 +5,7 @@ on:
       - 'apps/api/**'
       - 'apps/web/**'
       - 'infra/**'
+      - 'scripts/check-indexed-postgres-reports.mjs'
       - '.github/workflows/qualification.yml'
   workflow_dispatch:
 permissions:
@@ -42,8 +43,8 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Apply clean migrations
         run: node scripts/migrate.mjs
-      - name: Run PostgreSQL durability tests
-        run: node --test test/postgres.test.mjs
+      - name: Run PostgreSQL durability and indexed-report tests
+        run: node --test --test-concurrency=1 test/postgres*.test.mjs
   api-load:
     runs-on: ubuntu-latest
     defaults:
@@ -87,6 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Enforce indexed PostgreSQL report routing
+        run: node scripts/check-indexed-postgres-reports.mjs
       - name: Validate Compose configuration
         working-directory: infra
         run: docker compose -f docker-compose.yml config --quiet
