@@ -55,8 +55,11 @@ concurrency:
 
 jobs:
   import:
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -65,7 +68,10 @@ jobs:
       - name: Verify dedicated runner
         run: bash scripts/check-self-hosted-runner.sh
       - name: Prepare isolated artifact workspace
-        run: mkdir -p /tmp/game-arena-artifacts apps/game-ops/reports catalogue/releases
+        run: |
+          artifact_root="$(cygpath -u "$RUNNER_TEMP")/game-arena-artifacts"
+          echo "GAME_ARTIFACT_ROOT=$artifact_root" >> "$GITHUB_ENV"
+          mkdir -p "$artifact_root" apps/game-ops/reports catalogue/releases
       - name: Import one remote build
         if: inputs.mode == 'single'
         env:
@@ -78,7 +84,7 @@ jobs:
           node apps/game-ops/src/import-remote.mjs \
             --zip-url "$ZIP_URL" \
             --manifest-json "$MANIFEST_JSON" \
-            --output-root /tmp/game-arena-artifacts \
+            --output-root "$GAME_ARTIFACT_ROOT" \
             --audit-root apps/game-ops/reports/audit | tee apps/game-ops/reports/single-import.json
       - name: Import approved sheet builds
         if: inputs.mode == 'spreadsheet'
@@ -91,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$GOOGLE_SERVICE_ACCOUNT_JSON_B64" && test -n "$SPREADSHEET_ID" && test -n "$SHEET_NAME"
-          args=(--spreadsheet-id "$SPREADSHEET_ID" --sheet-name "$SHEET_NAME" --limit "$LIMIT" --output-root /tmp/game-arena-artifacts --artwork-root /tmp/game-arena-artifacts/artwork --audit-root apps/game-ops/reports/audit --report apps/game-ops/reports/catalogue-import.json)
+          args=(--spreadsheet-id "$SPREADSHEET_ID" --sheet-name "$SHEET_NAME" --limit "$LIMIT" --output-root "$GAME_ARTIFACT_ROOT" --artwork-root "$GAME_ARTIFACT_ROOT/artwork" --audit-root apps/game-ops/reports/audit --report apps/game-ops/reports/catalogue-import.json)
           if [ -n "$SLUG" ]; then args+=(--slug "$SLUG"); fi
           node apps/game-ops/src/import-catalogue.mjs "${args[@]}"
       - name: Validate generated artifacts
@@ -100,8 +106,8 @@ jobs:
           cd apps/game-ops && npm run ci
           cd ../web && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
           cd ../api && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
-          test -d /tmp/game-arena-artifacts/games
-          find /tmp/game-arena-artifacts/games -name game-manifest.json -print -quit | grep -q .
+          test -d "$GAME_ARTIFACT_ROOT/games"
+          find "$GAME_ARTIFACT_ROOT/games" -name game-manifest.json -print -quit | grep -q .
       - name: Create review metadata
         run: |
           set -euo pipefail
@@ -109,13 +115,13 @@ jobs:
             slug="$(jq -er .slug "$manifest")"; version="$(jq -er .version "$manifest")"
             mkdir -p "catalogue/releases/$slug"
             jq '{schemaVersion,slug,title,version,entrypoint,buildSha256,totalBytes,fileCount,permissions,bridgeVersion,minDeviceTier,rolloutPercentage,publishedAt,publishedBy,scan}' "$manifest" > "catalogue/releases/$slug/$version.json"
-          done < <(find /tmp/game-arena-artifacts/games -name game-manifest.json -type f | sort)
+          done < <(find "$GAME_ARTIFACT_ROOT/games" -name game-manifest.json -type f | sort)
           find catalogue/releases -type f -name '*.json' -print | sort > apps/game-ops/reports/release-metadata.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: reviewed-game-artifacts-${{ inputs.environment }}-${{ github.run_id }}
           path: |
-            /tmp/game-arena-artifacts
+            ${{ runner.temp }}\game-arena-artifacts
             apps/game-ops/reports
             catalogue/releases
           retention-days: 7
@@ -152,7 +158,7 @@ jobs:
             destination="s3://$bucket/games/$slug/$version/"
             aws s3api head-object --bucket "$bucket" --key "games/$slug/$version/game-manifest.json" >/dev/null 2>&1 && { echo "Immutable version already exists: $slug@$version" >&2; exit 1; }
             aws s3 sync "$source/" "$destination" --only-show-errors --cache-control 'public,max-age=31536000,immutable' --sse aws:kms
-          done < <(find /tmp/game-arena-artifacts/games -name game-manifest.json -type f | sort)
+          done < <(find "$GAME_ARTIFACT_ROOT/games" -name game-manifest.json -type f | sort)
       - name: Open metadata review pull request
         if: inputs.publish
         env:
