@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "releaseVersion": "1.0.0-pilot.1",
+  "productionActivation": false,
+  "games": [
+    {
+      "slug": "duck-hunter",
+      "title": "Duck Hunter",
+      "assetName": "duck-hunter.zip",
+      "compressedBytes": 31974209,
+      "sha256": "33864d4654a9c7e96f1d073159b9fbcbc8df5f81c167530eca4575dfb08638c5",
+      "localRelativePath": "Modified (No - Links, MoreGames Button, Share Buttons)\\01.Duck Hunter\\Duck Hunter.zip",
+      "manifest": {
+        "schemaVersion": 1,
+        "slug": "duck-hunter",
+        "title": "Duck Hunter",
+        "version": "1.0.0-pilot.1",
+        "genres": ["arcade"],
+        "orientation": "any",
+        "tier": "free",
+        "inputModes": ["touch", "mouse"],
+        "entryFile": "index.html",
+        "bridgeVersion": "1.0",
+        "minDeviceTier": "standard",
+        "rolloutPercentage": 0,
+        "description": "Oversized-build migration pilot. Production activation disabled pending qualification."
+      }
+    },
+    {
+      "slug": "ranger-vs-zombies",
+      "title": "Ranger vs Zombies",
+      "assetName": "ranger-vs-zombies.zip",
+      "compressedBytes": 29933802,
+      "sha256": "b9b62c7835030049affe3b0989a2bce8bcca518e58d3b5436b7c24f93d3aeb1e",
+      "localRelativePath": "Modified (No - Links, MoreGames Button, Share Buttons)\\13.Ranger vs Zombies\\Ranger vs Zombies.zip",
+      "manifest": {
+        "schemaVersion": 1,
+        "slug": "ranger-vs-zombies",
+        "title": "Ranger vs Zombies",
+        "version": "1.0.0-pilot.1",
+        "genres": ["action"],
+        "orientation": "any",
+        "tier": "free",
+        "inputModes": ["touch", "mouse"],
+        "entryFile": "index.html",
+        "bridgeVersion": "1.0",
+        "minDeviceTier": "standard",
+        "rolloutPercentage": 0,
+        "description": "Oversized-build migration pilot. Production activation disabled pending qualification."
+      }
+    },
+    {
+      "slug": "robotex",
+      "title": "Robotex",
+      "assetName": "robotex.zip",
+      "compressedBytes": 40401437,
+      "sha256": "4bc0f1cb49db2c22ece93acd3e8c563cceb9d267c10ea0efa7a488e365904bf7",
+      "localRelativePath": "Modified (No - Links, MoreGames Button, Share Buttons)\\54.Robotex\\ROBOTEX.zip",
+      "manifest": {
+        "schemaVersion": 1,
+        "slug": "robotex",
+        "title": "Robotex",
+        "version": "1.0.0-pilot.1",
+        "genres": ["arcade"],
+        "orientation": "any",
+        "tier": "free",
+        "inputModes": ["touch", "mouse"],
+        "entryFile": "index.html",
+        "bridgeVersion": "1.0",
+        "minDeviceTier": "standard",
+        "rolloutPercentage": 0,
+        "description": "Oversized-build migration pilot. Production activation disabled pending qualification."
+      }
+    },
+    {
+      "slug": "swat-vs-zombies",
+      "title": "Swat vs Zombies",
+      "assetName": "swat-vs-zombies.zip",
+      "compressedBytes": 86495953,
+      "sha256": "e81b265da331ebe0ff0a2047200eebc2e1a20044e2d841f9a5ea42ba0b9fb129",
+      "localRelativePath": "Modified (No - Links, MoreGames Button, Share Buttons)\\02.Swat vs Zombies\\Swat vs Zombies.zip",
+      "manifest": {
+        "schemaVersion": 1,
+        "slug": "swat-vs-zombies",
+        "title": "Swat vs Zombies",
+        "version": "1.0.0-pilot.1",
+        "genres": ["action"],
+        "orientation": "any",
+        "tier": "free",
+        "inputModes": ["touch", "mouse"],
+        "entryFile": "index.html",
+        "bridgeVersion": "1.0",
+        "minDeviceTier": "high",
+        "rolloutPercentage": 0,
+        "description": "Oversized-build migration pilot. Production activation disabled pending qualification."
+      }
+    }
+  ]
+}
