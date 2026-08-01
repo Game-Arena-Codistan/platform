@@ -34,7 +34,7 @@ jobs:
     runs-on: [self-hosted, windows, x64, game-arena-ci]
     defaults:
       run:
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
         working-directory: infra/opentofu/aws
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - name: Verify dedicated runner
         working-directory: ${{ github.workspace }}
-        run: bash scripts/check-self-hosted-runner.sh
+        run: source scripts/check-self-hosted-runner.sh
       - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
         with:
           tofu_version: 1.12.5
@@ -64,7 +64,7 @@ jobs:
       - name: Clean self-hosted runner
         if: always()
         working-directory: ${{ github.workspace }}
-        run: bash scripts/cleanup-self-hosted-runner.sh
+        run: source scripts/cleanup-self-hosted-runner.sh
 
   plan-or-apply:
     if: github.event_name == 'workflow_dispatch' && inputs.action != 'validate'
@@ -76,7 +76,7 @@ jobs:
       id-token: write
     defaults:
       run:
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
         working-directory: infra/opentofu/aws
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -84,7 +84,7 @@ jobs:
           persist-credentials: false
       - name: Verify dedicated runner
         working-directory: ${{ github.workspace }}
-        run: bash scripts/check-self-hosted-runner.sh
+        run: source scripts/check-self-hosted-runner.sh
       - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
         with:
           tofu_version: 1.12.5
@@ -173,4 +173,4 @@ jobs:
       - name: Clean self-hosted runner
         if: always()
         working-directory: ${{ github.workspace }}
-        run: bash scripts/cleanup-self-hosted-runner.sh
+        run: source scripts/cleanup-self-hosted-runner.sh
