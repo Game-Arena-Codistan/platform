@@ -24,7 +24,7 @@ $games = @(
     [ordered]@{ slug="duck-hunter"; title="Duck Hunter"; deploy="Modified (No - Links, MoreGames Button, Share Buttons)\01.Duck Hunter\Duck Hunter.zip"; original="Original\01.Duck Hunter"; modified="Modified (No - Links, MoreGames Button, Share Buttons)\01.Duck Hunter"; bytes=31974209; sha256="33864d4654a9c7e96f1d073159b9fbcbc8df5f81c167530eca4575dfb08638c5" },
     [ordered]@{ slug="ranger-vs-zombies"; title="Ranger vs Zombies"; deploy="Modified (No - Links, MoreGames Button, Share Buttons)\13.Ranger vs Zombies\Ranger vs Zombies.zip"; original="Original\13.Ranger vs Zombies"; modified="Modified (No - Links, MoreGames Button, Share Buttons)\13.Ranger vs Zombies"; bytes=29933802; sha256="b9b62c7835030049affe3b0989a2bce8bcca518e58d3b5436b7c24f93d3aeb1e" },
     [ordered]@{ slug="robotex"; title="Robotex"; deploy="Modified (No - Links, MoreGames Button, Share Buttons)\54.Robotex\ROBOTEX.zip"; original="Original\54.Robotex"; modified="Modified (No - Links, MoreGames Button, Share Buttons)\54.Robotex"; bytes=40401437; sha256="4bc0f1cb49db2c22ece93acd3e8c563cceb9d267c10ea0efa7a488e365904bf7" },
-    [ordered]@{ slug="swat-vs-zombies"; title="Swat vs Zombies"; deploy="Modified (No - Links, MoreGames Button, Share Buttons)\02.Swat vs Zombies\Swat vs Zombies.zip"; original="Original\02.Swat vs Zombies"; modified="Modified (No - Links, MoreGames Button, Share Buttons)\02.Swat vs Zombies"; bytes=86495953; sha256="e81b265da331ebe0ff0a2047200eebc2e1a20044e2d841f9a5ea42ba0b9fb129" }
+    [ordered]@{ slug="swat-vs-zombies"; title="Swat vs Zombies"; deploy="Modified (No - Links, MoreGames Button, Share Buttons)\02.Swat vs Zombies\SWAT VS ZOMBIES.zip"; original="Original\02.Swat vs Zombies"; modified="Modified (No - Links, MoreGames Button, Share Buttons)\02.Swat vs Zombies"; bytes=86495953; sha256="e81b265da331ebe0ff0a2047200eebc2e1a20044e2d841f9a5ea42ba0b9fb129" }
 )
 
 $work = Join-Path $env:TEMP $ReleaseTag
@@ -51,6 +51,7 @@ try {
                 Invoke-Checked "$env:WINDIR\System32\tar.exe" @("-a","-c","-f",$archive,"-C",(Split-Path $folder -Parent),(Split-Path $folder -Leaf))
                 $archiveInfo = Get-Item -LiteralPath $archive
                 $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($archiveInfo.Length -ge 2GB) { throw "GitHub release asset exceeds 2 GiB: $archive" }
                 $assets.Add([ordered]@{name=(Split-Path $archive -Leaf);kind=("{0}-source" -f $kind);slug=$game.slug;bytes=$archiveInfo.Length;sha256=$archiveHash})
             }
         }
@@ -60,7 +61,14 @@ try {
     [ordered]@{schemaVersion=1;releaseTag=$ReleaseTag;createdAt=(Get-Date).ToUniversalTime().ToString("o");productionActivation=$false;assets=$assets} |
         ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
-    Invoke-Checked gh @("release","create",$ReleaseTag,"--repo",$Repository,"--draft","--title","Game Arena four-game pilot ingress","--notes","Private immutable ingress and source snapshots for issue #79. Production activation is disabled.")
+    $isDraft = & gh release view $ReleaseTag --repo $Repository --json isDraft --jq .isDraft 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Invoke-Checked gh @("release","create",$ReleaseTag,"--repo",$Repository,"--draft","--title","Game Arena four-game pilot ingress","--notes","Private immutable ingress and source snapshots for issue #79. Production activation is disabled.")
+    } elseif ($isDraft -ne "true") {
+        throw "Existing release must remain draft/private: $ReleaseTag"
+    } else {
+        Write-Host "Resuming existing draft release: $ReleaseTag" -ForegroundColor Yellow
+    }
     foreach ($asset in Get-ChildItem -LiteralPath $work -File | Sort-Object Name) {
         Invoke-Checked gh @("release","upload",$ReleaseTag,$asset.FullName,"--repo",$Repository,"--clobber")
     }
