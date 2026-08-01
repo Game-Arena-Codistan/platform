@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   guard:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
     steps:
       - name: Confirm rollback target
         env:
