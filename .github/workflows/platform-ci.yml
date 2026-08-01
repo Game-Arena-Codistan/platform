@@ -1,0 +1,70 @@
+name: Platform CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform-ci:
+    if: vars.SELF_HOSTED_CI_ENABLED == 'true'
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          clean: true
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
+      - name: Repository, security and contract gates
+        run: |
+          node scripts/security-check.mjs
+          node scripts/check-pre-staging.mjs
+          node scripts/check-api-contract.mjs
+          node scripts/check-cloud-deployment.mjs
+          node scripts/check-indexed-postgres-reports.mjs
+      - name: API checks
+        working-directory: apps/api
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run ci
+      - name: Player checks
+        working-directory: apps/web
+        run: npm run ci
+      - name: Game operations checks
+        working-directory: apps/game-ops
+        run: npm run ci
+      - name: Game Bridge checks
+        working-directory: packages/game-bridge
+        run: npm run ci
+      - name: Administration checks
+        working-directory: apps/admin
+        run: npm run ci
+      - name: Compose and Kubernetes configuration
+        run: |
+          docker compose -f infra/docker-compose.yml config --quiet
+          test -s infra/kubernetes/platform.yaml
+          grep -q 'kind: Deployment' infra/kubernetes/platform.yaml
+          grep -q 'REPLACE_IMAGE_TAG' infra/kubernetes/platform.yaml
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## Platform CI'
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Runner: $RUNNER_NAME"
+            echo "- Result: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
