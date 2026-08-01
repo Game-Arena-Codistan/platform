@@ -1,0 +1,64 @@
+name: Runner Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-smoke
+  cancel-in-progress: false
+
+jobs:
+  runner-smoke:
+    name: runner-smoke
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          clean: true
+
+      - name: Verify tools and capacity
+        run: bash scripts/check-self-hosted-runner.sh
+
+      - name: Prove PostgreSQL container execution
+        run: |
+          name="game-arena-ci-${GITHUB_RUN_ID}-postgres"
+          docker run -d --name "$name" \
+            --label "game-arena.ci.run=${GITHUB_RUN_ID}" \
+            -e POSTGRES_PASSWORD=smoke \
+            -e POSTGRES_USER=smoke \
+            -e POSTGRES_DB=smoke \
+            postgres:16-alpine
+          for attempt in $(seq 1 30); do
+            docker exec "$name" pg_isready -U smoke -d smoke && break
+            sleep 1
+          done
+          docker exec "$name" psql -U smoke -d smoke -c 'select 1'
+
+      - name: Prove browser tooling
+        working-directory: tests/e2e
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install chromium
+          npx playwright --version
+
+      - name: Record runner evidence
+        run: |
+          {
+            echo '## Runner smoke passed'
+            echo
+            echo "- Runner: \`${RUNNER_NAME}\`"
+            echo "- OS: \`${RUNNER_OS}\`"
+            echo "- Architecture: \`${RUNNER_ARCH}\`"
+            echo "- Node: \`$(node --version)\`"
+            echo "- Docker: \`$(docker --version)\`"
+            echo "- OpenTofu: \`$(tofu version -json | jq -r .terraform_version)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
