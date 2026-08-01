@@ -83,13 +83,16 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.image_tag }}
           fetch-depth: 0
+
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -417,15 +420,7 @@ jobs:
           test -n "$alb_dns" || { echo 'ALB hostname was not assigned.' >&2; exit 1; }
           alb_zone="$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='$alb_dns'].CanonicalHostedZoneId | [0]" --output text)"
           test -n "$alb_zone" && [ "$alb_zone" != None ]
-          jq -n \
-            --arg public "$PUBLIC_HOST" \
-            --arg game "$GAME_HOST" \
-            --arg dns "$alb_dns" \
-            --arg zone "$alb_zone" \
-            '{Comment:"Game Arena GitHub deployment",Changes:[
-              {Action:"UPSERT",ResourceRecordSet:{Name:$public,Type:"A",AliasTarget:{HostedZoneId:$zone,DNSName:$dns,EvaluateTargetHealth:true}}},
-              {Action:"UPSERT",ResourceRecordSet:{Name:$game,Type:"A",AliasTarget:{HostedZoneId:$zone,DNSName:$dns,EvaluateTargetHealth:true}}}
-            ]}' > /tmp/route53-change.json
+          jq -n --arg public "$PUBLIC_HOST" --arg game "$GAME_HOST" --arg dns "$alb_dns" --arg zone "$alb_zone" '{Comment:"Game Arena GitHub deployment",Changes:[{Action:"UPSERT",ResourceRecordSet:{Name:$public,Type:"A",AliasTarget:{HostedZoneId:$zone,DNSName:$dns,EvaluateTargetHealth:true}}},{Action:"UPSERT",ResourceRecordSet:{Name:$game,Type:"A",AliasTarget:{HostedZoneId:$zone,DNSName:$dns,EvaluateTargetHealth:true}}}]}' > /tmp/route53-change.json
           aws route53 change-resource-record-sets --hosted-zone-id "$ROUTE53_ZONE_ID" --change-batch file:///tmp/route53-change.json >/tmp/route53-result.json
           echo "ALB_DNS=$alb_dns" >> "$GITHUB_ENV"
 
@@ -439,8 +434,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:18081/readyz
           curl --fail --silent http://127.0.0.1:18082/healthz
           for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error --max-time 20 "https://${PUBLIC_HOST}/api/healthz" >/dev/null && \
-               curl --fail --silent --show-error --max-time 20 "https://${GAME_HOST}/healthz" >/dev/null; then
+            if curl --fail --silent --show-error --max-time 20 "https://${PUBLIC_HOST}/api/healthz" >/dev/null && curl --fail --silent --show-error --max-time 20 "https://${GAME_HOST}/healthz" >/dev/null; then
               break
             fi
             sleep 10
@@ -461,23 +455,7 @@ jobs:
           mkdir -p /tmp/game-arena-evidence
           kubectl -n game-arena get deployments,pods,services,ingress -o wide > /tmp/game-arena-evidence/kubernetes.txt
           kubectl -n game-arena get events --sort-by=.lastTimestamp > /tmp/game-arena-evidence/events.txt
-          jq -n \
-            --arg environment "${{ inputs.environment }}" \
-            --arg imageTag "$IMAGE_TAG" \
-            --arg actor "$GITHUB_ACTOR" \
-            --arg runId "$GITHUB_RUN_ID" \
-            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
-            --arg repository "$GITHUB_REPOSITORY" \
-            --arg publicOrigin "$PUBLIC_ORIGIN" \
-            --arg gameOrigin "$GAME_ORIGIN" \
-            --arg alb "$ALB_DNS" \
-            --arg reason "$DEPLOYMENT_REASON" \
-            --arg qualificationRecord "$QUALIFICATION_RECORD" \
-            --arg changeRecord "$CHANGE_RECORD" \
-            --argjson migrations '${{ inputs.run_migrations }}' \
-            --argjson rollback '${{ inputs.rollback }}' \
-            '{environment:$environment,imageTag:$imageTag,actor:$actor,runId:$runId,runAttempt:$runAttempt,repository:$repository,publicOrigin:$publicOrigin,gameOrigin:$gameOrigin,loadBalancer:$alb,reason:$reason,qualificationRecord:$qualificationRecord,changeRecord:$changeRecord,migrations:$migrations,rollback:$rollback,recordedAt:(now|todate)}' \
-            > /tmp/game-arena-evidence/deployment.json
+          jq -n --arg environment "${{ inputs.environment }}" --arg imageTag "$IMAGE_TAG" --arg actor "$GITHUB_ACTOR" --arg runId "$GITHUB_RUN_ID" --arg runAttempt "$GITHUB_RUN_ATTEMPT" --arg repository "$GITHUB_REPOSITORY" --arg publicOrigin "$PUBLIC_ORIGIN" --arg gameOrigin "$GAME_ORIGIN" --arg alb "$ALB_DNS" --arg reason "$DEPLOYMENT_REASON" --arg qualificationRecord "$QUALIFICATION_RECORD" --arg changeRecord "$CHANGE_RECORD" --argjson migrations '${{ inputs.run_migrations }}' --argjson rollback '${{ inputs.rollback }}' '{environment:$environment,imageTag:$imageTag,actor:$actor,runId:$runId,runAttempt:$runAttempt,repository:$repository,publicOrigin:$publicOrigin,gameOrigin:$gameOrigin,loadBalancer:$alb,reason:$reason,qualificationRecord:$qualificationRecord,changeRecord:$changeRecord,migrations:$migrations,rollback:$rollback,recordedAt:(now|todate)}' > /tmp/game-arena-evidence/deployment.json
           prefix="${{ inputs.environment }}/${IMAGE_TAG}"
           aws s3 cp /tmp/game-arena-evidence/ "s3://${DEPLOYMENT_EVIDENCE_BUCKET}/${prefix}/${GITHUB_RUN_ID}/" --recursive
           aws s3 cp /tmp/game-arena-evidence/deployment.json "s3://${DEPLOYMENT_EVIDENCE_BUCKET}/${prefix}/latest.json"
@@ -486,7 +464,7 @@ jobs:
         with:
           name: aws-${{ inputs.environment }}-deployment-${{ inputs.image_tag }}-${{ github.run_id }}
           path: /tmp/game-arena-evidence
-          retention-days: 90
+          retention-days: 30
 
       - name: Publish deployment summary
         run: |
@@ -502,3 +480,13 @@ jobs:
             echo "- Rollback: ${{ inputs.rollback }}"
             echo "- Evidence: s3://$DEPLOYMENT_EVIDENCE_BUCKET/${{ inputs.environment }}/$IMAGE_TAG/$GITHUB_RUN_ID/"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean deployment credentials and runner workspace
+        if: always()
+        run: |
+          rm -f /tmp/game-arena-runtime.env /tmp/staging-deployment.json /tmp/route53-change.json /tmp/route53-result.json
+          rm -rf /tmp/game-arena /tmp/game-arena-evidence
+          rm -f "$HOME/.kube/config"
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          [ -z "${ECR_REGISTRY:-}" ] || docker logout "$ECR_REGISTRY" >/dev/null 2>&1 || true
+          bash scripts/cleanup-self-hosted-runner.sh
