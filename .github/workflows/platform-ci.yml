@@ -16,8 +16,11 @@ jobs:
   platform-ci:
     name: platform-ci
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
     env:
       CI: '1'
     steps:
@@ -114,7 +117,8 @@ jobs:
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Runner: \`${RUNNER_NAME}\`"
             echo "- Full checks: \`${{ steps.scope.outputs.full || 'unknown' }}\`"
-            echo '- Labels: self-hosted, linux, x64, game-arena-ci'
+            echo '- Labels: self-hosted, windows, x64, game-arena-ci'
+            echo '- Docker Desktop: Linux containers'
             echo '- Hosted runner minutes: not used'
           } >> "$GITHUB_STEP_SUMMARY"
 
