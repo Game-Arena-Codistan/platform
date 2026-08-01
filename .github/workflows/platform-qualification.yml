@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 180
     defaults:
       run:
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
     env:
       CI: '1'
       DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:55432/game_arena_test
@@ -47,7 +47,7 @@ jobs:
           clean: true
 
       - name: Verify dedicated runner
-        run: bash scripts/check-self-hosted-runner.sh
+        run: source scripts/check-self-hosted-runner.sh
 
       - name: Start PostgreSQL 16 in Docker Desktop
         run: |
@@ -206,4 +206,4 @@ jobs:
 
       - name: Clean self-hosted runner
         if: always()
-        run: bash scripts/cleanup-self-hosted-runner.sh
+        run: source scripts/cleanup-self-hosted-runner.sh
