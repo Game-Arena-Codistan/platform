@@ -145,11 +145,22 @@ jobs:
           Get-ChildItem -Path "$env:PILOT_ROOT\artifacts\games" -Filter game-manifest.json -Recurse | Sort-Object FullName | ForEach-Object {
             $manifest = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
             $key = "games/$($manifest.slug)/$($manifest.version)/game-manifest.json"
-            aws s3api head-object --bucket $bucket --key $key *> $null
-            if ($LASTEXITCODE -eq 0) { throw "Immutable version already exists: $($manifest.slug)@$($manifest.version)" }
-            $source = Split-Path -LiteralPath $_.FullName -Parent
-            aws s3 sync "$source\" "s3://$bucket/games/$($manifest.slug)/$($manifest.version)/" --only-show-errors --cache-control "public,max-age=31536000,immutable" --sse aws:kms
-            if ($LASTEXITCODE -ne 0) { throw "S3 publication failed: $($manifest.slug)" }
+            $head = & aws s3api head-object --bucket $bucket --key $key 2>&1
+            $headExit = $LASTEXITCODE
+            if ($headExit -eq 0) {
+              $remoteManifestPath = Join-Path $env:PILOT_ROOT "remote-$($manifest.slug)-manifest.json"
+              & aws s3 cp "s3://$bucket/$key" $remoteManifestPath --only-show-errors
+              if ($LASTEXITCODE -ne 0) { throw "Unable to verify existing immutable version: $($manifest.slug)" }
+              $remote = Get-Content -LiteralPath $remoteManifestPath -Raw | ConvertFrom-Json
+              if ($remote.buildSha256 -ne $manifest.buildSha256) { throw "Immutable version collision: $($manifest.slug)@$($manifest.version)" }
+              Write-Host "Verified existing matching immutable version: $($manifest.slug)@$($manifest.version)"
+            } else {
+              $headText = $head | Out-String
+              if ($headText -notmatch '(?i)(Not Found|404|NoSuchKey)') { throw "S3 existence check failed for $($manifest.slug): $headText" }
+              $source = Split-Path -LiteralPath $_.FullName -Parent
+              & aws s3 sync "$source\" "s3://$bucket/games/$($manifest.slug)/$($manifest.version)/" --only-show-errors --cache-control "public,max-age=31536000,immutable" --sse aws:kms
+              if ($LASTEXITCODE -ne 0) { throw "S3 publication failed: $($manifest.slug)" }
+            }
           }
 
       - name: Open metadata review pull request
