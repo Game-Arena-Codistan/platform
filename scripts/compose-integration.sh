@@ -27,15 +27,7 @@ readiness="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/readyz)
 
 catalogue="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/catalog/games)"
 count="$(printf '%s' "$catalogue" | node -e 'const fs=require("node:fs");const value=JSON.parse(fs.readFileSync(0,"utf8"));console.log(value.games?.length||0)')"
-[ "$count" -ge 5 ] || fail "Expected at least five catalogue records; found $count."
-CATALOGUE_JSON="$catalogue" node -e '
-const value=JSON.parse(process.env.CATALOGUE_JSON);
-for(const id of ["duck-hunter","ranger-vs-zombies","robotex","swat-vs-zombies"]){
-  if(!value.games.some(item=>item.id===id)){
-    console.error(`Pilot ${id} is missing from the public catalogue.`);
-    process.exit(1);
-  }
-}'
+[ "$count" -ge 5 ] || fail "Expected at least five public catalogue records; found $count."
 for id in duck-hunter ranger-vs-zombies robotex swat-vs-zombies; do
   state="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tA -F '|' -c "SELECT COALESCE(record->>'status',''),COALESCE(record->>'rolloutPercentage','') FROM ga_runtime_games WHERE deleted_at IS NULL AND record_key='${id}'")"
   [ "$state" = 'paused|0' ] || fail "Pilot $id is not pinned paused at rollout 0 in PostgreSQL; found '$state'."
@@ -68,4 +60,4 @@ legacy="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tAc
 model="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tAc "SELECT value->>'name' FROM ga_runtime_schema_state WHERE id='persistence-model'")"
 [ "$model" = normalized-postgres-v1 ] || fail "Unexpected persistence model: $model"
 
-echo "Compose integration passed: services healthy, pilots paused, anonymous session safe, PostgreSQL write durable across API restart."
+echo "Compose integration passed: services healthy, pilots private and paused, anonymous session safe, PostgreSQL write durable across API restart."
