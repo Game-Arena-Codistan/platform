@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {parseReportFilters} from '../src/services/subscription-reports.mjs';
 import {PostgresSubscriptionReportService} from '../src/services/postgres-subscription-reports.mjs';
 
@@ -20,7 +21,10 @@ const runtimeTables=[
 
 async function database(){const {Pool}=await import('pg');return new Pool({connectionString,max:2});}
 async function reset(pool){await pool.query(`TRUNCATE ${runtimeTables.join(',')} RESTART IDENTITY CASCADE`);}
-
+async function runBackfill(pool){
+  const sql=await readFile(new URL('../migrations/912_backfill_reporting_projections.sql',import.meta.url),'utf8');
+  await pool.query(sql);
+}
 function filters(){
   return parseReportFilters(new URLSearchParams('from=2026-08-01&to=2026-08-03&limit=50'),()=>Date.parse('2026-08-02T12:00:00.000Z'));
 }
@@ -83,5 +87,46 @@ test('deployed reports read indexed PostgreSQL projections and persist export au
     assert.equal(audit.rows[0].actor_id,'finance-test');
     assert.equal(audit.rows[0].report_type,'payments');
     assert.equal(Number(audit.rows[0].row_count),1);
+  }finally{await pool.end();}
+});
+
+test('projection backfill converts runtime epoch timestamps and makes rows reportable',options,async()=>{
+  const pool=await database();await reset(pool);
+  const userId='99999999-9999-4999-8999-999999999999';
+  const transactionId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const periodId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const benefitId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const caseId='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const createdAtMs=Date.parse('2026-08-01T09:00:00.000Z');
+  const paidAtMs=Date.parse('2026-08-01T09:05:00.000Z');
+  const expiresAtMs=Date.parse('2026-09-01T09:05:00.000Z');
+  const plan={id:'monthly',version:'monthly-v1',name:'Monthly',status:'active',pricePkr:299,currency:'PKR',durationDays:30,billingMode:'single',benefitsVersion:'v1',effectiveAt:createdAtMs};
+  const payment={id:transactionId,userId,kind:'membership',purpose:'activation',planId:'monthly',planSnapshot:plan,listAmountPkr:299,amountPkr:299,discountPkr:0,refundAmountPkr:0,currency:'PKR',status:'paid',providerStatus:'paid',provider:'JazzCash',providerReference:'backfill-reference',subscriptionPeriodId:periodId,createdAt:createdAtMs,initiatedAt:createdAtMs,completedAt:paidAtMs,paidAt:paidAtMs,updatedAt:paidAtMs};
+  const entitlement={id:periodId,userId,tier:'premium',planId:'monthly',planSnapshot:plan,origin:'paid',purpose:'activation',status:'active',startsAt:paidAtMs,currentPeriodStartsAt:paidAtMs,currentPeriodEndsAt:expiresAtMs,expiresAt:expiresAtMs,autoRenew:false,sourceType:'payment',sourceId:transactionId,createdAt:paidAtMs,updatedAt:paidAtMs};
+  const benefit={id:benefitId,userId,transactionId,subscriptionPeriodId:periodId,type:'member_topup_discount',status:'redeemed',issuedAmountPkr:25,redeemedAmountPkr:25,reversedAmountPkr:0,createdAt:paidAtMs,updatedAt:paidAtMs};
+  const reconciliation={id:caseId,transactionId,reason:'backfill_review',status:'open',createdAt:paidAtMs,updatedAt:paidAtMs};
+  try{
+    await pool.query('INSERT INTO ga_runtime_identities(record_key,record) VALUES($1,$2)',['email:backfill@example.test',{type:'email',value:'backfill@example.test',userId,createdAt:createdAtMs}]);
+    await pool.query('INSERT INTO ga_runtime_plan_versions(record_key,record) VALUES($1,$2)',[plan.version,plan]);
+    await pool.query('INSERT INTO ga_runtime_transactions(record_key,record) VALUES($1,$2)',[transactionId,payment]);
+    await pool.query('INSERT INTO ga_runtime_entitlement_history(record_key,record) VALUES($1,$2)',[`${periodId}:${paidAtMs}`,entitlement]);
+    await pool.query('INSERT INTO ga_runtime_benefit_ledger(record_key,record) VALUES($1,$2)',[benefitId,benefit]);
+    await pool.query('INSERT INTO ga_runtime_reconciliation_cases(record_key,record) VALUES($1,$2)',[caseId,reconciliation]);
+
+    await runBackfill(pool);
+    const typed=await pool.query('SELECT activation_at,expires_at FROM ga_subscription_periods WHERE id=$1',[periodId]);
+    assert.equal(typed.rowCount,1);
+    assert.equal(new Date(typed.rows[0].activation_at).toISOString(),'2026-08-01T09:05:00.000Z');
+    assert.equal(new Date(typed.rows[0].expires_at).toISOString(),'2026-09-01T09:05:00.000Z');
+
+    const service=new PostgresSubscriptionReportService({pool,clock:()=>Date.parse('2026-08-02T12:00:00.000Z')});
+    const reportFilters=filters();
+    const summary=await service.summary(reportFilters);
+    assert.equal(summary.kpis.grossCollectionsPkr,299);
+    assert.equal(summary.kpis.activeSubscriptions,1);
+    assert.equal(summary.kpis.benefitCostPkr,25);
+    const ledger=await service.paymentLedger(reportFilters);
+    assert.equal(ledger.rows[0].providerReference,'backfill-reference');
+    assert.equal(ledger.rows[0].customer.masked,'b***@example.test');
   }finally{await pool.end();}
 });
