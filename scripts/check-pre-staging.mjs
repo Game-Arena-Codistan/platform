@@ -73,6 +73,45 @@ const deploy=text('.github/workflows/aws-deploy.yml');
 assert(!deploy.includes('ADMIN_API_KEYS'),'.github/workflows/aws-deploy.yml must not deploy ADMIN_API_KEYS.');
 assert(!deploy.includes('admin_api_keys'),'.github/workflows/aws-deploy.yml must not read legacy admin_api_keys.');
 
+for(const path of [
+  'scripts/check-postgres-staging-readiness.mjs',
+  'scripts/generate-staging-application-secret.mjs',
+  'scripts/validate-staging-application-secret.mjs',
+  'docs/STAGING-APPLICATION-SECRET.md',
+  'docs/GAME-PORTFOLIO-STATUS.md'
+]){
+  assert(existsSync(path),`Missing staging readiness artifact: ${path}`);
+}
+
+if(existsSync('scripts/check-postgres-staging-readiness.mjs')){
+  const postgresGate=text('scripts/check-postgres-staging-readiness.mjs');
+  for(const marker of ['platform_state','single writer replica','pg_advisory_xact_lock','issue #52']){
+    assert(postgresGate.includes(marker),`PostgreSQL readiness check is missing marker: ${marker}`);
+  }
+}
+
+if(existsSync('scripts/generate-staging-application-secret.mjs')){
+  const generator=text('scripts/generate-staging-application-secret.mjs');
+  for(const marker of ['randomBytes(32)','jazzcash_webhook_secret','topup_offers_json','voucher_codes_json','mode: 0o600']){
+    assert(generator.includes(marker),`Staging application-secret generator is missing: ${marker}`);
+  }
+  assert(!generator.includes('DATABASE_URL'),'Staging application-secret generator must not create DATABASE_URL.');
+  assert(!generator.includes('ADMIN_API_KEYS'),'Staging application-secret generator must not create ADMIN_API_KEYS.');
+}
+
+if(existsSync('docs/PRE-STAGING-GATE.md')){
+  const guide=text('docs/PRE-STAGING-GATE.md');
+  for(const marker of [
+    'node scripts/check-postgres-staging-readiness.mjs',
+    'node scripts/generate-staging-application-secret.mjs',
+    'node scripts/validate-staging-application-secret.mjs',
+    '61 submitted catalogue rows',
+    'four oversized titles'
+  ]){
+    assert(guide.includes(marker),`Pre-staging guide is missing: ${marker}`);
+  }
+}
+
 const versions=text('infra/opentofu/aws/versions.tf');
 for(const marker of [
   'required_version = "= 1.12.5"',
