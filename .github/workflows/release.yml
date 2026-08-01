@@ -16,7 +16,10 @@ concurrency:
 
 jobs:
   build:
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       max-parallel: 1
