@@ -1,0 +1,96 @@
+name: Platform CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform-ci:
+    name: platform-ci
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    timeout-minutes: 60
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          clean: true
+
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
+
+      - name: Verify workflow runner policy
+        run: node scripts/check-workflow-runners.mjs
+
+      - name: Repository security and staging controls
+        run: |
+          node scripts/security-check.mjs
+          node scripts/check-pre-staging.mjs
+          node scripts/check-cloud-deployment.mjs
+
+      - name: API dependencies
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: API checks
+        working-directory: apps/api
+        run: npm run ci
+
+      - name: Player dependencies
+        working-directory: apps/web
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Player checks and build
+        working-directory: apps/web
+        run: |
+          npm run check
+          npm test
+          npm run build
+
+      - name: Game ingestion and catalogue checks
+        working-directory: apps/game-ops
+        run: npm run ci
+
+      - name: Game Bridge checks
+        working-directory: packages/game-bridge
+        run: npm run ci
+
+      - name: Operations console checks
+        working-directory: apps/admin
+        run: npm run ci
+
+      - name: Validate Compose and Kubernetes configuration
+        run: |
+          docker compose -f infra/docker-compose.yml config --quiet
+          test -s infra/kubernetes/platform.yaml
+          grep -q 'kind: Deployment' infra/kubernetes/platform.yaml
+          grep -q 'REPLACE_IMAGE_TAG' infra/kubernetes/platform.yaml
+
+      - name: Record result
+        if: always()
+        run: |
+          {
+            echo '## Platform CI'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Runner: \`${RUNNER_NAME}\`"
+            echo '- Labels: self-hosted, linux, x64, game-arena-ci'
+            echo '- Hosted runner minutes: not used'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
