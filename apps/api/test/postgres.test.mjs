@@ -91,6 +91,6 @@ test('legacy state is archived, expanded and removed transactionally',options,as
   try{
     assert.equal(store.getUser(userId).displayName,'Legacy Player');
     assert.equal(store.wallet(userId),40);
-    assert.equal(store.getGame('legacy-game').status,'paused');
+    assert.equal(store.games.find(item=>item.id==='legacy-game')?.status,'paused');
   }finally{await store.close();}
 });
