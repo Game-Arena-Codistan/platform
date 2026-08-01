@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0.0",
+  "basePath": "/",
+  "authentication": {
+    "player": "Opaque HttpOnly session cookie plus CSRF cookie/header for mutations.",
+    "admin": "Signed identity-proxy assertion with server-enforced roles.",
+    "preview": "Vercel runs mode=mock and must never receive production secrets."
+  },
+  "errorEnvelope": {
+    "error": {
+      "code": "string",
+      "message": "string",
+      "details": "object|null"
+    }
+  },
+  "routes": [
+    {"method":"GET","path":"/healthz","auth":"public","successStatus":200,"mockExample":"health"},
+    {"method":"GET","path":"/readyz","auth":"public","successStatus":200,"mockExample":"readiness"},
+    {"method":"GET","path":"/v1/catalog/games","auth":"public","successStatus":200,"mockExample":"catalogue"},
+    {"method":"GET","path":"/v1/catalog/games/{gameId}","auth":"public","successStatus":200,"mockExample":"gameDetail"},
+    {"method":"POST","path":"/v1/auth/otp","auth":"public","successStatus":202,"mockExample":"otpRequested"},
+    {"method":"POST","path":"/v1/auth/otp/verify","auth":"public","successStatus":200,"mockExample":"otpVerified"},
+    {"method":"GET","path":"/v1/session","auth":"optional","successStatus":200,"mockExample":"sessionAnonymous"},
+    {"method":"POST","path":"/v1/auth/logout","auth":"session","successStatus":204},
+    {"method":"POST","path":"/v1/auth/logout-all","auth":"session","successStatus":200,"mockExample":"logoutAll"},
+    {"method":"GET","path":"/v1/account/sessions","auth":"session","successStatus":200,"mockExample":"sessions"},
+    {"method":"GET","path":"/v1/account/export","auth":"session","successStatus":200,"mockExample":"accountExport"},
+    {"method":"DELETE","path":"/v1/account","auth":"session","successStatus":202,"mockExample":"accountDeletion"},
+    {"method":"GET","path":"/v1/entitlements/me","auth":"session","successStatus":200,"mockExample":"entitlement"},
+    {"method":"POST","path":"/v1/payments/jazzcash/checkout","auth":"session","successStatus":201,"mockExample":"membershipCheckout"},
+    {"method":"GET","path":"/v1/payments/{transactionId}","auth":"session","successStatus":200,"mockExample":"paymentPending"},
+    {"method":"POST","path":"/v1/play-sessions","auth":"session","successStatus":201,"mockExample":"playSession"},
+    {"method":"POST","path":"/v1/play-sessions/{playSessionId}/complete","auth":"session","successStatus":200,"mockExample":"playComplete"},
+    {"method":"GET","path":"/v1/leaderboards/{gameId}","auth":"public","successStatus":200,"mockExample":"leaderboard"},
+    {"method":"GET","path":"/v1/challenges","auth":"optional","successStatus":200,"mockExample":"challenges"},
+    {"method":"POST","path":"/v1/challenges/{challengeId}/claim","auth":"session","successStatus":200,"mockExample":"challengeClaim"},
+    {"method":"GET","path":"/v1/tournaments","auth":"optional","successStatus":200,"mockExample":"tournaments"},
+    {"method":"POST","path":"/v1/tournaments/{tournamentId}/join","auth":"session","successStatus":201,"mockExample":"tournamentJoin"},
+    {"method":"GET","path":"/v1/wallet","auth":"session","successStatus":200,"mockExample":"wallet"},
+    {"method":"GET","path":"/v1/offers/topups","auth":"optional","successStatus":200,"mockExample":"topups"},
+    {"method":"POST","path":"/v1/offers/topups/checkout","auth":"session","successStatus":201,"mockExample":"topupCheckout"},
+    {"method":"POST","path":"/v1/vouchers/redeem","auth":"session","successStatus":201,"mockExample":"voucherRedeemed"},
+    {"method":"GET","path":"/v1/multiplayer/rooms","auth":"public","successStatus":200,"mockExample":"rooms"},
+    {"method":"POST","path":"/v1/multiplayer/rooms","auth":"session","successStatus":201,"mockExample":"roomCreated"},
+    {"method":"POST","path":"/v1/multiplayer/rooms/{roomId}/join","auth":"session","successStatus":200,"mockExample":"roomJoined"},
+    {"method":"POST","path":"/v1/support/tickets","auth":"optional","successStatus":201,"mockExample":"supportTicket"}
+  ]
+}
