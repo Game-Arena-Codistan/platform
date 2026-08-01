@@ -3,9 +3,6 @@ name: Platform CI
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
   workflow_dispatch:
 
 permissions:
@@ -28,32 +25,57 @@ jobs:
         with:
           persist-credentials: false
           clean: true
+          fetch-depth: 0
 
       - name: Verify dedicated runner
         run: bash scripts/check-self-hosted-runner.sh
 
+      - name: Classify change scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          full=true
+          if [ "$EVENT_NAME" = pull_request ]; then
+            git diff --name-only "origin/${BASE_REF}"...HEAD | tee /tmp/game-arena-changed-files.txt
+            if ! grep -Ev '(^docs/|\.md$)' /tmp/game-arena-changed-files.txt | grep -q .; then
+              full=false
+            fi
+          fi
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "Full platform checks: $full" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify workflow runner policy
         run: node scripts/check-workflow-runners.mjs
 
-      - name: Repository security and staging controls
+      - name: Repository security check
+        run: node scripts/security-check.mjs
+
+      - name: Staging and cloud controls
+        if: steps.scope.outputs.full == 'true'
         run: |
-          node scripts/security-check.mjs
           node scripts/check-pre-staging.mjs
           node scripts/check-cloud-deployment.mjs
 
       - name: API dependencies
+        if: steps.scope.outputs.full == 'true'
         working-directory: apps/api
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: API checks
+        if: steps.scope.outputs.full == 'true'
         working-directory: apps/api
         run: npm run ci
 
       - name: Player dependencies
+        if: steps.scope.outputs.full == 'true'
         working-directory: apps/web
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Player checks and build
+        if: steps.scope.outputs.full == 'true'
         working-directory: apps/web
         run: |
           npm run check
@@ -61,18 +83,22 @@ jobs:
           npm run build
 
       - name: Game ingestion and catalogue checks
+        if: steps.scope.outputs.full == 'true'
         working-directory: apps/game-ops
         run: npm run ci
 
       - name: Game Bridge checks
+        if: steps.scope.outputs.full == 'true'
         working-directory: packages/game-bridge
         run: npm run ci
 
       - name: Operations console checks
+        if: steps.scope.outputs.full == 'true'
         working-directory: apps/admin
         run: npm run ci
 
       - name: Validate Compose and Kubernetes configuration
+        if: steps.scope.outputs.full == 'true'
         run: |
           docker compose -f infra/docker-compose.yml config --quiet
           test -s infra/kubernetes/platform.yaml
@@ -87,6 +113,7 @@ jobs:
             echo
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Runner: \`${RUNNER_NAME}\`"
+            echo "- Full checks: \`${{ steps.scope.outputs.full || 'unknown' }}\`"
             echo '- Labels: self-hosted, linux, x64, game-arena-ci'
             echo '- Hosted runner minutes: not used'
           } >> "$GITHUB_STEP_SUMMARY"
