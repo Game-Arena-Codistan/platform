@@ -55,13 +55,15 @@ concurrency:
 
 jobs:
   import:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, game-arena-ci]
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
       - name: Prepare isolated artifact workspace
         run: mkdir -p /tmp/game-arena-artifacts apps/game-ops/reports catalogue/releases
       - name: Import one remote build
@@ -116,7 +118,7 @@ jobs:
             /tmp/game-arena-artifacts
             apps/game-ops/reports
             catalogue/releases
-          retention-days: 30
+          retention-days: 7
           if-no-files-found: error
       - name: Validate expected AWS account
         if: inputs.publish
@@ -166,3 +168,6 @@ jobs:
           git commit -m 'Games: record reviewed immutable releases'
           git push --set-upstream origin "$branch"
           gh pr create --base main --head "$branch" --title 'Games: review immutable release metadata' --body $'Artifacts were published through the protected AWS content role.\n\nThis PR contains only manifests, digests and non-sensitive audit evidence; no game binaries or source archives are committed to the platform repository.'
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
