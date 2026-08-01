@@ -43,7 +43,7 @@ jobs:
       - name: Apply clean migrations
         run: node scripts/migrate.mjs
       - name: Run PostgreSQL durability and indexed-report tests
-        run: node --test test/postgres*.test.mjs
+        run: node --test --test-concurrency=1 test/postgres*.test.mjs
   api-load:
     runs-on: ubuntu-latest
     defaults:
@@ -59,7 +59,7 @@ jobs:
           NODE_ENV: test
           PORT: 8081
           OTP_PROVIDER_MODE: mock
-          JAZCASH_MODE: mock
+          JAZZCASH_MODE: mock
           ALLOW_DEBUG_OTP: "true"
           REQUIRE_DATABASE: "false"
         run: |
