@@ -6,3 +6,5 @@ coverage/
 .env.*
 !.env.example
 *.log
+staging-application-secret*.json
+infra/opentofu/aws/staging-account-intake.json
