@@ -30,22 +30,11 @@ jobs:
   platform-qualification:
     name: platform-qualification
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'launch-gate')
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     timeout-minutes: 180
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: game_arena_test
-          POSTGRES_PASSWORD: game_arena_test
-          POSTGRES_DB: game_arena_test
-        ports:
-          - 55432:5432
-        options: >-
-          --health-cmd "pg_isready -U game_arena_test -d game_arena_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
+    defaults:
+      run:
+        shell: bash
     env:
       CI: '1'
       DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:55432/game_arena_test
@@ -59,6 +48,23 @@ jobs:
 
       - name: Verify dedicated runner
         run: bash scripts/check-self-hosted-runner.sh
+
+      - name: Start PostgreSQL 16 in Docker Desktop
+        run: |
+          name="game-arena-ci-${GITHUB_RUN_ID}-postgres"
+          docker rm -f "$name" >/dev/null 2>&1 || true
+          docker run -d --name "$name" \
+            --label "game-arena.ci.run=${GITHUB_RUN_ID}" \
+            -e POSTGRES_USER=game_arena_test \
+            -e POSTGRES_PASSWORD=game_arena_test \
+            -e POSTGRES_DB=game_arena_test \
+            -p 55432:5432 \
+            postgres:16-alpine
+          for attempt in $(seq 1 30); do
+            docker exec "$name" pg_isready -U game_arena_test -d game_arena_test && break
+            sleep 1
+          done
+          docker exec "$name" pg_isready -U game_arena_test -d game_arena_test
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
@@ -174,6 +180,8 @@ jobs:
             echo
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Runner: \`${RUNNER_NAME}\`"
+            echo '- Host: Windows'
+            echo '- Containers: Docker Desktop Linux containers'
             echo '- Database: PostgreSQL 16'
             echo '- Browsers: Chromium, Firefox, WebKit'
             echo '- OpenTofu: 1.12.5'
