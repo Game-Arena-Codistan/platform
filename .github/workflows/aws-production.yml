@@ -27,7 +27,10 @@ permissions:
 
 jobs:
   guard:
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Confirm intentional production promotion
         env:
@@ -43,8 +46,11 @@ jobs:
           test -n "$CHANGE_RECORD"
 
   provider-guard:
-    runs-on: [self-hosted, linux, x64, game-arena-ci]
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
     environment: production
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Validate expected AWS account
         env:
