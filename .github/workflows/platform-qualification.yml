@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 180
     defaults:
       run:
-        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+        shell: bash
     env:
       CI: '1'
       DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:55432/game_arena_test
