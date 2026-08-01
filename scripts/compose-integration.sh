@@ -45,7 +45,7 @@ session="$(curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/sessio
 before="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tAc "SELECT count(*) FROM ga_runtime_support_tickets WHERE deleted_at IS NULL")"
 response="$(curl --fail --silent --show-error \
   -H 'content-type: application/json' \
-  -d '{"topic":"compose-integration","message":"Verify gateway, API and PostgreSQL durability through the complete local stack."}' \
+  -d '{"topic":"Game not loading","message":"Verify gateway, API and PostgreSQL durability through the complete local stack."}' \
   http://127.0.0.1:8080/api/v1/support/tickets)"
 [ "$(printf '%s' "$response" | json ticket.status)" = open ] || fail 'Support-ticket integration write did not return open status.'
 after="$("${compose[@]}" exec -T postgres psql -U game_arena -d game_arena -tAc "SELECT count(*) FROM ga_runtime_support_tickets WHERE deleted_at IS NULL")"
