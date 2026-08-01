@@ -72,7 +72,8 @@ export function createPostgresReportApp({config,pool}){
       }
       return false;
     }catch(error){
-      reply(error.status||500,{error:{code:error.code||'internal_error',message:error.status>=500?'Unexpected server error.':error.message,details:error.details}});
+      const status=error.status||500;
+      reply(status,{error:{code:error.code||'internal_error',message:status>=500?'Unexpected server error.':error.message,details:status>=500?undefined:error.details}});
       return true;
     }
   };
