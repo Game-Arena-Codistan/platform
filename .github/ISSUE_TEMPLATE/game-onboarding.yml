@@ -1,0 +1,85 @@
+name: Game onboarding
+description: Track one game or controlled batch from source and rights through staged rollout
+title: "[Game] "
+labels: []
+assignees: []
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Game title
+    validations:
+      required: true
+  - type: input
+    id: slug
+    attributes:
+      label: Stable slug
+      description: Lowercase catalogue identifier.
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime class
+      options:
+        - Static HTML5
+        - Construct source available
+        - Build-only HTML5
+        - External API dependency
+        - Realtime or server-backed
+        - Requires classification
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source and checksum
+      description: Record non-sensitive source location references, Original/Modified availability and checksums. Do not attach archives.
+    validations:
+      required: true
+  - type: textarea
+    id: rights
+    attributes:
+      label: Rights and provenance
+      description: Record a non-sensitive reference covering storage, modification, hosting, distribution and artwork/audio rights.
+    validations:
+      required: true
+  - type: textarea
+    id: runtime_behavior
+    attributes:
+      label: Runtime behavior
+      description: Entry point, orientation, network calls, storage, permissions, audio and notable dependencies.
+    validations:
+      required: true
+  - type: textarea
+    id: bridge
+    attributes:
+      label: Game Bridge and integrity
+      description: Readiness, pause/resume, exit, score/completion proof and reward request behavior.
+  - type: textarea
+    id: publication
+    attributes:
+      label: Publication plan
+      description: Proposed immutable version, controlled-origin path, scanner findings, rollback and kill switch.
+    validations:
+      required: true
+  - type: textarea
+    id: certification
+    attributes:
+      label: Certification matrix
+      description: Browsers, devices, orientation, network profiles, lifecycle, accessibility and performance evidence required.
+    validations:
+      required: true
+  - type: checkboxes
+    id: defaults
+    attributes:
+      label: Safe defaults
+      options:
+        - label: The title will start paused at rollout 0.
+          required: true
+        - label: Rewards remain disabled until score and completion integrity are certified.
+          required: true
+        - label: Competitions remain disabled until fairness and device behavior are certified.
+          required: true
+        - label: No game archive, expanded binary or signed agreement will be committed to GitHub.
+          required: true
