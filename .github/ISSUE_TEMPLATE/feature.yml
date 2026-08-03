@@ -1,0 +1,74 @@
+name: Feature proposal
+description: Propose a bounded player, Game Arena+, operations or platform capability
+title: "[Feature] "
+labels: []
+assignees: []
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What should a player, operator or developer be able to achieve?
+    validations:
+      required: true
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Primary domain
+      options:
+        - Player experience
+        - Identity and account
+        - Game Arena+
+        - Payments and wallet
+        - Gameplay and competition
+        - Game portfolio
+        - Operations and delivery
+        - Developer experience
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current state
+      description: Describe the existing behavior and the gap using repository or deployed evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: State what is included and what is explicitly excluded.
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract and data impact
+      description: List routes, schemas, tables, migrations, reports or Game Bridge behavior that may change.
+  - type: textarea
+    id: safety
+    attributes:
+      label: Authorization, safety and privacy
+      description: Describe server-side permissions, idempotency, concurrency, redaction and sensitive-data boundaries.
+  - type: textarea
+    id: rollout
+    attributes:
+      label: Rollout and rollback
+      description: Describe feature flags, pause/kill switch, observable success and reversal behavior.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide independently verifiable completion criteria.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: decisions
+    attributes:
+      label: Product decisions
+      options:
+        - label: This proposal identifies any pricing, billing, entitlement, reward-value, competition-fairness or customer-disclosure change.
+        - label: This proposal distinguishes repository completion from staging or production evidence.
