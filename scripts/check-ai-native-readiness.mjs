@@ -8,6 +8,9 @@ const required={
   'CONTRIBUTING.md':['## Before starting','## Required validation','## Payments and premium features','## Adding or changing a game'],
   'docs/AI-NATIVE-DEVELOPMENT.md':['## Context layers','## Standard work packet','## Premium-feature development lane','## Game-integration lane','## AI review protocol'],
   'docs/ISSUE-GOVERNANCE.md':['## Issue classes','## Priority convention','## Lifecycle','## Closing rules','## AI-assisted triage'],
+  'docs/decisions/README.md':['## Required ADR topics','## Workflow','## Current architecture baseline'],
+  'docs/decisions/000-template.md':['## Context','## Decision drivers','## Decision','## Rollout and rollback','## Validation'],
+  '.github/CODEOWNERS':['* @waseem99','/apps/api/ @waseem99','/apps/game-ops/ @waseem99','/.github/workflows/ @waseem99'],
   '.github/pull_request_template.md':['## Outcome','## Architecture and data','## Safety and operations','## Evidence boundary'],
   '.github/ISSUE_TEMPLATE/bug.yml':['name: Bug report','id: reproduce','id: baseline','id: safety'],
   '.github/ISSUE_TEMPLATE/feature.yml':['name: Feature proposal','id: outcome','id: rollout','id: acceptance'],
@@ -26,7 +29,8 @@ for(const [relative,markers] of Object.entries(required)){
 }
 
 const readme=await readFile(join(root,'README.md'),'utf8');
-for(const link of ['AGENTS.md','CONTRIBUTING.md','docs/AI-NATIVE-DEVELOPMENT.md','docs/ISSUE-GOVERNANCE.md']){
+const developmentLinks=['AGENTS.md','CONTRIBUTING.md','docs/AI-NATIVE-DEVELOPMENT.md','docs/ISSUE-GOVERNANCE.md','docs/decisions/README.md'];
+for(const link of developmentLinks){
   if(!readme.includes(link))findings.push({file:'README.md',code:'missing_development_link',link});
 }
 
@@ -45,4 +49,4 @@ if(findings.length){
   process.exit(1);
 }
 
-console.log(JSON.stringify({ok:true,contextFiles:Object.keys(required).length,readmeLinks:4}));
+console.log(JSON.stringify({ok:true,contextFiles:Object.keys(required).length,readmeLinks:developmentLinks.length}));
