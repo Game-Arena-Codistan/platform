@@ -50,6 +50,8 @@ Start with:
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — branches, validation, security and pull-request workflow.
 - [`docs/AI-NATIVE-DEVELOPMENT.md`](docs/AI-NATIVE-DEVELOPMENT.md) — premium-feature, game-integration and post-launch delivery model.
 - [`docs/ISSUE-GOVERNANCE.md`](docs/ISSUE-GOVERNANCE.md) — issue lifecycle, priorities, closing rules and audit cadence.
+- [`docs/decisions/README.md`](docs/decisions/README.md) — architecture decision criteria and the ADR workflow.
+- [`.github/CODEOWNERS`](.github/CODEOWNERS) — review ownership for product, data, game, infrastructure and governance paths.
 
 Use the structured GitHub issue templates for defects, features and game onboarding. Pull requests must use the repository template and identify an immutable validated head SHA.
 
