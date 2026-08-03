@@ -1,0 +1,188 @@
+name: Platform Qualification
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      run_network_probe:
+        description: Probe approved external game entry points
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+concurrency:
+  group: platform-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  platform-qualification:
+    if: vars.SELF_HOSTED_CI_ENABLED == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'launch-gate')))
+    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: C:/Progra~1/Git/bin/bash.exe --noprofile --norc -eo pipefail {0}
+    env:
+      CI: '1'
+      DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:55432/game_arena_test
+      TEST_DATABASE_URL: postgresql://game_arena_test:game_arena_test@127.0.0.1:55432/game_arena_test
+      DATABASE_SSL: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          clean: true
+      - name: Verify dedicated runner
+        run: bash scripts/check-self-hosted-runner.sh
+      - name: Start PostgreSQL 16
+        run: |
+          name="game-arena-ci-${GITHUB_RUN_ID}-postgres"
+          docker rm -f "$name" >/dev/null 2>&1 || true
+          docker run -d --name "$name" \
+            --label "game-arena.ci.run=${GITHUB_RUN_ID}" \
+            -e POSTGRES_USER=game_arena_test \
+            -e POSTGRES_PASSWORD=game_arena_test \
+            -e POSTGRES_DB=game_arena_test \
+            -p 55432:5432 \
+            postgres:16-alpine
+          for attempt in $(seq 1 60); do
+            docker exec "$name" pg_isready -U game_arena_test -d game_arena_test && break
+            sleep 1
+          done
+          docker exec "$name" pg_isready -U game_arena_test -d game_arena_test
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - name: Repository controls
+        run: |
+          node scripts/check-self-hosted-workflows.mjs
+          node scripts/security-check.mjs
+          node scripts/check-pre-staging.mjs
+          node scripts/check-api-contract.mjs
+          node scripts/check-cloud-deployment.mjs
+          node scripts/check-indexed-postgres-reports.mjs
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Apply clean PostgreSQL migrations
+        working-directory: apps/api
+        run: node scripts/migrate.mjs
+      - name: Run API, durability and indexed-report suites
+        working-directory: apps/api
+        run: |
+          npm run ci
+          node --test --test-concurrency=1 test/postgres*.test.mjs
+      - name: Run launch-profile API load test
+        working-directory: apps/api
+        env:
+          TARGET_URL: http://127.0.0.1:8081
+          DURATION_SECONDS: 10
+          CONCURRENCY: 25
+          MAX_P95_MS: 500
+          MAX_ERROR_RATE: 0.01
+        run: |
+          NODE_ENV=test PORT=8081 OTP_PROVIDER_MODE=mock JAZZCASH_MODE=mock ALLOW_DEBUG_OTP=true REQUIRE_DATABASE=false \
+            node src/server.mjs > "/tmp/game-arena-api-${GITHUB_RUN_ID}.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:8081/healthz >/dev/null && break
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8081/healthz >/dev/null
+          npm run load
+      - name: Validate player, game operations, bridge and administration
+        run: |
+          (cd apps/web && npm run ci)
+          (cd apps/game-ops && npm run ci)
+          (cd packages/game-bridge && npm run ci)
+          (cd apps/admin && npm run ci)
+      - name: Probe approved external games
+        if: github.event_name == 'workflow_dispatch' && inputs.run_network_probe
+        working-directory: apps/game-ops
+        env:
+          GAME_PROBE_STRICT: '1'
+        run: npm run probe
+      - name: Build and qualify the complete Compose stack
+        run: |
+          docker compose -f infra/docker-compose.yml up --build --detach
+          bash scripts/compose-integration.sh
+      - name: Install browser-test dependencies
+        working-directory: tests/e2e
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install chromium firefox webkit
+      - name: Run Chromium, Firefox and WebKit journeys
+        working-directory: tests/e2e
+        run: npm test
+      - name: Validate OpenTofu
+        run: |
+          test "$(tofu version -json | jq -r .terraform_version)" = "1.12.5"
+          tofu -chdir=infra/opentofu/aws init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infra/opentofu/aws validate
+      - name: Analyze JavaScript with CodeQL
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
+        with:
+          category: /language:javascript-typescript
+          output: codeql-results
+          upload: always
+      - name: Write qualification summary
+        if: always()
+        run: |
+          mkdir -p reports
+          {
+            echo '# Platform qualification'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Runner: \`${RUNNER_NAME}\`"
+            echo '- Host: Windows x64'
+            echo '- Containers: Docker Desktop Linux containers'
+            echo '- Database: PostgreSQL 16 normalized runtime'
+            echo '- Reports: indexed PostgreSQL projections'
+            echo '- Browsers: Chromium, Firefox, WebKit'
+            echo '- OpenTofu: 1.12.5'
+            echo '- CodeQL: security-extended'
+            echo "- Result: ${{ job.status }}"
+          } | tee reports/platform-qualification-summary.md
+          cat reports/platform-qualification-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Capture Compose evidence
+        if: always()
+        run: |
+          mkdir -p reports/compose
+          docker compose -f infra/docker-compose.yml ps --all > reports/compose/ps.txt 2>&1 || true
+          docker compose -f infra/docker-compose.yml logs --no-color > reports/compose/logs.txt 2>&1 || true
+      - name: Upload non-sensitive qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: platform-qualification-${{ github.sha }}
+          path: |
+            reports/
+            apps/api/reports/
+            apps/game-ops/reports/
+            tests/e2e/report/
+            tests/e2e/test-results/
+            codeql-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Remove Compose resources
+        if: always()
+        run: docker compose -f infra/docker-compose.yml down --volumes --remove-orphans || true
+      - name: Clean self-hosted runner
+        if: always()
+        run: bash scripts/cleanup-self-hosted-runner.sh
