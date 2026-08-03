@@ -1,0 +1,27 @@
+# Default repository owner
+* @waseem99
+
+# Product surfaces
+/apps/web/ @waseem99
+/apps/admin/ @waseem99
+/apps/api/ @waseem99
+
+# Game safety and delivery
+/apps/game-ops/ @waseem99
+/apps/game-origin/ @waseem99
+/packages/game-bridge/ @waseem99
+/catalogue/ @waseem99
+
+# Contracts, persistence and infrastructure
+/contracts/ @waseem99
+/apps/api/migrations/ @waseem99
+/infra/ @waseem99
+/.github/workflows/ @waseem99
+
+# Repository governance and security
+/AGENTS.md @waseem99
+/CONTRIBUTING.md @waseem99
+/SECURITY.md @waseem99
+/.github/CODEOWNERS @waseem99
+/.github/ISSUE_TEMPLATE/ @waseem99
+/docs/decisions/ @waseem99
