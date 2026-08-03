@@ -40,6 +40,25 @@ docs/                 Architecture, security, operations and launch runbooks
 .github/workflows/    Quality, previews, content and protected AWS delivery
 ```
 
+## Development workflow
+
+The repository is prepared for human and AI-assisted development through durable context, structured work packets and CI-enforced guardrails.
+
+Start with:
+
+- [`AGENTS.md`](AGENTS.md) — repository operating contract for AI tools and contributors.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — branches, validation, security and pull-request workflow.
+- [`docs/AI-NATIVE-DEVELOPMENT.md`](docs/AI-NATIVE-DEVELOPMENT.md) — premium-feature, game-integration and post-launch delivery model.
+- [`docs/ISSUE-GOVERNANCE.md`](docs/ISSUE-GOVERNANCE.md) — issue lifecycle, priorities, closing rules and audit cadence.
+
+Use the structured GitHub issue templates for defects, features and game onboarding. Pull requests must use the repository template and identify an immutable validated head SHA.
+
+Validate the durable development context with:
+
+```bash
+node scripts/check-ai-native-readiness.mjs
+```
+
 ## Run locally
 
 ```bash
@@ -58,6 +77,12 @@ docker compose up --build
 ## Validate
 
 ```bash
+node scripts/security-check.mjs
+node scripts/check-ai-native-readiness.mjs
+node scripts/check-pre-staging.mjs
+node scripts/check-api-contract.mjs
+node scripts/check-cloud-deployment.mjs
+
 cd apps/web && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
 cd ../api && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
 cd ../game-ops && npm run ci
@@ -77,10 +102,19 @@ GitHub Actions additionally run real PostgreSQL durability tests, API load tests
 - Browser payment returns never activate purchases. Authoritative notifications must match the stored merchant, bill reference, amount and currency.
 - Production player authentication uses opaque HttpOnly cookies plus CSRF and origin controls.
 - Production administration uses signed identity-proxy assertions, server-bound roles and a private MFA/SSO access layer. Shared keys are development-only.
-- The launch API is a single-writer modular monolith. Acknowledged mutations wait for an atomic PostgreSQL commit, restart durability is tested and stale concurrent writers are rejected.
+- The launch API is a modular monolith backed by normalized PostgreSQL repositories. Acknowledged mutations wait for commit, restart durability is tested and stale concurrent writers are rejected.
 - Migrations may use the RDS administrator credential; the running API is switched to a restricted application role after deployment.
 - Uncertified external games and valuable competitions are disabled by default in production.
 - Product analytics is off by default and excludes identity, OTP, session and payment fields.
+
+## Next development phase
+
+After staging and production qualification, the repository is designed to support two parallel growth lanes:
+
+1. **Game Arena+ vertical slices** spanning player UX, API contract, normalized data, administration, audit, rollout and rollback.
+2. **Portfolio-scale game onboarding** spanning source/rights, bounded preflight, scanning, Game Bridge, immutable publication, certification and controlled rollout.
+
+New premium features must preserve current fixed-duration single-charge semantics unless recurring billing receives separate provider, product and compliance approval. New games start paused at rollout `0`, with rewards and competitions disabled until the relevant integrity and device evidence is recorded.
 
 ## Delivery
 

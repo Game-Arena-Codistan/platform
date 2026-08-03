@@ -1,0 +1,71 @@
+name: Bug report
+description: Report a reproducible platform, API, admin, game-runtime or delivery defect
+title: "[Bug] "
+labels: []
+assignees: []
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Player PWA
+        - API or database
+        - Game Arena+ or payments
+        - Operations console
+        - Game integration or controlled origin
+        - AWS or delivery workflow
+        - Documentation or developer tooling
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+      description: Describe the correct user or operator behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Describe what happened and the visible error without including sensitive data.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include the smallest repeatable sequence, route, game slug or API operation.
+      placeholder: |
+        1. Open ...
+        2. Perform ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: baseline
+    attributes:
+      label: Commit or environment
+      description: Exact commit SHA, Vercel preview, local Compose, staging or production.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Non-sensitive evidence
+      description: Add logs, request IDs, screenshots or workflow links after removing secrets and customer data.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact and rollback
+      description: State affected users, data or operations and whether a pause, kill switch or rollback is required.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, customer data, raw payment payloads and private game source from this report.
+          required: true
+        - label: I checked for an existing issue covering the same defect.
+          required: true

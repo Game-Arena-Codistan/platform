@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security or credential exposure
+    url: https://github.com/Game-Arena-Codistan/platform/security
+    about: Do not open a public issue containing credentials, customer data or exploit details.
+  - name: AWS staging and production gate
+    url: https://github.com/Game-Arena-Codistan/platform/issues/48
+    about: Use the launch gate for environment evidence, deployment blockers and production promotion.
