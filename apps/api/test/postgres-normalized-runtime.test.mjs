@@ -41,3 +41,24 @@ test('normalized PostgreSQL repositories refresh committed rows and reject stale
     await second.close();
   }
 });
+
+test('normalized PostgreSQL persists rate-limit windows as JSON records',{skip:!connectionString},async()=>{
+  const {PostgresStore}=await import('../src/adapters/postgres-store.mjs');
+  const store=await PostgresStore.connect({connectionString,ssl:false});
+  const key=`support:test:${randomUUID()}`;
+  const now=Date.now();
+  try{
+    assert.equal(store.hitRateLimit(key,2,60000,now),false);
+    await store.commit();
+    await store.refresh({initial:true});
+    assert.equal(store.hitRateLimit(key,2,60000,now+1),false);
+    await store.commit();
+
+    const result=await store.pool.query('SELECT record FROM ga_runtime_rate_limits WHERE record_key=$1 AND deleted_at IS NULL',[key]);
+    assert.equal(result.rowCount,1);
+    assert.deepEqual(result.rows[0].record,{timestamps:[now,now+1]});
+  }finally{
+    await store.pool.query('DELETE FROM ga_runtime_rate_limits WHERE record_key=$1',[key]);
+    await store.close();
+  }
+});

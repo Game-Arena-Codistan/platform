@@ -8,7 +8,15 @@ RELEASE=${GAME_ARENA_RELEASE_SHA:-dev}
 ANALYTICS=${GAME_ARENA_ANALYTICS_ENDPOINT:-/api/v1/events}
 case "$MODE" in mock|live) ;; *) echo 'Invalid GAME_ARENA_MODE' >&2; exit 1;; esac
 case "$RELEASE" in *[!A-Za-z0-9._-]*|'') echo 'Invalid GAME_ARENA_RELEASE_SHA' >&2; exit 1;; esac
-case "$ORIGIN" in '') GAME_SOURCE='' ;; https://*) GAME_SOURCE=$(printf '%s' "$ORIGIN" | sed -E 's#^(https://[^/]+).*$#\1#') ;; *) echo 'GAME_ARENA_GAME_ORIGIN must be HTTPS' >&2; exit 1;; esac
+case "$ORIGIN" in
+  '') GAME_SOURCE='' ;;
+  https://*) GAME_SOURCE=$(printf '%s' "$ORIGIN" | sed -E 's#^(https://[^/]+).*$#\1#') ;;
+  http://localhost:*|http://127.0.0.1:*)
+    [ "$RELEASE" = dev ] || { echo 'HTTP game origin is allowed only for the local dev release' >&2; exit 1; }
+    GAME_SOURCE=$(printf '%s' "$ORIGIN" | sed -E 's#^(http://[^/]+).*$#\1#')
+    ;;
+  *) echo 'GAME_ARENA_GAME_ORIGIN must be HTTPS except for local dev Compose' >&2; exit 1 ;;
+esac
 for value in "$API" "$ORIGIN" "$HOSTS" "$ANALYTICS"; do case "$value" in *'"'*|*\\*|*'
 '*|*''*) echo 'Runtime configuration contains unsafe characters' >&2; exit 1;; esac; done
 cat > /usr/share/nginx/html/config.js <<EOF
