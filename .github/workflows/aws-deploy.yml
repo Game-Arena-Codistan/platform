@@ -86,18 +86,18 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.image_tag }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
 
-      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
+      - uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
 
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       - name: Validate immutable release and AWS target
         env:
@@ -111,7 +111,7 @@ jobs:
           git merge-base --is-ancestor "$IMAGE_TAG_INPUT" origin/main || { echo 'Selected SHA is not reachable from main.' >&2; exit 1; }
 
       - name: Authenticate to AWS with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -482,7 +482,7 @@ jobs:
           aws s3 cp /tmp/game-arena-evidence/ "s3://${DEPLOYMENT_EVIDENCE_BUCKET}/${prefix}/${GITHUB_RUN_ID}/" --recursive
           aws s3 cp /tmp/game-arena-evidence/deployment.json "s3://${DEPLOYMENT_EVIDENCE_BUCKET}/${prefix}/latest.json"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: aws-${{ inputs.environment }}-deployment-${{ inputs.image_tag }}-${{ github.run_id }}
           path: /tmp/game-arena-evidence
