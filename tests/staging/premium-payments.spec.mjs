@@ -48,3 +48,18 @@ test('@player a browser payment return cannot self-activate Arena+ without serve
   expect(status.status()).toBe(200);
   expect((await status.json()).status).toBe('pending');
 });
+
+test('@player protected premium QA account sees active entitlement and can start a premium title',async({page},testInfo)=>{
+  test.skip(!String(process.env.STAGING_QA_PREMIUM_PLAYER_IDENTIFIER||'').trim(),'No protected premium QA account is configured.');
+  await signInFromAccount(page,testInfo,{label:'premium-entitlement',tier:'premium'});
+  await expect(page.getByText(/Game Arena\+ member/i)).toBeVisible();
+  await page.goto('/#/premium');
+  await expect(page.getByText(/Game Arena\+ is active on this account/i)).toBeVisible();
+  await page.goto('/#/library');
+  const premiumCard=page.locator('.game-card').filter({has:page.locator('.badge').filter({hasText:/Arena\+/})}).first();
+  await expect(premiumCard).toBeVisible();
+  const play=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');
+  await premiumCard.getByRole('button',{name:'Play'}).click();
+  expect((await play).status()).toBe(201);
+  await expect(page.locator('#game-frame')).toBeVisible();
+});
