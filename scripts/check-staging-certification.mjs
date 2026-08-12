@@ -13,7 +13,8 @@ const required={
   'tests/staging/player.spec.mjs':['debugCode','/v1/payments/jazzcash/checkout','@critical-mobile','game-frame','sameOriginPermission','support-status'],
   'tests/staging/admin.spec.mjs':['reports.export','subscription.manage_plans','unauthorized','toBe(403)'],
   'tests/staging/api-certification.mjs':['invalid play proof','idempotency-key','browser return incorrectly activated','PAYMENT SANDBOX NOT CONFIGURED','AUTO-QA-'],
-  'tests/staging/extended-api-certification.mjs':['controlled-game-origin-and-catalogue-media','premium-game-authorization','competition-authorization-and-fixtures','premium_required','challenge_incomplete'],
+  'tests/staging/extended-api-certification.mjs':['controlled-game-origin-and-catalogue-media','premium-game-authorization','competition-authorization-and-fixtures','payment-callback-matrix','premium_required','challenge_incomplete'],
+  'tests/staging/payment-callback-certification.mjs':['PAYMENT SANDBOX NOT CONFIGURED','amount-mismatch-is-rejected','failure-cannot-later-become-paid','cancel-void-stays-voided','success-replay-and-refund','application-secret-arn'],
   'tests/staging/restart-certification.mjs':['did not survive API restart'],
   'tests/staging/aggregate-certification.mjs':['game-arena-staging-certification.v1','READY FOR UAT','FAILED','BLOCKED','adminTunnel','extendedExit'],
   'tests/staging/verify-visual-baselines.mjs':['VISUAL_REVIEW_REQUIRED','BLOCKED'],
@@ -25,7 +26,7 @@ for(const [relative,markers] of Object.entries(required)){
   let text='';try{text=await readFile(join(root,relative),'utf8');}catch{findings.push({file:relative,code:'missing'});continue;}
   for(const marker of markers)if(!text.includes(marker))findings.push({file:relative,code:'missing_marker',marker});
 }
-const syntaxFiles=['tests/staging/player.spec.mjs','tests/staging/admin.spec.mjs','tests/staging/api-certification.mjs','tests/staging/extended-api-certification.mjs','tests/staging/restart-certification.mjs','tests/staging/aggregate-certification.mjs','tests/staging/generate-admin-assertions.mjs','tests/staging/verify-visual-baselines.mjs','tests/staging/visual.spec.mjs'];
+const syntaxFiles=['tests/staging/player.spec.mjs','tests/staging/admin.spec.mjs','tests/staging/api-certification.mjs','tests/staging/extended-api-certification.mjs','tests/staging/payment-callback-certification.mjs','tests/staging/restart-certification.mjs','tests/staging/aggregate-certification.mjs','tests/staging/generate-admin-assertions.mjs','tests/staging/verify-visual-baselines.mjs','tests/staging/visual.spec.mjs'];
 for(const relative of syntaxFiles){const check=spawnSync(process.execPath,['--check',join(root,relative)],{encoding:'utf8'});if(check.status!==0)findings.push({file:relative,code:'syntax_error',detail:(check.stderr||check.stdout||'').trim().slice(0,400)});}
 const cert=await readFile(join(root,'.github/workflows/aws-staging-certification.yml'),'utf8').catch(()=> '');
 if(/trace:\s*['"]?(?:on|retain-on-failure)/.test(cert))findings.push({file:'.github/workflows/aws-staging-certification.yml',code:'unsafe_trace_policy'});
