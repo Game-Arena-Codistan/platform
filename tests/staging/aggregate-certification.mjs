@@ -6,6 +6,7 @@ const expectedSha=process.env.EXPECTED_RELEASE_SHA||'';
 const runId=process.env.QA_RUN_ID||'';
 const identity=await json(process.env.IDENTITY_RESULT||'identity-results.json');
 const api=await json(process.env.API_RESULT||'api-results.json');
+const extended=await json(process.env.EXTENDED_RESULT||'extended-results.json');
 const restart=await json(process.env.RESTART_RESULT||'restart-results.json');
 const visual=await json(process.env.VISUAL_RESULT||'visual-results.json');
 const playwright=await json(process.env.PLAYWRIGHT_RESULT||'results.json');
@@ -18,14 +19,15 @@ const statuses={
   adminTunnel:process.env.ADMIN_TUNNEL_STATUS||'unknown',
   browserSetup:process.env.BROWSER_SETUP_STATUS||'unknown',
   apiExit:code('API_EXIT'),
+  extendedExit:code('EXTENDED_EXIT'),
   restartExit:code('RESTART_EXIT'),
   browserExit:code('BROWSER_EXIT'),
   visualExit:code('VISUAL_EXIT')
 };
 
 const environmentBlocked=['guard','aws','resolve','identity','adminPreparation','adminTunnel','browserSetup'].some(key=>statuses[key]!=='success')||!identity||identity.decision!=='PASS';
-const functionalFailed=[statuses.apiExit,statuses.restartExit,statuses.browserExit].some(value=>value===1||value>2)||api?.decision==='FAILED'||restart?.decision==='FAIL';
-const functionalBlocked=environmentBlocked||[statuses.apiExit,statuses.restartExit,statuses.visualExit].some(value=>value===2)||api?.decision==='BLOCKED'||visual?.decision==='BLOCKED';
+const functionalFailed=[statuses.apiExit,statuses.extendedExit,statuses.restartExit,statuses.browserExit].some(value=>value===1||value>2)||api?.decision==='FAILED'||extended?.decision==='FAILED'||restart?.decision==='FAIL';
+const functionalBlocked=environmentBlocked||[statuses.apiExit,statuses.extendedExit,statuses.restartExit,statuses.visualExit].some(value=>value===2)||api?.decision==='BLOCKED'||extended?.decision==='BLOCKED'||visual?.decision==='BLOCKED';
 const decision=functionalFailed?'FAILED':functionalBlocked?'BLOCKED':'READY FOR UAT';
 
 function collectPlaywright(node,out=[]){
@@ -50,6 +52,7 @@ const report={
   statuses,
   identity,
   api,
+  extended,
   restart,
   browser:browserSummary,
   visual,
@@ -74,7 +77,8 @@ const lines=[
   '## Machine gates',
   '',
   `- Deployment identity: ${identity?.decision||'BLOCKED'}`,
-  `- API/runtime: ${api?.decision||'BLOCKED'}`,
+  `- API/auth/payment/play: ${api?.decision||'BLOCKED'}`,
+  `- Media/premium/competitions: ${extended?.decision||'BLOCKED'}`,
   `- Restart durability: ${restart?.decision||'BLOCKED'}`,
   `- Private Admin access: ${statuses.adminTunnel==='success'?'PASS':'BLOCKED'}`,
   `- Browser: ${statuses.browserExit===0?'PASS':statuses.browserExit===null?'BLOCKED':'FAIL'}`,
