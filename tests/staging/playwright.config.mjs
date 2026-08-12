@@ -23,6 +23,7 @@ export default defineConfig({
   projects:[
     {name:'desktop-chromium',grep:/@player/,use:{...devices['Desktop Chrome']}},
     {name:'mobile-chromium',grep:/@critical-mobile/,use:{...devices['Pixel 7']}},
+    {name:'visual-chromium',grep:/@visual/,use:{...devices['Desktop Chrome']}},
     ...(adminUrl?[{name:'admin-chromium',grep:/@admin/,use:{...devices['Desktop Chrome'],baseURL:adminUrl}}]:[])
   ]
 });
