@@ -7,7 +7,7 @@ const root=fileURLToPath(new URL('..',import.meta.url));
 const required={
   '.github/workflows/release.yml':['org.opencontainers.image.revision=${{ github.sha }}','provenance: true','sbom: true'],
   '.github/workflows/aws-staging.yml':['automatic-certification:','manual-certification:','aws-staging-certification.yml','release_run_id: ${{ github.event.workflow_run.id }}'],
-  '.github/workflows/aws-staging-certification.yml':['name: AWS staging certification','Gate zero — prove deployed artifact identity','imageDigest','imageID','org.opencontainers.image.revision','READY FOR UAT','FAILED','BLOCKED','kubectl -n game-arena port-forward service/admin','STAGING_QA_ADMIN_ASSERTIONS_JSON','staging-certification/$IMAGE_TAG/latest.json','trace','visual-baselines.json'],
+  '.github/workflows/aws-staging-certification.yml':['name: AWS staging certification','Gate zero — prove deployed artifact identity','imageDigest','imageID','org.opencontainers.image.revision','READY FOR UAT','FAILED','BLOCKED','kubectl -n game-arena port-forward service/admin','STAGING_QA_ADMIN_ASSERTIONS_JSON','key="staging-certification/$IMAGE_TAG"','visual-baselines.json'],
   '.github/workflows/aws-production.yml':['uat_record:','Require READY FOR UAT certification for exact SHA','.decision == "READY FOR UAT"','staging-certification/$IMAGE_TAG/latest.json','production-smoke:','No customer, payment, wallet, game or administrative mutation was executed'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
   'tests/staging/player.spec.mjs':['debugCode','/v1/payments/jazzcash/checkout','@critical-mobile','support-status'],
