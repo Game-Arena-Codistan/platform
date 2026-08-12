@@ -150,7 +150,7 @@ jobs:
             deployed_image="$(kubectl -n game-arena get deployment "$deployment" -o json | jq -r '.spec.template.spec.containers[0].image')"
             pods="$(kubectl -n game-arena get pods -l "app=$label" -o json)"
             pod_count="$(jq '[.items[] | select(.metadata.deletionTimestamp == null)] | length' <<<"$pods")"
-            ready_count="$(jq '[.items[] | select(.metadata.deletionTimestamp == null) | select((.status.containerStatuses // []) as $cs | ($cs|length)>0 and all($cs[]; .ready == true))] | length' <<<"$pods")"
+            ready_count="$(jq '[.items[] | select(.metadata.deletionTimestamp == null) | select((.status.containerStatuses // []) | length > 0) | select(all(.status.containerStatuses[]; .ready == true))] | length' <<<"$pods")"
             image_ids="$(jq -r '.items[] | select(.metadata.deletionTimestamp == null) | .status.containerStatuses[]? | .imageID' <<<"$pods")"
             image_ids_match=true
             if [ -z "$digest" ] || [ "$digest" = None ] || [ "$pod_count" -lt 1 ] || [ "$ready_count" -ne "$pod_count" ] || [ "$deployed_image" != "$expected_image" ]; then
@@ -213,6 +213,26 @@ jobs:
           echo "API_EXIT=$code" >> "$GITHUB_ENV"
           exit 0
 
+      - name: Run media, premium and competition certification
+        id: extended
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        env:
+          API_CERTIFICATION_STATE: /tmp/game-arena-certification-state.json
+          EXTENDED_CERTIFICATION_OUTPUT: certification/extended-results.json
+        run: |
+          set -euo pipefail
+          if [ "${API_EXIT:-2}" != 0 ] || [ ! -s "$API_CERTIFICATION_STATE" ]; then
+            echo 'EXTENDED_EXIT=2' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          set +e
+          node tests/staging/extended-api-certification.mjs
+          code=$?
+          set -e
+          echo "EXTENDED_EXIT=$code" >> "$GITHUB_ENV"
+          exit 0
+
       - name: Verify acknowledged state survives API restart
         id: restart
         if: steps.identity.outcome == 'success'
@@ -236,7 +256,7 @@ jobs:
           exit 0
 
       - name: Prepare private Admin certification assertions
-        id: admin-prep
+        id: admin_prep
         if: steps.identity.outcome == 'success'
         continue-on-error: true
         run: |
@@ -259,7 +279,7 @@ jobs:
           echo 'ADMIN_PREP_OK=true' >> "$GITHUB_ENV"
 
       - name: Install staging browser runtime
-        id: browser-setup
+        id: browser_setup
         if: steps.identity.outcome == 'success'
         continue-on-error: true
         working-directory: tests/staging
@@ -269,12 +289,11 @@ jobs:
 
       - name: Run player, mobile, Admin and visual browser certification
         id: browser
-        if: steps.browser-setup.outcome == 'success' && steps.identity.outcome == 'success'
+        if: steps.browser_setup.outcome == 'success' && steps.identity.outcome == 'success'
         continue-on-error: true
         working-directory: tests/staging
         env:
           EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
-          STAGING_QA_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_PLAYER_IDENTIFIER }}
           VISUAL_CAPTURE_DIR: visual-captures
         run: |
           set -euo pipefail
@@ -307,7 +326,7 @@ jobs:
 
       - name: Verify visual baseline hashes
         id: visual
-        if: steps.browser.outcome == 'success' && steps.browser-setup.outcome == 'success'
+        if: steps.browser.outcome == 'success' && steps.browser_setup.outcome == 'success'
         continue-on-error: true
         working-directory: tests/staging
         env:
@@ -330,6 +349,7 @@ jobs:
           EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
           IDENTITY_RESULT: certification/identity-results.json
           API_RESULT: certification/api-results.json
+          EXTENDED_RESULT: certification/extended-results.json
           RESTART_RESULT: certification/restart-results.json
           VISUAL_RESULT: certification/visual-results.json
           PLAYWRIGHT_RESULT: tests/staging/results.json
@@ -339,8 +359,8 @@ jobs:
           AWS_STATUS: ${{ steps.aws.outcome }}
           RESOLVE_STATUS: ${{ steps.resolve.outcome }}
           IDENTITY_STATUS: ${{ steps.identity.outcome }}
-          ADMIN_PREP_STATUS: ${{ steps.admin-prep.outcome }}
-          BROWSER_SETUP_STATUS: ${{ steps.browser-setup.outcome }}
+          ADMIN_PREP_STATUS: ${{ steps.admin_prep.outcome }}
+          BROWSER_SETUP_STATUS: ${{ steps.browser_setup.outcome }}
         run: node tests/staging/aggregate-certification.mjs
 
       - name: Publish exact-SHA certification marker
