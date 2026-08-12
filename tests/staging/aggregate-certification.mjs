@@ -15,6 +15,7 @@ const statuses={
   resolve:process.env.RESOLVE_STATUS||'unknown',
   identity:process.env.IDENTITY_STATUS||'unknown',
   adminPreparation:process.env.ADMIN_PREP_STATUS||'unknown',
+  adminTunnel:process.env.ADMIN_TUNNEL_STATUS||'unknown',
   browserSetup:process.env.BROWSER_SETUP_STATUS||'unknown',
   apiExit:code('API_EXIT'),
   restartExit:code('RESTART_EXIT'),
@@ -22,7 +23,7 @@ const statuses={
   visualExit:code('VISUAL_EXIT')
 };
 
-const environmentBlocked=['guard','aws','resolve','identity','adminPreparation','browserSetup'].some(key=>statuses[key]!=='success')||!identity||identity.decision!=='PASS';
+const environmentBlocked=['guard','aws','resolve','identity','adminPreparation','adminTunnel','browserSetup'].some(key=>statuses[key]!=='success')||!identity||identity.decision!=='PASS';
 const functionalFailed=[statuses.apiExit,statuses.restartExit,statuses.browserExit].some(value=>value===1||value>2)||api?.decision==='FAILED'||restart?.decision==='FAIL';
 const functionalBlocked=environmentBlocked||[statuses.apiExit,statuses.restartExit,statuses.visualExit].some(value=>value===2)||api?.decision==='BLOCKED'||visual?.decision==='BLOCKED';
 const decision=functionalFailed?'FAILED':functionalBlocked?'BLOCKED':'READY FOR UAT';
@@ -75,6 +76,7 @@ const lines=[
   `- Deployment identity: ${identity?.decision||'BLOCKED'}`,
   `- API/runtime: ${api?.decision||'BLOCKED'}`,
   `- Restart durability: ${restart?.decision||'BLOCKED'}`,
+  `- Private Admin access: ${statuses.adminTunnel==='success'?'PASS':'BLOCKED'}`,
   `- Browser: ${statuses.browserExit===0?'PASS':statuses.browserExit===null?'BLOCKED':'FAIL'}`,
   `- Visual: ${visual?.decision||'BLOCKED'}`,
   '',
