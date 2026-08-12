@@ -1,7 +1,9 @@
+import {mkdir} from 'node:fs/promises';
 import {test,expect,request} from '@playwright/test';
 
 const adminUrl=process.env.STAGING_ADMIN_URL;
 const assertions=JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');
+const captureDir=process.env.VISUAL_CAPTURE_DIR||'visual-captures';
 
 function headersFor(role){const headers=assertions[role];if(!headers)throw new Error(`BLOCKED: missing staging QA signed assertion for ${role}`);return headers;}
 
@@ -24,6 +26,8 @@ test('@admin full admin assertion resolves capabilities and renders operations c
   expect(payload.roles).toContain('admin');
   expect(payload.capabilities).toContain('reports.export');
   expect(payload.capabilities).toContain('subscription.manage_plans');
+  await mkdir(captureDir,{recursive:true});
+  await page.screenshot({path:`${captureDir}/admin-shell.png`,fullPage:true,animations:'disabled'});
   await context.close();
 });
 
