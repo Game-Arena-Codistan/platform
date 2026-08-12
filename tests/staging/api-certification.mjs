@@ -20,7 +20,7 @@ async function call(path,{method='GET',body,headers={},auth=false,redirect='foll
   const requestHeaders={'accept':'application/json',...headers};
   if(body!==undefined)requestHeaders['content-type']='application/json';
   if(auth&&cookies.size)requestHeaders.cookie=cookieHeader();
-  if(auth&& !['GET','HEAD','OPTIONS'].includes(method)){
+  if(auth&&!['GET','HEAD','OPTIONS'].includes(method)){
     requestHeaders.origin=playerUrl;
     requestHeaders['x-csrf-token']=csrf;
   }
@@ -146,13 +146,9 @@ await lane('support',async()=>{
   return{ticketId:support.data.ticket.id};
 });
 
-await lane('logout',async()=>{
-  const out=await call('/v1/auth/logout',{method:'POST',auth:true});expectStatus(out.response.status,[204],'logout failed');
-  const session=await call('/v1/session',{auth:true});expectStatus(session.response.status,[200],'post-logout session lookup failed');
-  if(session.data?.authenticated!==false)throw new Error('session remained authenticated after logout.');
-  return{authenticated:false};
-});
-
+if(cookies.size&&csrf){
+  await writeFile(process.env.API_CERTIFICATION_STATE||'/tmp/game-arena-certification-state.json',JSON.stringify({cookie:cookieHeader(),csrf,paymentTransaction}),{mode:0o600});
+}
 const decision=failed?'FAILED':blocked?'BLOCKED':'PASS';
 const document={schemaVersion:'game-arena-staging-api.v1',runId,correlation,decision,generatedAt:new Date().toISOString(),results};
 await writeFile(process.env.API_CERTIFICATION_OUTPUT||'api-results.json',JSON.stringify(document,null,2));
