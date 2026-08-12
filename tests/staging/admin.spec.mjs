@@ -6,18 +6,12 @@ const assertions=JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');
 const captureDir=process.env.VISUAL_CAPTURE_DIR||'visual-captures';
 
 function headersFor(role){const headers=assertions[role];if(!headers)throw new Error(`BLOCKED: missing staging QA signed assertion for ${role}`);return headers;}
-
-async function adminCall(role,path,{method='GET',data}={}){
-  const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});
-  try{return await context.fetch(`/api${path}`,{method,data});}finally{await context.dispose();}
-}
+async function adminCall(role,path,{method='GET',data}={}){const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});try{return await context.fetch(`/api${path}`,{method,data});}finally{await context.dispose();}}
+async function adminPage(browser,role='admin'){const context=await browser.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});const page=await context.newPage();await page.goto('/');await expect(page.locator('#console')).toBeVisible();return{context,page};}
 
 test('@admin full admin assertion resolves capabilities and renders operations console',async({browser})=>{
-  const context=await browser.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor('admin')});
-  const page=await context.newPage();
-  await page.goto('/');
+  const {context,page}=await adminPage(browser,'admin');
   await expect(page.getByText('Game Arena',{exact:true})).toBeVisible();
-  await expect(page.locator('#console')).toBeVisible();
   await expect(page.getByRole('button',{name:'Reports'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Exports'})).toBeVisible();
   const response=await context.request.get(`${adminUrl}/api/v1/admin/capabilities`);
@@ -28,6 +22,41 @@ test('@admin full admin assertion resolves capabilities and renders operations c
   expect(payload.capabilities).toContain('subscription.manage_plans');
   await mkdir(captureDir,{recursive:true});
   await page.screenshot({path:`${captureDir}/admin-shell.png`,fullPage:true,animations:'disabled',mask:[page.locator('#view')]});
+  await context.close();
+});
+
+test('@admin full admin can traverse every operations section without client or authorization errors',async({browser})=>{
+  const {context,page}=await adminPage(browser,'admin');
+  const browserErrors=[];
+  page.on('pageerror',error=>browserErrors.push(error.message));
+  page.on('console',message=>{if(message.type()==='error')browserErrors.push(message.text());});
+  const sections=['Overview','Reports','Plans','Payments','Paid passes','Recurring customers','Reconciliation','Benefit costs','Exports','Users','Games','Reviews','Audit'];
+  for(const label of sections){
+    const button=page.getByRole('button',{name:label,exact:true});
+    await expect(button).toBeVisible();
+    await button.click();
+    await expect(page.locator('#view h1')).toBeVisible();
+    await expect(page.locator('#view')).not.toContainText(/Request failed|Forbidden|not authorized/i);
+  }
+  expect(browserErrors).toEqual([]);
+  await context.close();
+});
+
+test('@admin reporting filters are interactive and exports download only for an authorized admin',async({browser})=>{
+  const {context,page}=await adminPage(browser,'admin');
+  await page.getByRole('button',{name:'Reports',exact:true}).click();
+  await expect(page.locator('#report-filters')).toBeVisible();
+  await page.locator('#report-filters select[name="preset"]').selectOption('last7');
+  const report=page.waitForResponse(response=>response.url().includes('/v1/admin/reports/subscriptions/summary')&&response.request().method()==='GET');
+  await page.locator('#report-filters').getByRole('button',{name:'Apply'}).click();
+  expect((await report).status()).toBe(200);
+  await expect(page).toHaveURL(/preset=last7/);
+  const exportButton=page.locator('[data-export="summary"]');
+  await expect(exportButton).toBeVisible();
+  const download=page.waitForEvent('download');
+  await exportButton.click();
+  const file=await download;
+  expect(file.suggestedFilename()).toMatch(/\.csv$/i);
   await context.close();
 });
 
@@ -44,6 +73,15 @@ test('@admin restricted roles enforce server capabilities independently of UI',a
     expect(allowed.status(),`${item.role} should access ${item.allowed}`).toBe(200);
     const denied=await adminCall(item.role,item.denied,{method:item.deniedMethod||'GET',data:item.deniedData});
     expect(denied.status(),`${item.role} must be forbidden from ${item.denied}`).toBe(403);
+  }
+});
+
+test('@admin role-constrained UI never exposes export controls without reports.export',async({browser})=>{
+  for(const role of ['operator','support','security']){
+    const {context,page}=await adminPage(browser,role);
+    await expect(page.getByRole('button',{name:'Exports',exact:true})).toHaveCount(0);
+    await expect(page.locator('[data-export]')).toHaveCount(0);
+    await context.close();
   }
 });
 
