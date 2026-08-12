@@ -1,10 +1,10 @@
 import {createHmac} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {readFile,writeFile} from 'node:fs/promises';
 
 const apiBase=String(process.env.STAGING_API_URL||'').replace(/\/$/,'');
 const playerUrl=String(process.env.STAGING_PLAYER_URL||'').replace(/\/$/,'');
 const runId=String(process.env.QA_RUN_ID||Date.now()).replace(/[^a-zA-Z0-9-]/g,'').slice(-32);
-const webhookSecret=process.env.JAZZCASH_WEBHOOK_SECRET||'';
 const statePath=process.env.API_CERTIFICATION_STATE||'/tmp/game-arena-certification-state.json';
 const output=process.env.PAYMENT_CERTIFICATION_OUTPUT||'payment-results.json';
 if(!apiBase||!playerUrl)throw new Error('STAGING_API_URL and STAGING_PLAYER_URL are required.');
@@ -14,6 +14,17 @@ function record(name,status,details={}){results.push({name,status,...details});i
 function expectStatus(actual,allowed,message){if(!allowed.includes(actual))throw new Error(`${message}; expected ${allowed.join('/')}, got ${actual}`);}
 async function lane(name,fn){try{record(name,'PASS',await fn()||{});}catch(error){record(name,error.blocked?'BLOCKED':'FAIL',{error:String(error.message||error).slice(0,300)});}}
 function block(message){const error=new Error(message);error.blocked=true;throw error;}
+function awsText(args){return execFileSync('aws',args,{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();}
+function resolveWebhookSecret(){
+  if(process.env.JAZZCASH_WEBHOOK_SECRET)return process.env.JAZZCASH_WEBHOOK_SECRET;
+  const prefix=process.env.AWS_CONFIG_PREFIX||'/game-arena/staging';
+  try{
+    const arn=awsText(['ssm','get-parameter','--name',`${prefix}/application-secret-arn`,'--query','Parameter.Value','--output','text']);
+    const secret=awsText(['secretsmanager','get-secret-value','--secret-id',arn,'--query','SecretString','--output','text']);
+    return String(JSON.parse(secret).jazzcash_webhook_secret||'');
+  }catch{return'';}
+}
+const webhookSecret=resolveWebhookSecret();
 async function authCall(path,{method='GET',body,headers={}}={}){
   const requestHeaders={accept:'application/json',cookie:state.cookie,...headers};
   if(body!==undefined)requestHeaders['content-type']='application/json';
