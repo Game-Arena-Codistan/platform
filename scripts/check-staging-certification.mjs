@@ -10,7 +10,7 @@ const required={
   '.github/workflows/aws-staging-certification.yml':['name: AWS staging certification','Gate zero — prove deployed artifact identity','imageDigest','imageID','org.opencontainers.image.revision','Run media, premium and competition certification','READY FOR UAT','FAILED','BLOCKED','kubectl -n game-arena port-forward service/admin','STAGING_QA_ADMIN_ASSERTIONS_JSON','key="staging-certification/$IMAGE_TAG"','visual-baselines.json'],
   '.github/workflows/aws-production.yml':['uat_record:','Require READY FOR UAT certification for exact SHA','.decision == "READY FOR UAT"','staging-certification/$IMAGE_TAG/latest.json','production-smoke:','No customer, payment, wallet, game or administrative mutation was executed'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
-  'tests/staging/player.spec.mjs':['debugCode','/v1/payments/jazzcash/checkout','@critical-mobile','game-frame','allow-same-origin','support-status'],
+  'tests/staging/player.spec.mjs':['debugCode','/v1/payments/jazzcash/checkout','@critical-mobile','game-frame','sameOriginPermission','support-status'],
   'tests/staging/admin.spec.mjs':['reports.export','subscription.manage_plans','unauthorized','toBe(403)'],
   'tests/staging/api-certification.mjs':['invalid play proof','idempotency-key','browser return incorrectly activated','PAYMENT SANDBOX NOT CONFIGURED','AUTO-QA-'],
   'tests/staging/extended-api-certification.mjs':['controlled-game-origin-and-catalogue-media','premium-game-authorization','competition-authorization-and-fixtures','premium_required','challenge_incomplete'],
