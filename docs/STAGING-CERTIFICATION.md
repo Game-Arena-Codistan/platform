@@ -50,17 +50,31 @@ Any mismatch or unprovable identity is `BLOCKED`. Browser/API tests do not run a
 
 ### Player and authentication
 
-The deployed browser/API lanes cover public shell/catalogue, mock staging OTP request/invalid-code/verification, authenticated session, protected access, premium checkout entry, support, logout/restart durability and mobile Chromium critical navigation.
+The deployed browser/API lanes cover public shell/catalogue, mock staging OTP request/invalid-code/verification, authenticated session, protected access, premium checkout entry, support, restart durability and mobile Chromium critical navigation. The desktop and mobile critical journey signs in through the real player modal, launches a deployed free game, verifies the iframe isolation boundary and then enters the fixed-duration Game Arena+ checkout.
 
 ### Premium and payments
 
 Certification tests the current fixed-duration single-charge model. It proves membership checkout idempotency and proves that a browser return claiming `paid` cannot activate the authoritative payment or entitlement. Top-up checkout idempotency is exercised when offers exist. A deterministic protected QA voucher is tested when configured.
 
-When staging switches from mock JazzCash to hosted/sandbox provider behavior, `STAGING_PAYMENT_SANDBOX_READY=true` is required. Otherwise the provider lane reports `BLOCKED — PAYMENT SANDBOX NOT CONFIGURED`; it is never silently skipped.
+In `mock` JazzCash mode, a protected callback harness resolves only the existing staging webhook secret through the AWS OIDC session and Secrets Manager. It never logs or uploads the secret. It verifies:
+
+- pending remains pending;
+- amount mismatch is rejected and does not mutate the transaction;
+- failed payment remains failed even after a later paid callback, with reconciliation handling;
+- cancel/void remains voided;
+- successful callback activates the matching entitlement;
+- duplicate callback replay is idempotent;
+- refund reverses the matching entitlement.
+
+An external provider timeout is `NOT_APPLICABLE_IN_MOCK` because no provider network call occurs in mock mode.
+
+When staging switches to hosted JazzCash, certification deliberately becomes `BLOCKED — PAYMENT SANDBOX NOT CONFIGURED` until #17 adds a provider-specific sandbox automation contract and safe staging credentials. A boolean flag alone cannot turn hosted payments green.
 
 ### Gameplay and rewards
 
-The API lane starts a play session from the deployed catalogue, rejects an invalid nonce, accepts a valid proof according to the game's integrity policy, verifies duplicate completion idempotency and reads wallet/leaderboard state. Multiplayer room coordination is exercised when a public multiplayer-capable game exists; otherwise that subcase is explicitly `NOT_APPLICABLE`.
+The API lane starts a play session from the deployed catalogue, rejects an invalid nonce, accepts a valid proof according to the game's integrity policy, verifies duplicate completion idempotency and reads wallet/leaderboard state. It also proves a free player cannot start a premium game. Representative game, icon and banner URLs plus the controlled game-origin health endpoint are checked from staging.
+
+When competitions are enabled, deterministic staging fixtures must exist for a free incomplete challenge, a premium challenge and a premium tournament. The suite proves incomplete/free and premium authorization failures without awarding rewards or entering a tournament. Multiplayer room coordination is exercised when a public multiplayer-capable game exists; otherwise that subcase is explicitly `NOT_APPLICABLE`.
 
 ### Admin and Operations
 
@@ -86,9 +100,9 @@ A critical test that passes only after retry is not considered certified.
 
 ## Visual approval
 
-`tests/staging/visual-baselines.json` stores only SHA-256 hashes of human-approved staging screenshots, not the images themselves.
+`tests/staging/visual-baselines.json` stores SHA-256 fingerprints of human-approved staging screenshots. The reviewed screenshots themselves are retained as the corresponding staging certification evidence rather than being silently regenerated.
 
-Each certification run captures the current player home/library/premium/support surfaces and the authenticated Admin shell. If an approved hash is missing or changes, the visual lane produces `VISUAL_REVIEW_REQUIRED` and the overall machine decision is `BLOCKED` until a human reviews the screenshot and updates the baseline manifest through a normal pull request. Baselines are never auto-updated.
+Each certification run captures the current player home/library/premium/support surfaces and a deterministic Admin shell with dynamic report content masked. If an approved fingerprint is missing or changes, the visual lane produces `VISUAL_REVIEW_REQUIRED` and the overall machine decision is `BLOCKED` until a human reviews the captured screenshot and updates the baseline manifest through a normal pull request. Baselines are never auto-updated.
 
 ## Staging-only configuration
 
@@ -96,11 +110,14 @@ No passwords or provider secrets belong in issues, chat, Vercel or source contro
 
 Existing protected `staging` environment/AWS configuration remains required. Certification additionally recognizes:
 
-- variable `STAGING_QA_PLAYER_IDENTIFIER` — optional stable staging-only player identifier; when absent the runner uses a unique non-deliverable email in mock OTP mode;
-- variable `STAGING_PAYMENT_SANDBOX_READY` — set to `true` only after the enabled hosted provider is genuinely configured for safe sandbox/UAT testing;
+- variable `STAGING_QA_PLAYER_IDENTIFIER` — optional stable staging-only API QA identifier; when absent the runner uses a unique non-deliverable email in mock OTP mode;
 - secret `STAGING_QA_VOUCHER_CODE` — optional deterministic staging-only voucher code when voucher regression is required.
 
+The browser matrix always uses run/project-specific non-deliverable identifiers in mock OTP mode to avoid cross-project OTP throttling or user-state contamination.
+
 The staging runtime-control secret must map at least one identity to each administrative role (`admin`, `operator`, `support`, `security`, `finance`). The workflow does not require or store human Admin passwords.
+
+Hosted JazzCash certification remains blocked until #17 supplies the provider-specific sandbox/UAT automation contract; those credentials must be placed only in the protected AWS/GitHub secret boundary defined by that integration.
 
 ## Evidence
 
@@ -112,7 +129,7 @@ and updates:
 
 `staging-certification/<SHA>/latest.json`
 
-The report includes the expected SHA, release/deployment/certification run IDs, component digests, running-image proof, test totals, safe failed-test summaries, QA correlation ID, visual-review count and one final decision.
+The report includes the expected SHA, release/deployment/certification run IDs, component digests, running-image proof, test totals, safe failed-test summaries, QA correlation ID, visual-review count and one final decision. Payment callback details are written as sanitized status/correlation evidence only; signing material is never written to the evidence bundle.
 
 The only final decisions are:
 
