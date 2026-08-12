@@ -27,7 +27,7 @@ test('@admin full admin assertion resolves capabilities and renders operations c
   expect(payload.capabilities).toContain('reports.export');
   expect(payload.capabilities).toContain('subscription.manage_plans');
   await mkdir(captureDir,{recursive:true});
-  await page.screenshot({path:`${captureDir}/admin-shell.png`,fullPage:true,animations:'disabled'});
+  await page.screenshot({path:`${captureDir}/admin-shell.png`,fullPage:true,animations:'disabled',mask:[page.locator('#view')]});
   await context.close();
 });
 
