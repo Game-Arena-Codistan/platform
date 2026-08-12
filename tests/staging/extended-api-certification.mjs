@@ -75,6 +75,21 @@ await lane('competition-authorization-and-fixtures',async()=>{
   return{challenges:challenges.length,tournaments:tournaments.length,authorization:true};
 });
 
+const paymentPath='certification/payment-results.json';
+try{
+  const priorExit=process.exitCode;
+  process.exitCode=undefined;
+  process.env.PAYMENT_CERTIFICATION_OUTPUT=paymentPath;
+  await import('./payment-callback-certification.mjs');
+  const paymentExit=Number(process.exitCode||0);
+  process.exitCode=priorExit;
+  const payment=JSON.parse(await readFile(paymentPath,'utf8'));
+  const counts={pass:payment.results?.filter(item=>item.status==='PASS').length||0,fail:payment.results?.filter(item=>item.status==='FAIL').length||0,blocked:payment.results?.filter(item=>item.status==='BLOCKED').length||0};
+  if(payment.decision==='FAILED'||paymentExit===1)record('payment-callback-matrix','FAIL',{decision:payment.decision,...counts});
+  else if(payment.decision==='BLOCKED'||paymentExit===2)record('payment-callback-matrix','BLOCKED',{decision:payment.decision,...counts});
+  else record('payment-callback-matrix','PASS',{decision:payment.decision,...counts});
+}catch(error){record('payment-callback-matrix','BLOCKED',{error:`Payment callback harness could not execute: ${String(error.message||error).slice(0,220)}`});}
+
 const decision=failed?'FAILED':blocked?'BLOCKED':'PASS';
 await writeFile(output,JSON.stringify({schemaVersion:'game-arena-staging-extended-api.v1',decision,generatedAt:new Date().toISOString(),results},null,2));
 console.log(JSON.stringify({decision,pass:results.filter(item=>item.status==='PASS').length,fail:results.filter(item=>item.status==='FAIL').length,blocked:results.filter(item=>item.status==='BLOCKED').length}));
