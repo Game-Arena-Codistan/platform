@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 
 const expectedSha=process.env.EXPECTED_RELEASE_SHA;
 const runId=String(process.env.QA_RUN_ID||Date.now()).replace(/[^a-zA-Z0-9-]/g,'').slice(-32);
-const identifier=process.env.STAGING_QA_PLAYER_IDENTIFIER||`autoqa+${runId}@example.invalid`;
+const identifierFor=project=>`autoqa+${runId}-${String(project).replace(/[^a-z0-9]/gi,'-')}@example.invalid`;
 
 function watchPage(page){
   const failures=[];
@@ -30,12 +30,11 @@ test('@player @critical-mobile deployed shell exposes the exact release and crit
   assertClean();
 });
 
-test('@player @critical-mobile real OTP sign-in reaches the fixed-duration premium checkout',async({page})=>{
+test('@player @critical-mobile real OTP sign-in launches a deployed game and reaches fixed-duration checkout',async({page},testInfo)=>{
+  const identifier=identifierFor(testInfo.project.name);
   await page.goto('/#/premium');
   await expect(page.getByText(/Fixed-duration purchase/i)).toBeVisible();
-  const choose=page.locator('[data-plan]').first();
-  await expect(choose).toBeVisible();
-  await choose.click();
+  await page.locator('[data-plan]').first().click();
 
   await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
   await page.locator('#identifier').fill(identifier);
@@ -51,6 +50,25 @@ test('@player @critical-mobile real OTP sign-in reaches the fixed-duration premi
   await page.locator('#otp').fill(otp.debugCode);
   await page.getByRole('button',{name:'Verify'}).click();
 
+  await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();
+  await page.getByRole('button',{name:'Close'}).click();
+
+  await page.goto('/#/library');
+  const freeCard=page.locator('.game-card').filter({has:page.locator('.badge').filter({hasText:/^Free$/})}).first();
+  await expect(freeCard).toBeVisible();
+  const playResponse=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');
+  await freeCard.getByRole('button',{name:'Play'}).click();
+  expect((await playResponse).status()).toBe(201);
+  const frame=page.locator('#game-frame');
+  await expect(frame).toBeVisible();
+  const frameSrc=await frame.getAttribute('src');
+  expect(frameSrc).toMatch(/^https:\/\//);
+  const sandbox=await frame.getAttribute('sandbox');
+  expect(sandbox||'').not.toContain('allow-same-origin');
+  await page.getByRole('button',{name:'Exit game'}).click();
+
+  await page.goto('/#/premium');
+  await page.locator('[data-plan]').first().click();
   await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();
   const checkoutResponse=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');
   await page.getByRole('button',{name:/Continue to JazzCash/i}).click();
