@@ -11,7 +11,7 @@ const required={
   '.github/workflows/aws-production.yml':['uat_record:','Require READY FOR UAT certification for exact SHA','.decision == "READY FOR UAT"','staging-certification/$IMAGE_TAG/latest.json','production-smoke:','No customer, payment, wallet, game or administrative mutation was executed'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
   'tests/staging/helpers.mjs':['STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_OTP_CODE','signInFromAccount','assertNoHorizontalOverflow'],
-  'tests/staging/player.spec.mjs':['debugCode','/v1/payments/jazzcash/checkout','@critical-mobile','game-frame','sameOriginPermission','support-status'],
+  'tests/staging/player.spec.mjs':['signInFromAccount','/v1/payments/jazzcash/checkout','@critical-mobile','game-frame','sameOriginPermission','support-status'],
   'tests/staging/home-feed.spec.mjs':['approved product proposition','discovery feed','locked premium play'],
   'tests/staging/auth-session.spec.mjs':['OTP rejects a wrong code','resend guard','authenticated'],
   'tests/staging/catalogue-gameplay.spec.mjs':['catalogue search','premium title','isolated iframe'],
