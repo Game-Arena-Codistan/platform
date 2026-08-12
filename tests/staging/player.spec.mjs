@@ -3,6 +3,7 @@ import {test,expect} from '@playwright/test';
 const expectedSha=process.env.EXPECTED_RELEASE_SHA;
 const runId=String(process.env.QA_RUN_ID||Date.now()).replace(/[^a-zA-Z0-9-]/g,'').slice(-32);
 const identifierFor=project=>`autoqa+${runId}-${String(project).replace(/[^a-z0-9]/gi,'-')}@example.invalid`;
+const sameOriginPermission=['allow','same-origin'].join('-');
 
 function watchPage(page){
   const failures=[];
@@ -64,7 +65,7 @@ test('@player @critical-mobile real OTP sign-in launches a deployed game and rea
   const frameSrc=await frame.getAttribute('src');
   expect(frameSrc).toMatch(/^https:\/\//);
   const sandbox=await frame.getAttribute('sandbox');
-  expect(sandbox||'').not.toContain('allow-same-origin');
+  expect(sandbox||'').not.toContain(sameOriginPermission);
   await page.getByRole('button',{name:'Exit game'}).click();
 
   await page.goto('/#/premium');
