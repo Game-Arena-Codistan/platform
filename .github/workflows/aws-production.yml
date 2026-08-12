@@ -123,3 +123,44 @@ jobs:
     with:
       environment: production
     secrets: inherit
+
+  production-smoke:
+    needs: runtime-controls
+    if: needs.runtime-controls.result == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Authenticate for read-only production smoke
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_RUNTIME_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: game-arena-production-smoke-${{ github.run_id }}
+      - name: Verify exact running public revision without mutations
+        env:
+          CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          prefix="${CONFIG_PREFIX_INPUT:-/game-arena/production}"
+          parameter() { aws ssm get-parameter --name "$prefix/$1" --query Parameter.Value --output text; }
+          player="https://$(parameter public-host)"
+          game="https://$(parameter game-host)"
+          api="$player/api"
+          curl --fail --silent --show-error --max-time 20 "$player" >/dev/null
+          curl --fail --silent --show-error --max-time 20 "$api/healthz" >/dev/null
+          ready="$(curl --fail --silent --show-error --max-time 20 "$api/readyz")"
+          jq -e '.status == "ready"' <<<"$ready" >/dev/null
+          curl --fail --silent --show-error --max-time 20 "$game/healthz" >/dev/null
+          config="$(curl --fail --silent --show-error --max-time 20 "$player/config.js")"
+          grep -Fq "releaseSha:\"$IMAGE_TAG\"" <<<"$config"
+          headers="$(curl --fail --silent --show-error --head --max-time 20 "$player")"
+          grep -qi '^x-content-type-options: *nosniff' <<<"$headers"
+          grep -qi '^referrer-policy:' <<<"$headers"
+          {
+            echo '## Production smoke'
+            echo "- Exact SHA: $IMAGE_TAG"
+            echo '- Player/API/game health: passed'
+            echo '- No customer, payment, wallet, game or administrative mutation was executed'
+          } >> "$GITHUB_STEP_SUMMARY"
