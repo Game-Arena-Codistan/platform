@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   packages: read
   id-token: write
 
@@ -38,6 +39,16 @@ jobs:
       environment: staging
     secrets: inherit
 
+  automatic-certification:
+    needs: automatic-controls
+    if: needs.automatic-controls.result == 'success'
+    uses: ./.github/workflows/aws-staging-certification.yml
+    with:
+      image_tag: ${{ github.event.workflow_run.head_sha }}
+      release_run_id: ${{ github.event.workflow_run.id }}
+      deployment_run_id: ${{ github.run_id }}
+    secrets: inherit
+
   manual:
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/aws-deploy.yml
@@ -56,4 +67,13 @@ jobs:
     uses: ./.github/workflows/aws-runtime-controls.yml
     with:
       environment: staging
+    secrets: inherit
+
+  manual-certification:
+    needs: manual-controls
+    if: needs.manual-controls.result == 'success'
+    uses: ./.github/workflows/aws-staging-certification.yml
+    with:
+      image_tag: ${{ inputs.image_tag || github.sha }}
+      deployment_run_id: ${{ github.run_id }}
     secrets: inherit
