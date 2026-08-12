@@ -4,15 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: Full commit SHA that has already passed AWS staging
+        description: Full commit SHA that has already passed AWS staging certification and human UAT
         required: true
         type: string
       qualification_record:
-        description: Non-sensitive link or identifier for completed staging qualification
+        description: Non-sensitive link or identifier for the READY FOR UAT staging certification
+        required: true
+        type: string
+      uat_record:
+        description: Non-sensitive human UAT approval reference for this exact SHA
         required: true
         type: string
       change_record:
-        description: Non-sensitive approved change or go-live record
+        description: Non-sensitive approved production change or go-live record
         required: true
         type: string
       confirmation:
@@ -34,12 +38,14 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
           IMAGE_TAG: ${{ inputs.image_tag }}
           QUALIFICATION_RECORD: ${{ inputs.qualification_record }}
+          UAT_RECORD: ${{ inputs.uat_record }}
           CHANGE_RECORD: ${{ inputs.change_record }}
         run: |
           set -euo pipefail
           test "$CONFIRMATION" = PROMOTE || { echo 'confirmation must be PROMOTE.' >&2; exit 1; }
           [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]
           test -n "$QUALIFICATION_RECORD"
+          test -n "$UAT_RECORD"
           test -n "$CHANGE_RECORD"
 
   provider-guard:
@@ -78,6 +84,23 @@ jobs:
           jq -e 'type == "object" and length > 0' <<<"$roles" >/dev/null
           test -n "$support_secret"
           case "$endpoint" in https://*) ;; *) echo 'Production support delivery endpoint must use HTTPS.' >&2; exit 1 ;; esac
+      - name: Require READY FOR UAT certification for exact SHA
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          STAGING_PREFIX_INPUT: ${{ vars.AWS_STAGING_CONFIG_PREFIX }}
+          UAT_RECORD: ${{ inputs.uat_record }}
+        run: |
+          set -euo pipefail
+          test -n "$UAT_RECORD" || { echo 'A human UAT approval reference is required.' >&2; exit 1; }
+          prefix="${STAGING_PREFIX_INPUT:-/game-arena/staging}"
+          bucket="$(aws ssm get-parameter --name "$prefix/deployment-evidence-bucket" --query Parameter.Value --output text)"
+          aws s3 cp "s3://$bucket/staging-certification/$IMAGE_TAG/latest.json" /tmp/staging-certification.json --only-show-errors
+          jq -e --arg sha "$IMAGE_TAG" '
+            .schemaVersion == "game-arena-staging-certification.v1" and
+            .decision == "READY FOR UAT" and
+            .expectedSha == $sha and
+            (.releaseRunId | length > 0)
+          ' /tmp/staging-certification.json >/dev/null
 
   deploy:
     needs: [guard, provider-guard]
@@ -90,7 +113,7 @@ jobs:
       rollback: false
       qualification_record: ${{ inputs.qualification_record }}
       change_record: ${{ inputs.change_record }}
-      deployment_reason: Approved production promotion
+      deployment_reason: Approved production promotion after staging certification and human UAT
     secrets: inherit
 
   runtime-controls:
