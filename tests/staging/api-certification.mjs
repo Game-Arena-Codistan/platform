@@ -51,7 +51,7 @@ await lane('catalogue',async()=>{
   const result=await call('/v1/catalog/games');expectStatus(result.response.status,[200],'catalogue failed');
   if(!Array.isArray(result.data?.games)||!result.data.games.length)throw new Error('public catalogue is empty.');
   catalogue=result.data.games;
-  const unsafe=catalogue.filter(game=>game.status!=='active'||Number(game.rolloutPercent??100)<=0);
+  const unsafe=catalogue.filter(game=>(game.status&&!['active','live'].includes(String(game.status).toLowerCase()))||Number(game.rolloutPercent??game.rolloutPercentage??100)<=0);
   if(unsafe.length)throw new Error('public catalogue exposed inactive or zero-rollout records.');
   return{publicGames:catalogue.length};
 });
