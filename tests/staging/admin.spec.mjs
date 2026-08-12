@@ -7,9 +7,9 @@ const captureDir=process.env.VISUAL_CAPTURE_DIR||'visual-captures';
 
 function headersFor(role){const headers=assertions[role];if(!headers)throw new Error(`BLOCKED: missing staging QA signed assertion for ${role}`);return headers;}
 
-async function adminGet(role,path){
+async function adminCall(role,path,{method='GET',data}={}){
   const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});
-  try{return await context.get(`/api${path}`);}finally{await context.dispose();}
+  try{return await context.fetch(`/api${path}`,{method,data});}finally{await context.dispose();}
 }
 
 test('@admin full admin assertion resolves capabilities and renders operations console',async({browser})=>{
@@ -32,21 +32,22 @@ test('@admin full admin assertion resolves capabilities and renders operations c
 });
 
 test('@admin restricted roles enforce server capabilities independently of UI',async()=>{
-  const expectations={
-    operator:{allowed:'/v1/admin/reports/payments',denied:'/v1/admin/reports/exports'},
-    support:{allowed:'/v1/admin/plans',denied:'/v1/admin/reports/exports'},
-    security:{allowed:'/v1/admin/reports/subscriptions/summary',denied:'/v1/admin/plans'},
-    finance:{allowed:'/v1/admin/reports/exports',denied:'/v1/admin/plans/monthly'}
-  };
-  for(const [role,paths] of Object.entries(expectations)){
-    const allowed=await adminGet(role,paths.allowed);
-    expect(allowed.status(),`${role} should access ${paths.allowed}`).toBe(200);
-    const denied=await adminGet(role,paths.denied);
-    expect([400,401,403,404,405].includes(denied.status()),`${role} must not gain unintended access to ${paths.denied}; got ${denied.status()}`).toBeTruthy();
+  const exportPath='/v1/admin/reports/exports/summary?preset=today';
+  const cases=[
+    {role:'operator',allowed:'/v1/admin/reports/payments?preset=today',denied:exportPath},
+    {role:'support',allowed:'/v1/admin/plans',denied:exportPath},
+    {role:'security',allowed:'/v1/admin/reports/subscriptions/summary?preset=today',denied:'/v1/admin/plans'},
+    {role:'finance',allowed:exportPath,denied:'/v1/admin/plans/monthly',deniedMethod:'PATCH',deniedData:{action:'retire',reason:'AUTO-QA denied capability probe'}}
+  ];
+  for(const item of cases){
+    const allowed=await adminCall(item.role,item.allowed);
+    expect(allowed.status(),`${item.role} should access ${item.allowed}`).toBe(200);
+    const denied=await adminCall(item.role,item.denied,{method:item.deniedMethod||'GET',data:item.deniedData});
+    expect(denied.status(),`${item.role} must be forbidden from ${item.denied}`).toBe(403);
   }
 });
 
 test('@admin unmapped or invalid identity cannot reach operational APIs',async()=>{
-  const response=await adminGet('unauthorized','/v1/admin/capabilities');
+  const response=await adminCall('unauthorized','/v1/admin/capabilities');
   expect([401,403]).toContain(response.status());
 });
