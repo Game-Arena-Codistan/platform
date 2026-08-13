@@ -32,16 +32,25 @@ jobs:
 
     steps:
 
+      # ----------------------------------------------------------
+      # CHECKOUT
+      # ----------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Login to GHCR
+      # ----------------------------------------------------------
+      # LOGIN TO GHCR
+      # ----------------------------------------------------------
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # ----------------------------------------------------------
+      # BUILD AND PUSH
+      # ----------------------------------------------------------
       - name: Build and Push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
@@ -58,37 +67,50 @@ jobs:
   deploy:
     name: Deploy to Staging
     needs: build
+
     runs-on: ubuntu-latest
 
-    # IMPORTANT:
-    # This tells GitHub Actions to use secrets
-    # configured under the "staging" environment.
+    # GitHub Environment:
+    # Settings → Environments → staging
     environment:
       name: staging
 
     steps:
 
+      # ----------------------------------------------------------
+      # DEPLOY THROUGH SSH
+      # ----------------------------------------------------------
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@v1.0.3
+
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+
           script_stop: true
 
           script: |
 
             set -e
 
-            echo "========================================"
-            echo "Game Arena Staging Deployment"
-            echo "========================================"
+            echo "=============================================="
+            echo " Game Arena Platform - Staging Deployment"
+            echo "=============================================="
+
+            # ====================================================
+            # SERVER DIRECTORY
+            # ====================================================
 
             cd /opt/codistan/platform
 
             echo ""
             echo "Current directory:"
             pwd
+
+            # ====================================================
+            # DOCKER INFORMATION
+            # ====================================================
 
             echo ""
             echo "Docker version:"
@@ -98,9 +120,21 @@ jobs:
             echo "Docker Compose version:"
             docker compose version
 
-            # ================================================
+            # ====================================================
+            # IMAGE VERSION
+            # ====================================================
+
+            export IMAGE_TAG="${{ github.sha }}"
+
+            echo ""
+            echo "=============================================="
+            echo "Deploying commit:"
+            echo "${IMAGE_TAG}"
+            echo "=============================================="
+
+            # ====================================================
             # LOGIN TO GHCR
-            # ================================================
+            # ====================================================
 
             echo ""
             echo "Logging into GitHub Container Registry..."
@@ -109,50 +143,134 @@ jobs:
               -u "${{ secrets.GHCR_USERNAME }}" \
               --password-stdin
 
-            # ================================================
-            # PULL LATEST IMAGES
-            # ================================================
+            echo ""
+            echo "GHCR login successful."
+
+            # ====================================================
+            # VERIFY REQUIRED FILES
+            # ====================================================
 
             echo ""
-            echo "Pulling latest Game Arena images..."
+            echo "Checking deployment files..."
+
+            test -f infra/docker-compose.staging.yml
+            test -f infra/.env
+            test -f infra/gateway/nginx.conf
+
+            echo "Required files found."
+
+            # ====================================================
+            # SHOW IMAGE TAG
+            # ====================================================
+
+            echo ""
+            echo "IMAGE_TAG:"
+            echo "${IMAGE_TAG}"
+
+            # ====================================================
+            # VALIDATE COMPOSE FILE
+            # ====================================================
+
+            echo ""
+            echo "Validating Docker Compose configuration..."
 
             docker compose \
-              -f infra/docker-compose.yml \
+              -f infra/docker-compose.staging.yml \
+              --env-file infra/.env \
+              config > /tmp/game-arena-staging-compose.yml
+
+            echo "Docker Compose configuration is valid."
+
+            # ====================================================
+            # PULL IMAGES
+            # ====================================================
+
+            echo ""
+            echo "=============================================="
+            echo "Pulling Game Arena images..."
+            echo "=============================================="
+
+            docker compose \
+              -f infra/docker-compose.staging.yml \
               --env-file infra/.env \
               pull
 
-            # ================================================
+            # ====================================================
             # START / UPDATE SERVICES
-            # ================================================
+            # ====================================================
 
             echo ""
+            echo "=============================================="
             echo "Starting Game Arena services..."
+            echo "=============================================="
 
             docker compose \
-              -f infra/docker-compose.yml \
+              -f infra/docker-compose.staging.yml \
               --env-file infra/.env \
               up -d \
               --remove-orphans
 
-            # ================================================
-            # CLEAN OLD IMAGES
-            # ================================================
+            # ====================================================
+            # WAIT FOR SERVICES
+            # ====================================================
+
+            echo ""
+            echo "Waiting for services to start..."
+
+            sleep 10
+
+            # ====================================================
+            # SHOW STATUS
+            # ====================================================
+
+            echo ""
+            echo "=============================================="
+            echo "Game Arena container status"
+            echo "=============================================="
+
+            docker compose \
+              -f infra/docker-compose.staging.yml \
+              --env-file infra/.env \
+              ps
+
+            # ====================================================
+            # SHOW RUNNING CONTAINERS
+            # ====================================================
+
+            echo ""
+            echo "=============================================="
+            echo "Game Arena running containers"
+            echo "=============================================="
+
+            docker ps \
+              --filter "label=com.docker.compose.project" \
+              --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+
+            # ====================================================
+            # CLEAN UNUSED IMAGES
+            # ====================================================
 
             echo ""
             echo "Cleaning unused Docker images..."
 
             docker image prune -f
 
-            # ================================================
-            # SHOW STATUS
-            # ================================================
+            # ====================================================
+            # FINAL MESSAGE
+            # ====================================================
 
             echo ""
-            echo "========================================"
-            echo "Deployment completed successfully"
-            echo "========================================"
+            echo "=============================================="
+            echo " Deployment completed successfully"
+            echo "=============================================="
 
-            docker compose \
-              -f infra/docker-compose.yml \
-              --env-file infra/.env \
-              ps
+            echo ""
+            echo "Commit deployed:"
+            echo "${IMAGE_TAG}"
+
+            echo ""
+            echo "Gateway:"
+            echo "http://SERVER_IP:8095"
+
+            echo ""
+            echo "Game Arena staging deployment finished."
