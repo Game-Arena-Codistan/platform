@@ -11,7 +11,8 @@ services:
     restart: unless-stopped
 
   migrate:
-    build: ../apps/api
+    image: ${IMAGE_BASE}-api:latest
+    pull_policy: always
     command: [npm, run, migrate]
     environment:
       DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD:-local-only-change-me}@postgres:5432/game_arena
@@ -20,7 +21,8 @@ services:
     restart: "no"
 
   api:
-    build: ../apps/api
+    image: ${IMAGE_BASE}-api:latest
+    pull_policy: always
     environment:
       NODE_ENV: development
       PORT: 8081
@@ -39,7 +41,8 @@ services:
     restart: unless-stopped
 
   web:
-    build: ../apps/web
+    image: ${IMAGE_BASE}-web:latest
+    pull_policy: always
     environment:
       GAME_ARENA_MODE: live
       GAME_ARENA_API_BASE_URL: /api
@@ -48,7 +51,8 @@ services:
     restart: unless-stopped
 
   admin:
-    build: ../apps/admin
+    image: ${IMAGE_BASE}-admin:latest
+    pull_policy: always
     environment:
       GAME_ARENA_ADMIN_API_BASE_URL: /api
       GAME_ARENA_ADMIN_AUTH_MODE: local-key
@@ -57,7 +61,8 @@ services:
     restart: unless-stopped
 
   game-origin:
-    build: ../apps/game-origin
+    image: ${IMAGE_BASE}-game-origin:latest
+    pull_policy: always
     ports: ["8082:8080"]
     restart: unless-stopped
 
