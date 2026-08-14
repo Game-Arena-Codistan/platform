@@ -1,4 +1,4 @@
-FROM node:22.23.1-alpine3.24@sha256:b74031e546d7f4faf561d797ac1b76beccac856a042815ca77db4fd047581605
+FROM node:26.7.0-alpine3.24@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
