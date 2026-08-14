@@ -36,10 +36,10 @@ jobs:
       run:
         working-directory: infra/opentofu/aws
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: 1.12.5
       - run: tofu fmt -check -recursive
@@ -70,11 +70,11 @@ jobs:
       run:
         working-directory: infra/opentofu/aws
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: 1.12.5
 
@@ -86,7 +86,7 @@ jobs:
           [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo 'AWS_ACCOUNT_ID must be a twelve-digit protected environment variable.' >&2; exit 1; }
 
       - name: Authenticate to AWS with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_INFRA_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -139,7 +139,7 @@ jobs:
       - name: Render plan for review
         run: tofu show -no-color game-arena.tfplan > game-arena.tfplan.txt
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: aws-${{ inputs.environment }}-infrastructure-plan-${{ github.run_id }}
           path: |
@@ -167,7 +167,7 @@ jobs:
           tofu output -json > outputs.json
           jq 'with_entries(select(.value.sensitive == false))' outputs.json | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: inputs.action == 'apply'
         with:
           name: aws-${{ inputs.environment }}-infrastructure-outputs-${{ github.run_id }}
