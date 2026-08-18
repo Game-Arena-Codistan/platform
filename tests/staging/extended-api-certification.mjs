@@ -76,6 +76,21 @@ await lane('competition-authorization-and-fixtures',async()=>{
   return{challenges:challenges.length,tournaments:tournaments.length,authorization:true};
 });
 
+const baselinePath='certification/baseline-results.json';
+try{
+  const priorExit=process.exitCode;
+  process.exitCode=undefined;
+  process.env.BASELINE_CERTIFICATION_OUTPUT=baselinePath;
+  await import('./platform-baseline-certification.mjs');
+  const baselineExit=Number(process.exitCode||0);
+  process.exitCode=priorExit;
+  const baseline=JSON.parse(await readFile(baselinePath,'utf8'));
+  const counts={pass:baseline.results?.filter(item=>item.status==='PASS').length||0,fail:baseline.results?.filter(item=>item.status==='FAIL').length||0,blocked:baseline.results?.filter(item=>item.status==='BLOCKED').length||0};
+  if(baseline.decision==='FAILED'||baselineExit===1)record('platform-security-and-latency-baseline','FAIL',{decision:baseline.decision,p95LimitMs:baseline.p95LimitMs,...counts});
+  else if(baseline.decision==='BLOCKED'||baselineExit===2)record('platform-security-and-latency-baseline','BLOCKED',{decision:baseline.decision,p95LimitMs:baseline.p95LimitMs,...counts});
+  else record('platform-security-and-latency-baseline','PASS',{decision:baseline.decision,p95LimitMs:baseline.p95LimitMs,...counts});
+}catch(error){record('platform-security-and-latency-baseline','BLOCKED',{error:`Security/latency baseline could not execute: ${String(error.message||error).slice(0,220)}`});}
+
 const paymentPath='certification/payment-results.json';
 try{
   const priorExit=process.exitCode;
