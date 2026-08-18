@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: game_arena
+      POSTGRES_USER: game_arena
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck: {test: [CMD-SHELL, "pg_isready -U game_arena -d game_arena"], interval: 5s, timeout: 3s, retries: 20}
+    restart: unless-stopped
+
+  migrate:
+    image: ${IMAGE_BASE:?IMAGE_BASE is required}-api:${IMAGE_TAG:?IMAGE_TAG is required}
+    pull_policy: always
+    command: [npm, run, migrate]
+    environment:
+      DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD}@postgres:5432/game_arena
+      DATABASE_SSL: "false"
+    depends_on: {postgres: {condition: service_healthy}}
+    restart: "no"
+
+  api:
+    image: ${IMAGE_BASE}-api:${IMAGE_TAG}
+    pull_policy: always
+    environment:
+      NODE_ENV: staging
+      PORT: 8081
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?PUBLIC_ORIGIN is required}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
+      DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD}@postgres:5432/game_arena
+      DATABASE_SSL: "false"
+      REQUIRE_DATABASE: "true"
+      OTP_PROVIDER_MODE: ${OTP_PROVIDER_MODE:-mock}
+      ALLOW_DEBUG_OTP: ${ALLOW_DEBUG_OTP:-true}
+      JAZZCASH_MODE: ${JAZZCASH_MODE:-mock}
+      JAZZCASH_WEBHOOK_SECRET: ${JAZZCASH_WEBHOOK_SECRET:?JAZZCASH_WEBHOOK_SECRET is required}
+      ADMIN_AUTH_MODE: ${ADMIN_AUTH_MODE:-local-key}
+      ADMIN_API_KEYS: ${ADMIN_API_KEYS:-}
+      ADMIN_PROXY_SECRET: ${ADMIN_PROXY_SECRET:-}
+      ADMIN_IDENTITY_ROLES_JSON: ${ADMIN_IDENTITY_ROLES_JSON:-{}}
+      TOPUP_OFFERS_JSON: ${TOPUP_OFFERS_JSON:-[]}
+      VOUCHER_CODES_JSON: ${VOUCHER_CODES_JSON:-{}}
+      COMPETITIONS_ENABLED: ${COMPETITIONS_ENABLED:-true}
+      ALLOW_EXTERNAL_GAMES: ${ALLOW_EXTERNAL_GAMES:-true}
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    restart: unless-stopped
+
+  web:
+    image: ${IMAGE_BASE}-web:${IMAGE_TAG}
+    pull_policy: always
+    environment:
+      GAME_ARENA_MODE: live
+      GAME_ARENA_RELEASE_SHA: ${IMAGE_TAG}
+      GAME_ARENA_API_BASE_URL: /api
+      GAME_ARENA_GAME_ORIGIN: ${GAME_ARENA_GAME_ORIGIN:?GAME_ARENA_GAME_ORIGIN is required}
+      GAME_ARENA_GAME_HOSTS: ${GAME_ARENA_GAME_HOSTS:?GAME_ARENA_GAME_HOSTS is required}
+    restart: unless-stopped
+
+  admin:
+    image: ${IMAGE_BASE}-admin:${IMAGE_TAG}
+    pull_policy: always
+    environment:
+      GAME_ARENA_ADMIN_API_BASE_URL: /api
+      GAME_ARENA_ADMIN_AUTH_MODE: ${GAME_ARENA_ADMIN_AUTH_MODE:-local-key}
+    ports: ["127.0.0.1:8083:8080"]
+    depends_on: {api: {condition: service_healthy}}
+    restart: unless-stopped
+
+  game-origin:
+    image: ${IMAGE_BASE}-games:${IMAGE_TAG}
+    pull_policy: always
+    ports: ["127.0.0.1:8082:8080"]
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:1.29-alpine
+    volumes: [./gateway/nginx.conf:/etc/nginx/nginx.conf:ro]
+    ports: ["8095:8080"]
+    depends_on: {api: {condition: service_healthy}, web: {condition: service_healthy}}
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
