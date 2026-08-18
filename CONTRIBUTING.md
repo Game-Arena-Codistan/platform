@@ -52,6 +52,7 @@ node scripts/check-ai-native-readiness.mjs
 node scripts/check-pre-staging.mjs
 node scripts/check-api-contract.mjs
 node scripts/check-cloud-deployment.mjs
+node scripts/check-staging-certification.mjs
 ```
 
 Application checks:
@@ -65,6 +66,23 @@ cd ../../packages/game-bridge && npm run ci
 ```
 
 Changes to persistence, deployment, browser journeys, game artifacts or release controls also require the appropriate PostgreSQL, Compose, Playwright, load, OpenTofu and game-runtime workflows.
+
+## Permanent staging certification rule
+
+A feature is not complete merely because its UI or API implementation exists. Add or update the regression coverage that matches the feature's actual risk surface:
+
+- unit and service tests;
+- API positive and negative/error tests;
+- deployed Playwright happy-path coverage;
+- authorization/capability tests;
+- Admin/Operations coverage when operationally relevant;
+- payment/idempotency tests when money or entitlement is involved;
+- mobile/responsive coverage for player-facing critical journeys;
+- game-runtime/Game Bridge tests for catalogue or gameplay changes.
+
+Every defect found during QA or UAT should become a permanent regression test before the fix is considered complete.
+
+After AWS staging is deployed, a new staging release is not ready for human UAT until the exact running SHA has passed the machine gate in `docs/STAGING-CERTIFICATION.md` and produced `READY FOR UAT`. A local, preview or merely reachable deployment cannot substitute for that evidence.
 
 ## API and database changes
 
@@ -115,4 +133,4 @@ Update the relevant runbook, contract or architecture document when behavior cha
 
 ## Definition of done
 
-A code change is complete when implementation, tests, contracts, migrations, documentation, observability and rollback controls agree. Environment work is complete only after deployed evidence is attached to the owning launch issue.
+A code change is complete when implementation, tests, contracts, migrations, documentation, observability and rollback controls agree. Environment work is complete only after deployed evidence is attached to the owning launch issue. A staging candidate is UAT-ready only when the permanent staging certification for its exact running artifacts says `READY FOR UAT`; human UAT and production approval remain separate explicit gates.

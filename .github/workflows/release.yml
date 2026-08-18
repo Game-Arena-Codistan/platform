@@ -44,3 +44,8 @@ jobs:
           tags: |
             ghcr.io/game-arena-codistan/platform-${{ matrix.name }}:${{ github.sha }}
             ghcr.io/game-arena-codistan/platform-${{ matrix.name }}:main
+          labels: |
+            org.opencontainers.image.source=https://github.com/Game-Arena-Codistan/platform
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.sha }}
+            org.opencontainers.image.title=game-arena-${{ matrix.name }}

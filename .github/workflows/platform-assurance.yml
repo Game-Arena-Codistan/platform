@@ -23,6 +23,8 @@ jobs:
         run: node scripts/security-check.mjs
       - name: AI-native repository controls
         run: node scripts/check-ai-native-readiness.mjs
+      - name: Permanent staging certification controls
+        run: node scripts/check-staging-certification.mjs
       - name: Pre-staging controls
         run: node scripts/check-pre-staging.mjs
       - name: Frontend-backend contract

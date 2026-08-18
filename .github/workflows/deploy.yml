@@ -1,273 +1,183 @@
 name: Build and Deploy Game Arena Platform - Staging
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Build and publish images"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Exact full main-branch SHA to deploy
+        required: true
+        type: string
+      release_run_id:
+        description: Successful Build and publish images run ID for this SHA
+        required: true
+        type: string
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_BASE: ghcr.io/game-arena-codistan/platform
+permissions:
+  contents: read
+  packages: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: game-arena-staging
+  cancel-in-progress: false
 
 jobs:
-
-  # ============================================================
-  # BUILD AND PUSH DOCKER IMAGES
-  # ============================================================
-
-  build:
-    name: Build ${{ matrix.service }}
-
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        service:
-          - admin
-          - api
-          - game-origin
-          - web
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-
-      # ----------------------------------------------------------
-      # CHECKOUT
-      # ----------------------------------------------------------
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ----------------------------------------------------------
-      # LOGIN TO GHCR
-      # ----------------------------------------------------------
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # ----------------------------------------------------------
-      # BUILD AND PUSH
-      # ----------------------------------------------------------
-
-      - name: Build and Push ${{ matrix.service }}
-        uses: docker/build-push-action@v6
-        with:
-          context: apps/${{ matrix.service }}
-          push: true
-          tags: |
-            ${{ env.IMAGE_BASE }}-${{ matrix.service }}:${{ github.sha }}
-            ${{ env.IMAGE_BASE }}-${{ matrix.service }}:latest
-
-  # ============================================================
-  # DEPLOY TO STAGING SERVER
-  # ============================================================
-
   deploy:
-    name: Deploy to Staging
-
-    needs: build
-
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
-
-    environment:
-      name: staging
-
+    environment: staging
+    env:
+      IMAGE_BASE: ghcr.io/game-arena-codistan/platform
+      IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+      RELEASE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
     steps:
+      - name: Validate exact release candidate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'image_tag must be a full Git SHA.' >&2; exit 1; }
+          [[ "$RELEASE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'release_run_id must identify the immutable image publication.' >&2; exit 1; }
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          release="$(curl --fail --silent --show-error -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID")"
+          [ "$(jq -r .conclusion <<<"$release")" = success ] || { echo 'Release workflow is not successful.' >&2; exit 1; }
+          [ "$(jq -r .head_sha <<<"$release")" = "$IMAGE_TAG" ] || { echo 'Release workflow SHA does not match image_tag.' >&2; exit 1; }
 
-      # ----------------------------------------------------------
-      # DEPLOY THROUGH SSH
-      # ----------------------------------------------------------
-
-      - name: Deploy to Staging Server
-        uses: appleboy/ssh-action@v1.0.3
-
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          ref: ${{ env.IMAGE_TAG }}
+          fetch-depth: 1
+          persist-credentials: false
 
-          script_stop: true
+      - name: Prepare pinned SSH host identity
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
 
-          envs: IMAGE_BASE
+      - name: Sync exact deployment configuration
+        run: |
+          set -euo pipefail
+          tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf | \
+            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env'
 
-          script: |
-            set -e
-            echo "=============================================="
-            echo " Game Arena Platform - Staging Deployment"
-            echo "=============================================="
+      - name: Authenticate staging server to GHCR with ephemeral token
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin >/dev/null"
 
-            # ====================================================
-            # SERVER DIRECTORY
-            # ====================================================
-            cd /opt/codistan/platform
-            echo ""
-            echo "Current directory:"
-            pwd
+      - name: Deploy exact SHA on staging
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' RELEASE_RUN_ID='$RELEASE_RUN_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          export IMAGE_BASE IMAGE_TAG
 
-            # ====================================================
-            # DOCKER INFORMATION
-            # ====================================================
-            echo ""
-            echo "Docker version:"
-            docker --version
-            echo ""
-            echo "Docker Compose version:"
-            docker compose version
+          "${compose[@]}" config > /tmp/game-arena-staging-compose.yml
+          app_images="$("${compose[@]}" config --images | grep '^ghcr.io/game-arena-codistan/platform-' || true)"
+          test -n "$app_images"
+          while IFS= read -r image; do
+            case "$image" in *":$IMAGE_TAG") ;; *) echo "Refusing non-SHA staging image: $image" >&2; exit 1 ;; esac
+          done <<<"$app_images"
+          test "$(wc -l <<<"$app_images" | tr -d ' ')" -ge 5
 
-            # ====================================================
-            # LOGIN TO GHCR
-            # ====================================================
-            echo ""
-            echo "Logging into GitHub Container Registry..."
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
-              -u "${{ secrets.GHCR_USERNAME }}" \
-              --password-stdin
-            echo ""
-            echo "GHCR login successful."
+          "${compose[@]}" pull
+          "${compose[@]}" up -d --remove-orphans
 
-            # ====================================================
-            # VERIFY REQUIRED FILES
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Checking deployment files"
-            echo "=============================================="
-            test -f infra/docker-compose.staging.yml
-            test -f infra/.env
-            test -f infra/gateway/nginx.conf
-            echo "Required files found."
+          for _ in $(seq 1 60); do
+            gateway=0; api=0; admin=0; games=0
+            curl --fail --silent http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || true
+            curl --fail --silent http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || true
+            curl --fail --silent http://127.0.0.1:8083/healthz >/dev/null && admin=1 || true
+            curl --fail --silent http://127.0.0.1:8082/healthz >/dev/null && games=1 || true
+            if [ "$gateway$api$admin$games" = 1111 ]; then break; fi
+            sleep 2
+          done
+          [ "$gateway$api$admin$games" = 1111 ] || { "${compose[@]}" ps; exit 1; }
 
-            # ====================================================
-            # SHOW COMPOSE CONFIG
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Validating Docker Compose configuration"
-            echo "=============================================="
-            docker compose \
-              -f infra/docker-compose.staging.yml \
-              --env-file infra/.env \
-              config > /tmp/game-arena-staging-compose.yml
-            echo "Docker Compose configuration is valid."
+          for entry in api:api web:web admin:admin game-origin:games; do
+            service="${entry%%:*}"; component="${entry##*:}"
+            cid="$("${compose[@]}" ps -q "$service")"
+            test -n "$cid"
+            state="$(docker inspect --format '{{.State.Status}}' "$cid")"
+            image="$(docker inspect --format '{{.Config.Image}}' "$cid")"
+            revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+            [ "$state" = running ]
+            [ "$image" = "$IMAGE_BASE-$component:$IMAGE_TAG" ]
+            [ "$revision" = "$IMAGE_TAG" ]
+          done
 
-            # ====================================================
-            # SHOW IMAGE CONFIGURATION
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Game Arena images"
-            echo "=============================================="
-            docker compose \
-              -f infra/docker-compose.staging.yml \
-              --env-file infra/.env \
-              config | grep "image:"
+          printf '%s\n' "$IMAGE_TAG" > .deployed-sha
+          printf '%s\n' "$RELEASE_RUN_ID" > .deployed-release-run
+          "${compose[@]}" ps
+          docker image prune -f >/dev/null
+          REMOTE
 
-            # ====================================================
-            # PULL LATEST IMAGES
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Pulling latest Game Arena images"
-            echo "=============================================="
-            docker compose \
-              -f infra/docker-compose.staging.yml \
-              --env-file infra/.env \
-              pull
-            echo ""
-            echo "Latest images pulled."
+      - name: Staging deployment summary
+        run: |
+          {
+            echo '## Staging deployment'
+            echo
+            echo "- Exact SHA: \`$IMAGE_TAG\`"
+            echo "- Immutable image publication run: $RELEASE_RUN_ID"
+            echo '- Deployment configuration synced from the same SHA.'
+            echo '- Gateway, API, Admin and game-origin health checks passed on the server.'
+            echo '- Automated certification runs next and must pass before UAT.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
-            # ====================================================
-            # STOP OLD SERVICES
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Stopping old Game Arena services"
-            echo "=============================================="
-            docker compose \
-              -f infra/docker-compose.staging.yml \
-              --env-file infra/.env \
-              down
+  certify:
+    needs: deploy
+    uses: ./.github/workflows/aws-staging-certification.yml
+    with:
+      image_tag: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+      release_run_id: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+      deployment_run_id: ${{ github.run_id }}
+    secrets: inherit
 
-            # ====================================================
-            # START DATABASE + MIGRATION + APPLICATIONS
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Starting Game Arena services"
-            echo "=============================================="
-            docker compose \
-              -f infra/docker-compose.staging.yml \
-              --env-file infra/.env \
-              up -d
-
-            # ====================================================
-            # WAIT FOR SERVICES
-            # ====================================================
-            echo ""
-            echo "Waiting for services to start..."
-            sleep 15
-
-            # ====================================================
-            # SHOW STATUS
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Game Arena container status"
-            echo "=============================================="
-            docker compose \
-              -f infra/docker-compose.staging.yml \
-              --env-file infra/.env \
-              ps
-
-            # ====================================================
-            # SHOW IMAGES
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Game Arena images in use"
-            echo "=============================================="
-            docker compose \
-              -f infra/docker-compose.staging.yml \
-              --env-file infra/.env \
-              images
-
-            # ====================================================
-            # SHOW RUNNING CONTAINERS
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo "Game Arena running containers"
-            echo "=============================================="
-            docker ps \
-              --filter "label=com.docker.compose.project" \
-              --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
-
-            # ====================================================
-            # CLEAN UNUSED IMAGES
-            # ====================================================
-            echo ""
-            echo "Cleaning unused Docker images..."
-            docker image prune -f
-
-            # ====================================================
-            # FINAL MESSAGE
-            # ====================================================
-            echo ""
-            echo "=============================================="
-            echo " Deployment completed successfully"
-            echo "=============================================="
-            echo ""
-            echo "Docker image tag deployed:"
-            echo "latest"
-            echo ""
-            echo "Gateway:"
-            echo "http://SERVER_IP:8095"
-            echo ""
-            echo "Game Arena staging deployment finished."
+  record:
+    needs: [deploy, certify]
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')) }}
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+      RELEASE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+      DEPLOY_RESULT: ${{ needs.deploy.result }}
+      CERTIFY_RESULT: ${{ needs.certify.result }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Record non-sensitive staging execution on issue 48
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="$(jq -n \
+            --arg sha "$IMAGE_TAG" \
+            --arg release "$RELEASE_RUN_ID" \
+            --arg deploy "$DEPLOY_RESULT" \
+            --arg certify "$CERTIFY_RESULT" \
+            --arg run "$run_url" \
+            '{body:("Automated staging execution for exact SHA `"+$sha+"`. Immutable-image publication run: `"+$release+"`. EC2 deployment job: **"+$deploy+"**. Certification job: **"+$certify+"**. Workflow evidence: "+$run+". A failed certification may represent either `FAILED` or an expected `BLOCKED` prerequisite; inspect the sanitized workflow summary/artifact for the machine decision. No production action is performed by this workflow.")}')"
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Content-Type: application/json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/48/comments" \
+            -d "$body" >/dev/null

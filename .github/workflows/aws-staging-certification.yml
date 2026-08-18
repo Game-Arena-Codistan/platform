@@ -1,0 +1,364 @@
+name: Staging certification - EC2 Compose
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        required: true
+        type: string
+      release_run_id:
+        required: false
+        type: string
+        default: ''
+      deployment_run_id:
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Exact full SHA currently deployed to staging
+        required: true
+        type: string
+      release_run_id:
+        description: Successful Build and publish images workflow run ID
+        required: false
+        type: string
+      deployment_run_id:
+        description: Staging deployment workflow run ID when known
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: staging-certification-${{ inputs.image_tag }}
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IMAGE_BASE: ghcr.io/game-arena-codistan/platform
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      RELEASE_RUN_INPUT: ${{ inputs.release_run_id }}
+      DEPLOYMENT_RUN_INPUT: ${{ inputs.deployment_run_id }}
+      QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.image_tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with: {node-version: 22}
+
+      - name: Resolve source, release run and staging origins
+        id: guard
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAYER_URL_INPUT: ${{ vars.STAGING_PLAYER_URL }}
+          API_URL_INPUT: ${{ vars.STAGING_API_URL }}
+          GAME_URL_INPUT: ${{ vars.STAGING_GAME_URL }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'Certification image_tag must be a full SHA.' >&2; exit 1; }
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          git fetch origin main --prune
+          git merge-base --is-ancestor "$IMAGE_TAG" origin/main || { echo 'Certification SHA is not reachable from main.' >&2; exit 1; }
+
+          release_run="$RELEASE_RUN_INPUT"
+          if [ -z "$release_run" ]; then
+            releases="$(curl --fail --silent --show-error -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?head_sha=$IMAGE_TAG&status=success&per_page=20")"
+            release_run="$(jq -r --arg sha "$IMAGE_TAG" '.workflow_runs | map(select(.head_sha == $sha and .conclusion == "success")) | sort_by(.run_number) | last | .id // empty' <<<"$releases")"
+          fi
+          [[ "$release_run" =~ ^[0-9]+$ ]] || { echo 'No successful immutable image publication run could be proven for the SHA.' >&2; exit 1; }
+
+          player="${PLAYER_URL_INPUT%/}"
+          test -n "$player" || { echo 'STAGING_PLAYER_URL is not configured in the protected staging Environment.' >&2; exit 1; }
+          api="${API_URL_INPUT%/}"; [ -n "$api" ] || api="$player/api"
+          game="${GAME_URL_INPUT%/}"
+          {
+            echo "RELEASE_RUN_ID=$release_run"
+            echo "DEPLOYMENT_RUN_ID=${DEPLOYMENT_RUN_INPUT:-unknown}"
+            echo "STAGING_PLAYER_URL=$player"
+            echo "STAGING_API_URL=$api"
+            echo "STAGING_GAME_URL=$game"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare pinned SSH host identity
+        id: connectivity
+        if: steps.guard.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'test -d /opt/codistan/platform && docker version >/dev/null && docker compose version >/dev/null'
+
+      - name: Gate zero - prove deployed Compose artifact identity
+        id: identity
+        if: steps.connectivity.outcome == 'success'
+        continue-on-error: true
+        env:
+          EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
+          EXPECTED_IMAGE_BASE: ghcr.io/game-arena-codistan/platform
+          IDENTITY_RESULT: certification/identity-results.json
+          COMPOSE_IDENTITY_INPUT: /tmp/game-arena-compose-identity.tsv
+        run: |
+          set -euo pipefail
+          mkdir -p certification
+          deployed_sha="$(ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'cat /opt/codistan/platform/.deployed-sha 2>/dev/null || true')"
+          echo "DEPLOYED_SHA=$deployed_sha" >> "$GITHUB_ENV"
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' bash -s" > "$COMPOSE_IDENTITY_INPUT" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          export IMAGE_BASE IMAGE_TAG
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          for entry in api:api web:web admin:admin game-origin:games; do
+            service="${entry%%:*}"; component="${entry##*:}"
+            expected="$IMAGE_BASE-$component:$IMAGE_TAG"
+            cid="$("${compose[@]}" ps -q "$service")"
+            running=''; image_id=''; digest=''; revision=''; state='missing'
+            if [ -n "$cid" ]; then
+              state="$(docker inspect --format '{{.State.Status}}' "$cid" 2>/dev/null || true)"
+              running="$(docker inspect --format '{{.Config.Image}}' "$cid" 2>/dev/null || true)"
+              image_id="$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null || true)"
+              if [ -n "$running" ]; then
+                digest="$(docker image inspect --format '{{ index .RepoDigests 0 }}' "$running" 2>/dev/null || true)"
+                revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$running" 2>/dev/null || true)"
+              fi
+            fi
+            printf '%s|%s|%s|%s|%s|%s|%s\n' "$service" "$expected" "$running" "$image_id" "$digest" "$revision" "$state"
+          done
+          REMOTE
+          export DEPLOYED_SHA="$deployed_sha"
+          node tests/staging/compose-identity-certification.mjs
+
+      - name: Run deployed API and business certification
+        id: api
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        env:
+          STAGING_QA_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_PLAYER_IDENTIFIER }}
+          STAGING_QA_VOUCHER_CODE: ${{ secrets.STAGING_QA_VOUCHER_CODE }}
+          API_CERTIFICATION_OUTPUT: certification/api-results.json
+          API_CERTIFICATION_STATE: /tmp/game-arena-certification-state.json
+        run: |
+          set +e
+          node tests/staging/api-certification.mjs
+          code=$?
+          set -e
+          echo "API_EXIT=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Run media, premium, competition and mock-payment certification
+        id: extended
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        env:
+          API_CERTIFICATION_STATE: /tmp/game-arena-certification-state.json
+          EXTENDED_CERTIFICATION_OUTPUT: certification/extended-results.json
+          JAZZCASH_WEBHOOK_SECRET: ${{ secrets.STAGING_JAZZCASH_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ "${API_EXIT:-2}" != 0 ] || [ ! -s "$API_CERTIFICATION_STATE" ]; then
+            echo 'EXTENDED_EXIT=2' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          set +e
+          node tests/staging/extended-api-certification.mjs
+          code=$?
+          set -e
+          echo "EXTENDED_EXIT=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Verify acknowledged state survives API container restart
+        id: restart
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        env:
+          API_CERTIFICATION_STATE: /tmp/game-arena-certification-state.json
+          RESTART_CERTIFICATION_OUTPUT: certification/restart-results.json
+        run: |
+          set -euo pipefail
+          if [ "${API_EXIT:-2}" != 0 ] || [ ! -s "$API_CERTIFICATION_STATE" ]; then
+            echo 'RESTART_EXIT=2' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd /opt/codistan/platform && IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' docker compose -f infra/docker-compose.staging.yml --env-file infra/.env restart api"
+          for _ in $(seq 1 60); do
+            curl --fail --silent "$STAGING_API_URL/readyz" >/dev/null && break
+            sleep 2
+          done
+          curl --fail --silent "$STAGING_API_URL/readyz" >/dev/null
+          set +e
+          node tests/staging/restart-certification.mjs
+          code=$?
+          set -e
+          echo "RESTART_EXIT=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Prepare Admin certification mode
+        id: admin_prep
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        env:
+          ADMIN_PROXY_SECRET: ${{ secrets.STAGING_ADMIN_PROXY_SECRET }}
+          ADMIN_IDENTITY_ROLES_JSON: ${{ secrets.STAGING_ADMIN_IDENTITY_ROLES_JSON }}
+          LOCAL_ADMIN_KEY: ${{ secrets.STAGING_QA_ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "$ADMIN_PROXY_SECRET" ] && [ -n "$ADMIN_IDENTITY_ROLES_JSON" ]; then
+            echo "::add-mask::$ADMIN_PROXY_SECRET"
+            echo "::add-mask::$ADMIN_IDENTITY_ROLES_JSON"
+            export ADMIN_ASSERTIONS_OUTPUT=/tmp/game-arena-admin-assertions.json
+            node tests/staging/generate-admin-assertions.mjs
+            assertions="$(cat /tmp/game-arena-admin-assertions.json)"
+            echo "::add-mask::$assertions"
+            echo "STAGING_QA_ADMIN_ASSERTIONS_JSON=$assertions" >> "$GITHUB_ENV"
+            echo 'ADMIN_CERTIFICATION_MODE=signed-roles' >> "$GITHUB_ENV"
+          elif [ -n "$LOCAL_ADMIN_KEY" ]; then
+            echo 'ADMIN_CERTIFICATION_MODE=local-admin-only' >> "$GITHUB_ENV"
+          else
+            echo 'ADMIN_CERTIFICATION_MODE=blocked' >> "$GITHUB_ENV"
+          fi
+
+      - name: Install staging browser runtime
+        id: browser_setup
+        if: steps.identity.outcome == 'success'
+        continue-on-error: true
+        working-directory: tests/staging
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run player, mobile, Admin and visual browser certification
+        id: browser
+        if: steps.browser_setup.outcome == 'success' && steps.identity.outcome == 'success'
+        continue-on-error: true
+        working-directory: tests/staging
+        env:
+          EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
+          VISUAL_CAPTURE_DIR: visual-captures
+          STAGING_QA_ADMIN_KEY: ${{ secrets.STAGING_QA_ADMIN_KEY }}
+          STAGING_QA_FREE_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_FREE_PLAYER_IDENTIFIER }}
+          STAGING_QA_FREE_PLAYER_OTP_CODE: ${{ secrets.STAGING_QA_FREE_PLAYER_OTP_CODE }}
+          STAGING_QA_PREMIUM_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_PREMIUM_PLAYER_IDENTIFIER }}
+          STAGING_QA_PREMIUM_PLAYER_OTP_CODE: ${{ secrets.STAGING_QA_PREMIUM_PLAYER_OTP_CODE }}
+          STAGING_QA_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_PLAYER_IDENTIFIER }}
+          STAGING_QA_OTP_CODE: ${{ secrets.STAGING_QA_OTP_CODE }}
+          STAGING_QA_VOUCHER_CODE: ${{ secrets.STAGING_QA_VOUCHER_CODE }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L 18083:127.0.0.1:8083 "$DEPLOY_USER@$DEPLOY_HOST" >/tmp/game-arena-admin-tunnel.log 2>&1 &
+          port_pid=$!
+          trap 'kill "$port_pid" >/dev/null 2>&1 || true' EXIT
+          ready=false
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18083/healthz >/dev/null 2>&1; then ready=true; break; fi
+            sleep 1
+          done
+          if [ "$ready" = true ]; then
+            export STAGING_ADMIN_URL=http://127.0.0.1:18083
+            echo 'ADMIN_TUNNEL_STATUS=success' >> "$GITHUB_ENV"
+          else
+            echo 'ADMIN_TUNNEL_STATUS=failure' >> "$GITHUB_ENV"
+          fi
+          set +e
+          npx playwright test
+          code=$?
+          set -e
+          echo "BROWSER_EXIT=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Verify visual baseline hashes
+        id: visual
+        if: steps.browser.outcome == 'success' && steps.browser_setup.outcome == 'success'
+        continue-on-error: true
+        working-directory: tests/staging
+        env:
+          VISUAL_CAPTURE_DIR: visual-captures
+          VISUAL_BASELINE_FILE: visual-baselines.json
+          VISUAL_RESULT_OUTPUT: ../../certification/visual-results.json
+        run: |
+          set +e
+          node verify-visual-baselines.mjs
+          code=$?
+          set -e
+          echo "VISUAL_EXIT=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Aggregate sanitized certification evidence
+        id: aggregate
+        if: always()
+        continue-on-error: true
+        env:
+          EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
+          IDENTITY_RESULT: certification/identity-results.json
+          API_RESULT: certification/api-results.json
+          EXTENDED_RESULT: certification/extended-results.json
+          RESTART_RESULT: certification/restart-results.json
+          VISUAL_RESULT: certification/visual-results.json
+          PLAYWRIGHT_RESULT: tests/staging/results.json
+          CERTIFICATION_JSON: certification/certification.json
+          CERTIFICATION_MD: certification/certification.md
+          GUARD_STATUS: ${{ steps.guard.outcome }}
+          CONNECTIVITY_STATUS: ${{ steps.connectivity.outcome }}
+          IDENTITY_STATUS: ${{ steps.identity.outcome }}
+          ADMIN_PREP_STATUS: ${{ steps.admin_prep.outcome }}
+          BROWSER_SETUP_STATUS: ${{ steps.browser_setup.outcome }}
+        run: node tests/staging/aggregate-certification.mjs
+
+      - name: Upload sanitized certification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-certification-${{ inputs.image_tag }}-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            certification/*.json
+            certification/*.md
+            tests/staging/report/
+            tests/staging/visual-captures/
+
+      - name: Emit final UAT gate decision
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -s certification/certification.json ]; then
+            decision=BLOCKED
+          else
+            decision="$(jq -er .decision certification/certification.json)"
+          fi
+          {
+            echo '## Staging certification'
+            echo
+            echo "**$decision**"
+            if [ -s certification/certification.md ]; then
+              echo
+              cat certification/certification.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$decision" in
+            'READY FOR UAT') exit 0 ;;
+            'FAILED') exit 1 ;;
+            'BLOCKED') exit 2 ;;
+            *) echo 'Unknown certification decision.' >&2; exit 2 ;;
+          esac

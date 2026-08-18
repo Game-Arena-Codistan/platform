@@ -1,0 +1,54 @@
+name: Production promotion authorization
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Exact full SHA that passed staging certification
+        required: true
+        type: string
+      uat_record:
+        description: Non-sensitive human UAT approval reference
+        required: true
+        type: string
+      confirmation:
+        description: Type PROMOTE to authorize production preparation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Require explicit exact-SHA promotion request
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          UAT_RECORD: ${{ inputs.uat_record }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'image_tag must be a full Git SHA.' >&2; exit 1; }
+          [ "$CONFIRMATION" = PROMOTE ] || { echo 'Explicit PROMOTE confirmation is required.' >&2; exit 1; }
+          [ "${#UAT_RECORD}" -ge 4 ] || { echo 'A human UAT approval reference is required.' >&2; exit 1; }
+
+          runs="$(curl --fail --silent --show-error -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?status=success&per_page=50")"
+          staging_run="$(jq -r --arg sha "$IMAGE_TAG" '.workflow_runs | map(select(.head_sha == $sha and .conclusion == "success")) | sort_by(.run_number) | last | .id // empty' <<<"$runs")"
+          [[ "$staging_run" =~ ^[0-9]+$ ]] || { echo 'No successful staging deployment + certification workflow could be proven for this exact SHA.' >&2; exit 1; }
+
+          {
+            echo '## Production promotion authorization'
+            echo
+            echo '**AUTHORIZED FOR PRODUCTION PREPARATION — NO DEPLOYMENT PERFORMED**'
+            echo
+            echo "- Exact staging-certified SHA: \`$IMAGE_TAG\`"
+            echo "- Successful staging/certification workflow run: $staging_run"
+            echo "- Human UAT reference: $UAT_RECORD"
+            echo '- Production cutover remains a separate explicit execution step.'
+            echo '- The old production environment must remain available as rollback until post-cutover smoke and observation pass.'
+          } >> "$GITHUB_STEP_SUMMARY"
