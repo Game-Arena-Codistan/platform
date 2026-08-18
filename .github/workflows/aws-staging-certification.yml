@@ -1,4 +1,4 @@
-name: AWS staging certification
+name: Staging certification - EC2 Compose
 
 on:
   workflow_call:
@@ -21,7 +21,7 @@ on:
         required: true
         type: string
       release_run_id:
-        description: Successful Build and publish images workflow run ID; auto-resolved when blank
+        description: Successful Build and publish images workflow run ID
         required: false
         type: string
       deployment_run_id:
@@ -33,22 +33,25 @@ permissions:
   contents: read
   actions: read
   packages: read
-  id-token: write
 
 concurrency:
-  group: aws-staging-certification-${{ inputs.image_tag }}
+  group: staging-certification-${{ inputs.image_tag }}
   cancel-in-progress: false
 
 jobs:
   certify:
-    if: vars.AWS_STAGING_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: staging
     env:
+      IMAGE_BASE: ghcr.io/game-arena-codistan/platform
       IMAGE_TAG: ${{ inputs.image_tag }}
       RELEASE_RUN_INPUT: ${{ inputs.release_run_id }}
       DEPLOYMENT_RUN_INPUT: ${{ inputs.deployment_run_id }}
       QA_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -59,148 +62,98 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: {node-version: 22}
 
-      - uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4
-
-      - name: Resolve source and release pipeline identity
+      - name: Resolve source, release run and staging origins
         id: guard
         continue-on-error: true
         env:
-          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAYER_URL_INPUT: ${{ vars.STAGING_PLAYER_URL }}
+          API_URL_INPUT: ${{ vars.STAGING_API_URL }}
+          GAME_URL_INPUT: ${{ vars.STAGING_GAME_URL }}
         run: |
           set -euo pipefail
           [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'Certification image_tag must be a full SHA.' >&2; exit 1; }
-          [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo 'AWS_ACCOUNT_ID is not configured.' >&2; exit 1; }
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
           git fetch origin main --prune
           git merge-base --is-ancestor "$IMAGE_TAG" origin/main || { echo 'Certification SHA is not reachable from main.' >&2; exit 1; }
+
           release_run="$RELEASE_RUN_INPUT"
           if [ -z "$release_run" ]; then
-            releases="$(curl --fail --silent --show-error \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H 'Accept: application/vnd.github+json' \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?head_sha=$IMAGE_TAG&status=success&per_page=20")"
+            releases="$(curl --fail --silent --show-error -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?head_sha=$IMAGE_TAG&status=success&per_page=20")"
             release_run="$(jq -r --arg sha "$IMAGE_TAG" '.workflow_runs | map(select(.head_sha == $sha and .conclusion == "success")) | sort_by(.run_number) | last | .id // empty' <<<"$releases")"
           fi
           [[ "$release_run" =~ ^[0-9]+$ ]] || { echo 'No successful immutable image publication run could be proven for the SHA.' >&2; exit 1; }
-          echo "RELEASE_RUN_ID=$release_run" >> "$GITHUB_ENV"
-          echo "DEPLOYMENT_RUN_ID=${DEPLOYMENT_RUN_INPUT:-unknown}" >> "$GITHUB_ENV"
 
-      - name: Authenticate to staging AWS with OIDC
-        id: aws
-        if: steps.guard.outcome == 'success'
-        continue-on-error: true
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
-          role-session-name: game-arena-certification-${{ github.run_id }}
-
-      - name: Resolve private staging runtime
-        id: resolve
-        if: steps.aws.outcome == 'success'
-        continue-on-error: true
-        env:
-          CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
-          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          account_id="$(aws sts get-caller-identity --query Account --output text)"
-          [ "$account_id" = "$EXPECTED_AWS_ACCOUNT_ID" ] || { echo 'AWS account identity mismatch.' >&2; exit 1; }
-          prefix="${CONFIG_PREFIX_INPUT:-/game-arena/staging}"
-          parameter() { aws ssm get-parameter --name "$prefix/$1" --query Parameter.Value --output text; }
-          cluster="$(parameter eks-cluster-name)"
-          public_host="$(parameter public-host)"
-          game_host="$(parameter game-host)"
-          evidence_bucket="$(parameter deployment-evidence-bucket)"
-          ecr_prefix="$(parameter ecr-prefix)"
-          ecr_registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          aws eks update-kubeconfig --name "$cluster" --region "$AWS_REGION"
-          kubectl -n game-arena get deployment api web admin game-origin >/dev/null
+          player="${PLAYER_URL_INPUT%/}"
+          test -n "$player" || { echo 'STAGING_PLAYER_URL is not configured in the protected staging Environment.' >&2; exit 1; }
+          api="${API_URL_INPUT%/}"; [ -n "$api" ] || api="$player/api"
+          game="${GAME_URL_INPUT%/}"
           {
-            echo "AWS_CONFIG_PREFIX=$prefix"
-            echo "EKS_CLUSTER_NAME=$cluster"
-            echo "STAGING_PLAYER_URL=https://$public_host"
-            echo "STAGING_API_URL=https://$public_host/api"
-            echo "STAGING_GAME_URL=https://$game_host"
-            echo "DEPLOYMENT_EVIDENCE_BUCKET=$evidence_bucket"
-            echo "ECR_PREFIX=$ecr_prefix"
-            echo "ECR_REGISTRY=$ecr_registry"
+            echo "RELEASE_RUN_ID=$release_run"
+            echo "DEPLOYMENT_RUN_ID=${DEPLOYMENT_RUN_INPUT:-unknown}"
+            echo "STAGING_PLAYER_URL=$player"
+            echo "STAGING_API_URL=$api"
+            echo "STAGING_GAME_URL=$game"
           } >> "$GITHUB_ENV"
 
-      - name: Gate zero — prove deployed artifact identity
-        id: identity
-        if: steps.resolve.outcome == 'success'
+      - name: Prepare pinned SSH host identity
+        id: connectivity
+        if: steps.guard.outcome == 'success'
         continue-on-error: true
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'test -d /opt/codistan/platform && docker version >/dev/null && docker compose version >/dev/null'
+
+      - name: Gate zero - prove deployed Compose artifact identity
+        id: identity
+        if: steps.connectivity.outcome == 'success'
+        continue-on-error: true
+        env:
+          EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
+          EXPECTED_IMAGE_BASE: ghcr.io/game-arena-codistan/platform
+          IDENTITY_RESULT: certification/identity-results.json
+          COMPOSE_IDENTITY_INPUT: /tmp/game-arena-compose-identity.tsv
         run: |
           set -euo pipefail
           mkdir -p certification
-          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY" >/dev/null
-          : > /tmp/components.jsonl
-          errors=0
-          for entry in \
-            'api:api:game-arena-api' \
-            'web:web:game-arena-web' \
-            'admin:admin:game-arena-admin' \
-            'games:game-origin:game-arena-game-origin'; do
-            IFS=: read -r component deployment label <<<"$entry"
-            repository="$ECR_PREFIX/$component"
-            expected_image="$ECR_REGISTRY/$repository:$IMAGE_TAG"
-            digest="$(aws ecr describe-images --repository-name "$repository" --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)"
-            deployed_image="$(kubectl -n game-arena get deployment "$deployment" -o json | jq -r '.spec.template.spec.containers[0].image')"
-            pods="$(kubectl -n game-arena get pods -l "app=$label" -o json)"
-            pod_count="$(jq '[.items[] | select(.metadata.deletionTimestamp == null)] | length' <<<"$pods")"
-            ready_count="$(jq '[.items[] | select(.metadata.deletionTimestamp == null) | select((.status.containerStatuses // []) | length > 0) | select(all(.status.containerStatuses[]; .ready == true))] | length' <<<"$pods")"
-            image_ids="$(jq -r '.items[] | select(.metadata.deletionTimestamp == null) | .status.containerStatuses[]? | .imageID' <<<"$pods")"
-            image_ids_match=true
-            if [ -z "$digest" ] || [ "$digest" = None ] || [ "$pod_count" -lt 1 ] || [ "$ready_count" -ne "$pod_count" ] || [ "$deployed_image" != "$expected_image" ]; then
-              image_ids_match=false
+          deployed_sha="$(ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'cat /opt/codistan/platform/.deployed-sha 2>/dev/null || true')"
+          echo "DEPLOYED_SHA=$deployed_sha" >> "$GITHUB_ENV"
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' bash -s" > "$COMPOSE_IDENTITY_INPUT" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          export IMAGE_BASE IMAGE_TAG
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          for entry in api:api web:web admin:admin game-origin:games; do
+            service="${entry%%:*}"; component="${entry##*:}"
+            expected="$IMAGE_BASE-$component:$IMAGE_TAG"
+            cid="$("${compose[@]}" ps -q "$service")"
+            running=''; image_id=''; digest=''; revision=''; state='missing'
+            if [ -n "$cid" ]; then
+              state="$(docker inspect --format '{{.State.Status}}' "$cid" 2>/dev/null || true)"
+              running="$(docker inspect --format '{{.Config.Image}}' "$cid" 2>/dev/null || true)"
+              image_id="$(docker inspect --format '{{.Image}}' "$cid" 2>/dev/null || true)"
+              if [ -n "$running" ]; then
+                digest="$(docker image inspect --format '{{ index .RepoDigests 0 }}' "$running" 2>/dev/null || true)"
+                revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$running" 2>/dev/null || true)"
+              fi
             fi
-            while IFS= read -r image_id; do
-              [ -n "$image_id" ] || { image_ids_match=false; continue; }
-              case "$image_id" in *"@$digest"|*"$digest") ;; *) image_ids_match=false ;; esac
-            done <<<"$image_ids"
-            revision=''
-            if [ -n "$digest" ] && [ "$digest" != None ] && docker pull "$expected_image" >/dev/null 2>&1; then
-              revision="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$expected_image" 2>/dev/null || true)"
-            fi
-            component_ok=true
-            if [ "$image_ids_match" != true ] || [ "$revision" != "$IMAGE_TAG" ]; then component_ok=false; errors=$((errors+1)); fi
-            jq -n \
-              --arg component "$component" \
-              --arg deployment "$deployment" \
-              --arg expectedImage "$expected_image" \
-              --arg deployedImage "$deployed_image" \
-              --arg digest "$digest" \
-              --arg revision "$revision" \
-              --argjson podCount "$pod_count" \
-              --argjson readyPods "$ready_count" \
-              --argjson imageIDsMatch "$image_ids_match" \
-              --argjson ok "$component_ok" \
-              '{component:$component,deployment:$deployment,expectedImage:$expectedImage,deployedImage:$deployedImage,imageDigest:$digest,ociRevision:$revision,podCount:$podCount,readyPods:$readyPods,imageIDsMatch:$imageIDsMatch,ok:$ok}' >> /tmp/components.jsonl
+            printf '%s|%s|%s|%s|%s|%s|%s\n' "$service" "$expected" "$running" "$image_id" "$digest" "$revision" "$state"
           done
-          previous_key="$(aws s3api list-objects-v2 --bucket "$DEPLOYMENT_EVIDENCE_BUCKET" --prefix staging/ --output json | jq -r --arg current "staging/$IMAGE_TAG/latest.json" '(.Contents // []) | map(select(.Key|endswith("/latest.json")) | select(.Key != $current)) | sort_by(.LastModified) | last | .Key // empty')"
-          previous_sha="$(cut -d/ -f2 <<<"$previous_key")"
-          components="$(jq -s . /tmp/components.jsonl)"
-          decision=PASS; [ "$errors" -eq 0 ] || decision=BLOCKED
-          jq -n \
-            --arg decision "$decision" \
-            --arg expectedSha "$IMAGE_TAG" \
-            --arg releaseRunId "$RELEASE_RUN_ID" \
-            --arg deploymentRunId "$DEPLOYMENT_RUN_ID" \
-            --arg certificationRunId "$QA_RUN_ID" \
-            --arg previousRollbackSha "$previous_sha" \
-            --arg previousRollbackKey "$previous_key" \
-            --argjson components "$components" \
-            '{schemaVersion:"game-arena-deployment-identity.v1",decision:$decision,expectedSha:$expectedSha,releaseRunId:$releaseRunId,deploymentRunId:$deploymentRunId,certificationRunId:$certificationRunId,previousRollbackSha:($previousRollbackSha|select(length>0)//null),previousRollbackKey:($previousRollbackKey|select(length>0)//null),components:$components}' > certification/identity-results.json
-          [ "$errors" -eq 0 ] || exit 2
+          REMOTE
+          export DEPLOYED_SHA="$deployed_sha"
+          node tests/staging/compose-identity-certification.mjs
 
       - name: Run deployed API and business certification
         id: api
         if: steps.identity.outcome == 'success'
         continue-on-error: true
         env:
-          STAGING_PAYMENT_SANDBOX_READY: ${{ vars.STAGING_PAYMENT_SANDBOX_READY }}
           STAGING_QA_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_PLAYER_IDENTIFIER }}
           STAGING_QA_VOUCHER_CODE: ${{ secrets.STAGING_QA_VOUCHER_CODE }}
           API_CERTIFICATION_OUTPUT: certification/api-results.json
@@ -213,13 +166,14 @@ jobs:
           echo "API_EXIT=$code" >> "$GITHUB_ENV"
           exit 0
 
-      - name: Run media, premium and competition certification
+      - name: Run media, premium, competition and mock-payment certification
         id: extended
         if: steps.identity.outcome == 'success'
         continue-on-error: true
         env:
           API_CERTIFICATION_STATE: /tmp/game-arena-certification-state.json
           EXTENDED_CERTIFICATION_OUTPUT: certification/extended-results.json
+          JAZZCASH_WEBHOOK_SECRET: ${{ secrets.STAGING_JAZZCASH_WEBHOOK_SECRET }}
         run: |
           set -euo pipefail
           if [ "${API_EXIT:-2}" != 0 ] || [ ! -s "$API_CERTIFICATION_STATE" ]; then
@@ -233,7 +187,7 @@ jobs:
           echo "EXTENDED_EXIT=$code" >> "$GITHUB_ENV"
           exit 0
 
-      - name: Verify acknowledged state survives API restart
+      - name: Verify acknowledged state survives API container restart
         id: restart
         if: steps.identity.outcome == 'success'
         continue-on-error: true
@@ -246,8 +200,13 @@ jobs:
             echo 'RESTART_EXIT=2' >> "$GITHUB_ENV"
             exit 0
           fi
-          kubectl -n game-arena rollout restart deployment/api
-          kubectl -n game-arena rollout status deployment/api --timeout=600s
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd /opt/codistan/platform && IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' docker compose -f infra/docker-compose.staging.yml --env-file infra/.env restart api"
+          for _ in $(seq 1 60); do
+            curl --fail --silent "$STAGING_API_URL/readyz" >/dev/null && break
+            sleep 2
+          done
+          curl --fail --silent "$STAGING_API_URL/readyz" >/dev/null
           set +e
           node tests/staging/restart-certification.mjs
           code=$?
@@ -255,28 +214,30 @@ jobs:
           echo "RESTART_EXIT=$code" >> "$GITHUB_ENV"
           exit 0
 
-      - name: Prepare private Admin certification assertions
+      - name: Prepare Admin certification mode
         id: admin_prep
         if: steps.identity.outcome == 'success'
         continue-on-error: true
+        env:
+          ADMIN_PROXY_SECRET: ${{ secrets.STAGING_ADMIN_PROXY_SECRET }}
+          ADMIN_IDENTITY_ROLES_JSON: ${{ secrets.STAGING_ADMIN_IDENTITY_ROLES_JSON }}
+          LOCAL_ADMIN_KEY: ${{ secrets.STAGING_QA_ADMIN_KEY }}
         run: |
           set -euo pipefail
-          secret_arn="$(aws ssm get-parameter --name "$AWS_CONFIG_PREFIX/runtime-controls-secret-arn" --query Parameter.Value --output text)"
-          runtime="$(aws secretsmanager get-secret-value --secret-id "$secret_arn" --query SecretString --output text)"
-          proxy="$(jq -er '.admin_proxy_secret // empty' <<<"$runtime")"
-          roles="$(jq -cer '.admin_identity_roles_json // {}' <<<"$runtime")"
-          test -n "$proxy"
-          jq -e 'type == "object" and length > 0' <<<"$roles" >/dev/null
-          echo "::add-mask::$proxy"
-          echo "::add-mask::$roles"
-          export ADMIN_PROXY_SECRET="$proxy"
-          export ADMIN_IDENTITY_ROLES_JSON="$roles"
-          export ADMIN_ASSERTIONS_OUTPUT=/tmp/game-arena-admin-assertions.json
-          node tests/staging/generate-admin-assertions.mjs
-          assertions="$(cat /tmp/game-arena-admin-assertions.json)"
-          echo "::add-mask::$assertions"
-          echo "STAGING_QA_ADMIN_ASSERTIONS_JSON=$assertions" >> "$GITHUB_ENV"
-          echo 'ADMIN_PREP_OK=true' >> "$GITHUB_ENV"
+          if [ -n "$ADMIN_PROXY_SECRET" ] && [ -n "$ADMIN_IDENTITY_ROLES_JSON" ]; then
+            echo "::add-mask::$ADMIN_PROXY_SECRET"
+            echo "::add-mask::$ADMIN_IDENTITY_ROLES_JSON"
+            export ADMIN_ASSERTIONS_OUTPUT=/tmp/game-arena-admin-assertions.json
+            node tests/staging/generate-admin-assertions.mjs
+            assertions="$(cat /tmp/game-arena-admin-assertions.json)"
+            echo "::add-mask::$assertions"
+            echo "STAGING_QA_ADMIN_ASSERTIONS_JSON=$assertions" >> "$GITHUB_ENV"
+            echo 'ADMIN_CERTIFICATION_MODE=signed-roles' >> "$GITHUB_ENV"
+          elif [ -n "$LOCAL_ADMIN_KEY" ]; then
+            echo 'ADMIN_CERTIFICATION_MODE=local-admin-only' >> "$GITHUB_ENV"
+          else
+            echo 'ADMIN_CERTIFICATION_MODE=blocked' >> "$GITHUB_ENV"
+          fi
 
       - name: Install staging browser runtime
         id: browser_setup
@@ -295,28 +256,30 @@ jobs:
         env:
           EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
           VISUAL_CAPTURE_DIR: visual-captures
+          STAGING_QA_ADMIN_KEY: ${{ secrets.STAGING_QA_ADMIN_KEY }}
+          STAGING_QA_FREE_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_FREE_PLAYER_IDENTIFIER }}
+          STAGING_QA_FREE_PLAYER_OTP_CODE: ${{ secrets.STAGING_QA_FREE_PLAYER_OTP_CODE }}
+          STAGING_QA_PREMIUM_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_PREMIUM_PLAYER_IDENTIFIER }}
+          STAGING_QA_PREMIUM_PLAYER_OTP_CODE: ${{ secrets.STAGING_QA_PREMIUM_PLAYER_OTP_CODE }}
+          STAGING_QA_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_PLAYER_IDENTIFIER }}
+          STAGING_QA_OTP_CODE: ${{ secrets.STAGING_QA_OTP_CODE }}
+          STAGING_QA_VOUCHER_CODE: ${{ secrets.STAGING_QA_VOUCHER_CODE }}
         run: |
           set -euo pipefail
-          port_pid=''
-          if [ "${ADMIN_PREP_OK:-false}" = true ]; then
-            kubectl -n game-arena port-forward service/admin 18083:8080 >/tmp/game-arena-admin-port-forward.log 2>&1 &
-            port_pid=$!
-            ready=false
-            for _ in $(seq 1 30); do
-              if curl --fail --silent --show-error http://127.0.0.1:18083/healthz >/dev/null 2>&1; then ready=true; break; fi
-              sleep 1
-            done
-            if [ "$ready" = true ]; then
-              export STAGING_ADMIN_URL=http://127.0.0.1:18083
-              echo 'ADMIN_TUNNEL_STATUS=success' >> "$GITHUB_ENV"
-            else
-              unset STAGING_ADMIN_URL
-              echo 'ADMIN_TUNNEL_STATUS=failure' >> "$GITHUB_ENV"
-            fi
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L 18083:127.0.0.1:8083 "$DEPLOY_USER@$DEPLOY_HOST" >/tmp/game-arena-admin-tunnel.log 2>&1 &
+          port_pid=$!
+          trap 'kill "$port_pid" >/dev/null 2>&1 || true' EXIT
+          ready=false
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18083/healthz >/dev/null 2>&1; then ready=true; break; fi
+            sleep 1
+          done
+          if [ "$ready" = true ]; then
+            export STAGING_ADMIN_URL=http://127.0.0.1:18083
+            echo 'ADMIN_TUNNEL_STATUS=success' >> "$GITHUB_ENV"
           else
             echo 'ADMIN_TUNNEL_STATUS=failure' >> "$GITHUB_ENV"
           fi
-          trap '[ -z "$port_pid" ] || kill "$port_pid" >/dev/null 2>&1 || true' EXIT
           set +e
           npx playwright test
           code=$?
@@ -356,21 +319,11 @@ jobs:
           CERTIFICATION_JSON: certification/certification.json
           CERTIFICATION_MD: certification/certification.md
           GUARD_STATUS: ${{ steps.guard.outcome }}
-          AWS_STATUS: ${{ steps.aws.outcome }}
-          RESOLVE_STATUS: ${{ steps.resolve.outcome }}
+          CONNECTIVITY_STATUS: ${{ steps.connectivity.outcome }}
           IDENTITY_STATUS: ${{ steps.identity.outcome }}
           ADMIN_PREP_STATUS: ${{ steps.admin_prep.outcome }}
           BROWSER_SETUP_STATUS: ${{ steps.browser_setup.outcome }}
         run: node tests/staging/aggregate-certification.mjs
-
-      - name: Publish exact-SHA certification marker
-        if: always() && steps.aws.outcome == 'success' && steps.resolve.outcome == 'success' && hashFiles('certification/certification.json') != ''
-        run: |
-          set -euo pipefail
-          key="staging-certification/$IMAGE_TAG"
-          aws s3 cp certification/certification.json "s3://$DEPLOYMENT_EVIDENCE_BUCKET/$key/runs/$QA_RUN_ID.json" --only-show-errors --cache-control no-store
-          aws s3 cp certification/certification.json "s3://$DEPLOYMENT_EVIDENCE_BUCKET/$key/latest.json" --only-show-errors --cache-control no-store
-          aws s3 cp certification/certification.md "s3://$DEPLOYMENT_EVIDENCE_BUCKET/$key/latest.md" --only-show-errors --cache-control no-store
 
       - name: Upload sanitized certification evidence
         if: always()
@@ -395,7 +348,7 @@ jobs:
             decision="$(jq -er .decision certification/certification.json)"
           fi
           {
-            echo '## AWS staging certification'
+            echo '## Staging certification'
             echo
             echo "**$decision**"
             if [ -s certification/certification.md ]; then
