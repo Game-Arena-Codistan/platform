@@ -1,4 +1,4 @@
-name: AWS staging deployment
+name: Managed AWS staging deployment - future lane
 
 on:
   workflow_run:
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   automatic:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && vars.AWS_STAGING_ENABLED == 'true'
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && vars.AWS_MANAGED_STAGING_ENABLED == 'true'
     uses: ./.github/workflows/aws-deploy.yml
     with:
       environment: staging
@@ -28,7 +28,7 @@ jobs:
       run_migrations: true
       require_staging_evidence: false
       rollback: false
-      deployment_reason: Automatic deployment after immutable image publication
+      deployment_reason: Automatic managed staging deployment after immutable image publication
     secrets: inherit
 
   automatic-controls:
@@ -50,7 +50,7 @@ jobs:
     secrets: inherit
 
   manual:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && vars.AWS_MANAGED_STAGING_ENABLED == 'true'
     uses: ./.github/workflows/aws-deploy.yml
     with:
       environment: staging
@@ -58,7 +58,7 @@ jobs:
       run_migrations: true
       require_staging_evidence: false
       rollback: false
-      deployment_reason: Manual staging deployment
+      deployment_reason: Manual managed staging deployment
     secrets: inherit
 
   manual-controls:
