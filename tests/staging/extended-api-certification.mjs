@@ -5,7 +5,7 @@ const playerUrl=String(process.env.STAGING_PLAYER_URL||'').replace(/\/$/,'');
 const gameBase=String(process.env.STAGING_GAME_URL||'').replace(/\/$/,'');
 const statePath=process.env.API_CERTIFICATION_STATE||'/tmp/game-arena-certification-state.json';
 const output=process.env.EXTENDED_CERTIFICATION_OUTPUT||'extended-results.json';
-if(!apiBase||!playerUrl||!gameBase)throw new Error('STAGING_API_URL, STAGING_PLAYER_URL and STAGING_GAME_URL are required.');
+if(!apiBase||!playerUrl)throw new Error('STAGING_API_URL and STAGING_PLAYER_URL are required.');
 const state=JSON.parse(await readFile(statePath,'utf8'));
 const results=[];let failed=false;let blocked=false;
 function record(name,status,details={}){results.push({name,status,...details});if(status==='FAIL')failed=true;if(status==='BLOCKED')blocked=true;}
@@ -25,6 +25,7 @@ async function call(path,{method='GET',body}={}){
 }
 
 await lane('controlled-game-origin-and-catalogue-media',async()=>{
+  if(!gameBase)block('STAGING_GAME_URL is not configured; controlled game-origin certification cannot run.');
   const origin=await fetch(`${gameBase}/healthz`,{redirect:'follow'});expectStatus(origin.status,[200],'controlled game origin health failed');
   const catalog=await call('/v1/catalog/games');expectStatus(catalog.response.status,[200],'catalogue fetch failed');
   const sample=(catalog.data?.games||[]).slice(0,3);
