@@ -32,7 +32,8 @@ const required={
   'tests/staging/aggregate-certification.mjs':['game-arena-staging-certification.v2','READY FOR UAT','FAILED','BLOCKED','PM_QA_ACCOUNTS_PENDING','SIGNED_ADMIN_ROLE_MATRIX_PENDING'],
   'tests/staging/verify-visual-baselines.mjs':['VISUAL_REVIEW_REQUIRED','BLOCKED'],
   'tests/staging/visual-baselines.json':['"screenshots":{}'],
-  'docs/STAGING-CERTIFICATION.md':['## Deployment identity gate','## Game Arena coverage','## Visual approval','## Human UAT and production','EC2 Compose']
+  'docs/STAGING-CERTIFICATION.md':['## Deployment identity gate','## Game Arena coverage','## Visual approval','## Human UAT and production','EC2 Compose'],
+  'docs/PRODUCTION-CUTOVER.md':['## Entry criteria','## Cutover rule','## Rollback triggers','## Old production retirement','same immutable SHA-tagged application artifacts']
 };
 const findings=[];
 for(const [relative,markers] of Object.entries(required)){
