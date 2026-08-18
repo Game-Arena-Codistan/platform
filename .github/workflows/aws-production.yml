@@ -1,10 +1,10 @@
-name: AWS production promotion
+name: Managed AWS production promotion - future lane
 
 on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: Full commit SHA that has already passed AWS staging certification and human UAT
+        description: Full commit SHA that has already passed managed AWS staging certification and human UAT
         required: true
         type: string
       qualification_record:
@@ -33,6 +33,15 @@ jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
+      - name: Confirm managed production lane is explicitly enabled
+        env:
+          MANAGED_PRODUCTION_ENABLED: ${{ vars.AWS_MANAGED_PRODUCTION_ENABLED }}
+        run: |
+          set -euo pipefail
+          [ "$MANAGED_PRODUCTION_ENABLED" = true ] || {
+            echo 'Managed EKS/RDS production lane is disabled. Use the staging-certified replacement cutover process only after explicit owner authorization.' >&2
+            exit 1
+          }
       - name: Confirm intentional production promotion
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
@@ -49,6 +58,8 @@ jobs:
           test -n "$CHANGE_RECORD"
 
   provider-guard:
+    needs: guard
+    if: needs.guard.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -113,7 +124,7 @@ jobs:
       rollback: false
       qualification_record: ${{ inputs.qualification_record }}
       change_record: ${{ inputs.change_record }}
-      deployment_reason: Approved production promotion after staging certification and human UAT
+      deployment_reason: Approved managed production promotion after staging certification and human UAT
     secrets: inherit
 
   runtime-controls:
