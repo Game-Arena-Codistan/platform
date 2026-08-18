@@ -1,0 +1,152 @@
+name: Build and Deploy Game Arena Platform - Staging
+
+on:
+  workflow_run:
+    workflows: ["Build and publish images"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Exact full main-branch SHA to deploy
+        required: true
+        type: string
+      release_run_id:
+        description: Successful Build and publish images run ID for this SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+concurrency:
+  group: game-arena-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IMAGE_BASE: ghcr.io/game-arena-codistan/platform
+      IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+      RELEASE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Validate exact release candidate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'image_tag must be a full Git SHA.' >&2; exit 1; }
+          [[ "$RELEASE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'release_run_id must identify the immutable image publication.' >&2; exit 1; }
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          release="$(curl --fail --silent --show-error -H "Authorization: Bearer $GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID")"
+          [ "$(jq -r .conclusion <<<"$release")" = success ] || { echo 'Release workflow is not successful.' >&2; exit 1; }
+          [ "$(jq -r .head_sha <<<"$release")" = "$IMAGE_TAG" ] || { echo 'Release workflow SHA does not match image_tag.' >&2; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.IMAGE_TAG }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Prepare pinned SSH host identity
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Sync exact deployment configuration
+        run: |
+          set -euo pipefail
+          tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf | \
+            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env'
+
+      - name: Authenticate staging server to GHCR with ephemeral token
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin >/dev/null"
+
+      - name: Deploy exact SHA on staging
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' RELEASE_RUN_ID='$RELEASE_RUN_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          export IMAGE_BASE IMAGE_TAG
+
+          "${compose[@]}" config > /tmp/game-arena-staging-compose.yml
+          app_images="$("${compose[@]}" config --images | grep '^ghcr.io/game-arena-codistan/platform-' || true)"
+          test -n "$app_images"
+          while IFS= read -r image; do
+            case "$image" in *":$IMAGE_TAG") ;; *) echo "Refusing non-SHA staging image: $image" >&2; exit 1 ;; esac
+          done <<<"$app_images"
+          test "$(wc -l <<<"$app_images" | tr -d ' ')" -ge 5
+
+          "${compose[@]}" pull
+          "${compose[@]}" up -d --remove-orphans
+
+          for _ in $(seq 1 60); do
+            gateway=0; api=0; admin=0; games=0
+            curl --fail --silent http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || true
+            curl --fail --silent http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || true
+            curl --fail --silent http://127.0.0.1:8083/healthz >/dev/null && admin=1 || true
+            curl --fail --silent http://127.0.0.1:8082/healthz >/dev/null && games=1 || true
+            if [ "$gateway$api$admin$games" = 1111 ]; then break; fi
+            sleep 2
+          done
+          [ "$gateway$api$admin$games" = 1111 ] || { "${compose[@]}" ps; exit 1; }
+
+          for entry in api:api web:web admin:admin game-origin:games; do
+            service="${entry%%:*}"; component="${entry##*:}"
+            cid="$("${compose[@]}" ps -q "$service")"
+            test -n "$cid"
+            state="$(docker inspect --format '{{.State.Status}}' "$cid")"
+            image="$(docker inspect --format '{{.Config.Image}}' "$cid")"
+            revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+            [ "$state" = running ]
+            [ "$image" = "$IMAGE_BASE-$component:$IMAGE_TAG" ]
+            [ "$revision" = "$IMAGE_TAG" ]
+          done
+
+          printf '%s\n' "$IMAGE_TAG" > .deployed-sha
+          printf '%s\n' "$RELEASE_RUN_ID" > .deployed-release-run
+          "${compose[@]}" ps
+          docker image prune -f >/dev/null
+          REMOTE
+
+      - name: Staging deployment summary
+        run: |
+          {
+            echo '## Staging deployment'
+            echo
+            echo "- Exact SHA: \`$IMAGE_TAG\`"
+            echo "- Immutable image publication run: $RELEASE_RUN_ID"
+            echo '- Deployment configuration synced from the same SHA.'
+            echo '- Gateway, API, Admin and game-origin health checks passed on the server.'
+            echo '- Automated certification runs next and must pass before UAT.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  certify:
+    needs: deploy
+    uses: ./.github/workflows/aws-staging-certification.yml
+    with:
+      image_tag: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+      release_run_id: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+      deployment_run_id: ${{ github.run_id }}
+    secrets: inherit
