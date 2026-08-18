@@ -7,7 +7,7 @@ const root=fileURLToPath(new URL('..',import.meta.url));
 const required={
   '.github/workflows/release.yml':['org.opencontainers.image.revision=${{ github.sha }}','provenance: true','sbom: true'],
   '.github/workflows/deploy.yml':['Build and publish images','IMAGE_TAG:','Sync exact deployment configuration','Refusing non-SHA staging image','aws-staging-certification.yml','secrets: inherit'],
-  '.github/workflows/aws-staging-certification.yml':['name: Staging certification - EC2 Compose','Gate zero - prove deployed Compose artifact identity','compose-identity-certification.mjs','STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_ADMIN_ASSERTIONS_JSON','STAGING_JAZZCASH_WEBHOOK_SECRET','127.0.0.1:8083','READY FOR UAT','FAILED','BLOCKED','visual-baselines.json'],
+  '.github/workflows/aws-staging-certification.yml':['name: Staging certification - EC2 Compose','Gate zero - prove deployed Compose artifact identity','compose-identity-certification.mjs','org.opencontainers.image.revision','STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_ADMIN_ASSERTIONS_JSON','STAGING_JAZZCASH_WEBHOOK_SECRET','127.0.0.1:8083','READY FOR UAT','FAILED','BLOCKED','visual-baselines.json'],
   '.github/workflows/promote-production.yml':['workflow_dispatch:','uat_record:','confirmation:','No successful staging deployment + certification workflow','AUTHORIZED FOR PRODUCTION PREPARATION','NO DEPLOYMENT PERFORMED'],
   'infra/docker-compose.staging.yml':['${IMAGE_TAG:?IMAGE_TAG is required}','${IMAGE_BASE}-api:${IMAGE_TAG}','${IMAGE_BASE}-web:${IMAGE_TAG}','${IMAGE_BASE}-admin:${IMAGE_TAG}','${IMAGE_BASE}-games:${IMAGE_TAG}','127.0.0.1:8083:8080'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
@@ -23,7 +23,7 @@ const required={
   'tests/staging/support.spec.mjs':['rejects invalid content','correlated QA request'],
   'tests/staging/responsive-pwa.spec.mjs':['horizontal overflow','keyboard-operable','service worker'],
   'tests/staging/admin.spec.mjs':['reports.export','subscription.manage_plans','every operations section','toBe(403)','signed admin/operator/support/security/finance'],
-  'tests/staging/compose-identity-certification.mjs':['game-arena-compose-identity.v1','org.opencontainers.image.revision','expectedSha'],
+  'tests/staging/compose-identity-certification.mjs':['game-arena-compose-identity.v1','expectedSha','repoDigest'],
   'tests/staging/api-certification.mjs':['invalid play proof','idempotency-key','browser return incorrectly activated','PAYMENT SANDBOX NOT CONFIGURED','AUTO-QA-'],
   'tests/staging/extended-api-certification.mjs':['controlled-game-origin-and-catalogue-media','premium-game-authorization','competition-authorization-and-fixtures','payment-callback-matrix','premium_required','challenge_incomplete'],
   'tests/staging/payment-callback-certification.mjs':['PAYMENT SANDBOX NOT CONFIGURED','amount-mismatch-is-rejected','failure-cannot-later-become-paid','cancel-void-stays-voided','success-replay-and-refund'],
