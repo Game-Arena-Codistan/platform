@@ -6,30 +6,32 @@ import {join} from 'node:path';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const required={
   '.github/workflows/release.yml':['org.opencontainers.image.revision=${{ github.sha }}','provenance: true','sbom: true'],
-  '.github/workflows/aws-staging.yml':['automatic-certification:','manual-certification:','aws-staging-certification.yml','release_run_id: ${{ github.event.workflow_run.id }}'],
-  '.github/workflows/aws-staging-certification.yml':['name: AWS staging certification','Gate zero — prove deployed artifact identity','imageDigest','imageID','org.opencontainers.image.revision','Run media, premium and competition certification','READY FOR UAT','FAILED','BLOCKED','kubectl -n game-arena port-forward service/admin','STAGING_QA_ADMIN_ASSERTIONS_JSON','key="staging-certification/$IMAGE_TAG"','visual-baselines.json'],
-  '.github/workflows/aws-production.yml':['uat_record:','Require READY FOR UAT certification for exact SHA','.decision == "READY FOR UAT"','staging-certification/$IMAGE_TAG/latest.json','production-smoke:','No customer, payment, wallet, game or administrative mutation was executed'],
+  '.github/workflows/deploy.yml':['Build and publish images','IMAGE_TAG:','Sync exact deployment configuration','Refusing non-SHA staging image','aws-staging-certification.yml','secrets: inherit'],
+  '.github/workflows/aws-staging-certification.yml':['name: Staging certification - EC2 Compose','Gate zero - prove deployed Compose artifact identity','compose-identity-certification.mjs','STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_ADMIN_ASSERTIONS_JSON','STAGING_JAZZCASH_WEBHOOK_SECRET','127.0.0.1:8083','READY FOR UAT','FAILED','BLOCKED','visual-baselines.json'],
+  '.github/workflows/promote-production.yml':['workflow_dispatch:','uat_record:','confirmation:','No successful staging deployment + certification workflow','AUTHORIZED FOR PRODUCTION PREPARATION','NO DEPLOYMENT PERFORMED'],
+  'infra/docker-compose.staging.yml':['${IMAGE_TAG:?IMAGE_TAG is required}','${IMAGE_BASE}-api:${IMAGE_TAG}','${IMAGE_BASE}-web:${IMAGE_TAG}','${IMAGE_BASE}-admin:${IMAGE_TAG}','${IMAGE_BASE}-games:${IMAGE_TAG}','127.0.0.1:8083:8080'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
   'tests/staging/helpers.mjs':['STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_OTP_CODE','signInFromAccount','assertNoHorizontalOverflow'],
   'tests/staging/player.spec.mjs':['signInFromAccount','/v1/payments/jazzcash/checkout','@critical-mobile','game-frame','sameOriginPermission','support-status'],
   'tests/staging/home-feed.spec.mjs':['approved product proposition','discovery feed','locked premium play'],
-  'tests/staging/auth-session.spec.mjs':['OTP rejects a wrong code','resend guard','authenticated'],
+  'tests/staging/auth-session.spec.mjs':['OTP rejects a wrong code','resend guard','protected free QA account'],
   'tests/staging/catalogue-gameplay.spec.mjs':['catalogue search','premium title','isolated iframe'],
-  'tests/staging/premium-payments.spec.mjs':['fixed-duration billing semantics','pending server transaction','cannot self-activate','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER'],
+  'tests/staging/premium-payments.spec.mjs':['fixed-duration billing semantics','pending server transaction','cannot self-activate','protected premium QA account'],
   'tests/staging/rewards.spec.mjs':['top-up','STAGING_QA_VOUCHER_CODE','duplicate'],
   'tests/staging/compete.spec.mjs':['leaderboards','premium tournament','multiplayer room'],
   'tests/staging/account-privacy.spec.mjs':['preferences persist','Export data','STAGING_QA_ALLOW_ACCOUNT_DELETION'],
   'tests/staging/support.spec.mjs':['rejects invalid content','correlated QA request'],
   'tests/staging/responsive-pwa.spec.mjs':['horizontal overflow','keyboard-operable','service worker'],
-  'tests/staging/admin.spec.mjs':['reports.export','subscription.manage_plans','every operations section','toBe(403)','without reports.export'],
+  'tests/staging/admin.spec.mjs':['reports.export','subscription.manage_plans','every operations section','toBe(403)','signed admin/operator/support/security/finance'],
+  'tests/staging/compose-identity-certification.mjs':['game-arena-compose-identity.v1','org.opencontainers.image.revision','expectedSha'],
   'tests/staging/api-certification.mjs':['invalid play proof','idempotency-key','browser return incorrectly activated','PAYMENT SANDBOX NOT CONFIGURED','AUTO-QA-'],
   'tests/staging/extended-api-certification.mjs':['controlled-game-origin-and-catalogue-media','premium-game-authorization','competition-authorization-and-fixtures','payment-callback-matrix','premium_required','challenge_incomplete'],
-  'tests/staging/payment-callback-certification.mjs':['PAYMENT SANDBOX NOT CONFIGURED','amount-mismatch-is-rejected','failure-cannot-later-become-paid','cancel-void-stays-voided','success-replay-and-refund','application-secret-arn'],
+  'tests/staging/payment-callback-certification.mjs':['PAYMENT SANDBOX NOT CONFIGURED','amount-mismatch-is-rejected','failure-cannot-later-become-paid','cancel-void-stays-voided','success-replay-and-refund'],
   'tests/staging/restart-certification.mjs':['did not survive API restart'],
-  'tests/staging/aggregate-certification.mjs':['game-arena-staging-certification.v1','READY FOR UAT','FAILED','BLOCKED','adminTunnel','extendedExit'],
+  'tests/staging/aggregate-certification.mjs':['game-arena-staging-certification.v2','READY FOR UAT','FAILED','BLOCKED','PM_QA_ACCOUNTS_PENDING','SIGNED_ADMIN_ROLE_MATRIX_PENDING'],
   'tests/staging/verify-visual-baselines.mjs':['VISUAL_REVIEW_REQUIRED','BLOCKED'],
   'tests/staging/visual-baselines.json':['"screenshots":{}'],
-  'docs/STAGING-CERTIFICATION.md':['## Deployment identity gate','## Game Arena coverage','## Visual approval','## Human UAT and production']
+  'docs/STAGING-CERTIFICATION.md':['## Deployment identity gate','## Game Arena coverage','## Visual approval','## Human UAT and production','EC2 Compose']
 };
 const findings=[];
 for(const [relative,markers] of Object.entries(required)){
@@ -49,6 +51,7 @@ const syntaxFiles=[
   'tests/staging/support.spec.mjs',
   'tests/staging/responsive-pwa.spec.mjs',
   'tests/staging/admin.spec.mjs',
+  'tests/staging/compose-identity-certification.mjs',
   'tests/staging/api-certification.mjs',
   'tests/staging/extended-api-certification.mjs',
   'tests/staging/payment-callback-certification.mjs',
@@ -62,7 +65,10 @@ for(const relative of syntaxFiles){const check=spawnSync(process.execPath,['--ch
 const cert=await readFile(join(root,'.github/workflows/aws-staging-certification.yml'),'utf8').catch(()=> '');
 if(/trace:\s*['"]?(?:on|retain-on-failure)/.test(cert))findings.push({file:'.github/workflows/aws-staging-certification.yml',code:'unsafe_trace_policy'});
 if(/video:\s*['"]?(?:on|retain-on-failure)/.test(cert))findings.push({file:'.github/workflows/aws-staging-certification.yml',code:'unsafe_video_policy'});
-const production=await readFile(join(root,'.github/workflows/aws-production.yml'),'utf8').catch(()=> '');
-if(!production.includes('workflow_dispatch:'))findings.push({file:'.github/workflows/aws-production.yml',code:'production_not_manual'});
+const stagingCompose=await readFile(join(root,'infra/docker-compose.staging.yml'),'utf8').catch(()=> '');
+if(/platform-(?:api|web|admin|games|game-origin):latest/.test(stagingCompose))findings.push({file:'infra/docker-compose.staging.yml',code:'mutable_application_image'});
+const production=await readFile(join(root,'.github/workflows/promote-production.yml'),'utf8').catch(()=> '');
+if(!production.includes('workflow_dispatch:'))findings.push({file:'.github/workflows/promote-production.yml',code:'production_not_manual'});
+if(/docker\s+compose|ssh\s+-i|kubectl\s/.test(production))findings.push({file:'.github/workflows/promote-production.yml',code:'authorization_gate_must_not_deploy'});
 if(findings.length){console.error(JSON.stringify({ok:false,findings},null,2));process.exit(1);}
 console.log(JSON.stringify({ok:true,filesChecked:Object.keys(required).length,syntaxFiles:syntaxFiles.length}));
