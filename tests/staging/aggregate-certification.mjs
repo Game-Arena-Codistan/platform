@@ -2,6 +2,13 @@ import {readFile,writeFile} from 'node:fs/promises';
 
 async function json(path){try{return JSON.parse(await readFile(path,'utf8'));}catch{return null;}}
 function code(name){const raw=process.env[name];if(raw===undefined||raw==='')return null;const value=Number(raw);return Number.isFinite(value)?value:null;}
+function collectPlaywright(node,out=[]){
+  if(!node||typeof node!=='object')return out;
+  if(Array.isArray(node.specs))for(const spec of node.specs){for(const test of spec.tests||[]){const result=test.results?.at(-1);out.push({title:spec.title,project:test.projectName||null,status:result?.status||test.status||'unknown',error:result?.error?.message?String(result.error.message).slice(0,240):null});}}
+  for(const suite of node.suites||[])collectPlaywright(suite,out);
+  return out;
+}
+
 const expectedSha=process.env.EXPECTED_RELEASE_SHA||'';
 const runId=process.env.QA_RUN_ID||'';
 const identity=await json(process.env.IDENTITY_RESULT||'identity-results.json');
@@ -10,6 +17,11 @@ const extended=await json(process.env.EXTENDED_RESULT||'extended-results.json');
 const restart=await json(process.env.RESTART_RESULT||'restart-results.json');
 const visual=await json(process.env.VISUAL_RESULT||'visual-results.json');
 const playwright=await json(process.env.PLAYWRIGHT_RESULT||'results.json');
+const browserTests=collectPlaywright(playwright);
+const browserSummary={total:browserTests.length,passed:browserTests.filter(item=>item.status==='passed').length,failed:browserTests.filter(item=>item.status==='failed').length,skipped:browserTests.filter(item=>item.status==='skipped').length,failures:browserTests.filter(item=>item.status==='failed').map(item=>({title:item.title,project:item.project,error:item.error}))};
+const freeQaPassed=browserTests.some(item=>/protected free QA account/i.test(item.title)&&item.status==='passed');
+const premiumQaPassed=browserTests.some(item=>/protected premium QA account/i.test(item.title)&&item.status==='passed');
+const qaCredentialMode=freeQaPassed&&premiumQaPassed?'complete':'synthetic-only';
 const statuses={
   guard:process.env.GUARD_STATUS||'unknown',
   connectivity:process.env.CONNECTIVITY_STATUS||'unknown',
@@ -17,7 +29,7 @@ const statuses={
   adminPreparation:process.env.ADMIN_PREP_STATUS||'unknown',
   adminTunnel:process.env.ADMIN_TUNNEL_STATUS||'unknown',
   adminMode:process.env.ADMIN_CERTIFICATION_MODE||'blocked',
-  qaCredentialMode:process.env.QA_CREDENTIAL_MODE||'synthetic-only',
+  qaCredentialMode,
   browserSetup:process.env.BROWSER_SETUP_STATUS||'unknown',
   apiExit:code('API_EXIT'),
   extendedExit:code('EXTENDED_EXIT'),
@@ -31,15 +43,6 @@ const readinessBlocked=statuses.adminMode!=='signed-roles'||statuses.qaCredentia
 const functionalFailed=[statuses.apiExit,statuses.extendedExit,statuses.restartExit,statuses.browserExit].some(value=>value===1||(value!==null&&value>2))||api?.decision==='FAILED'||extended?.decision==='FAILED'||restart?.decision==='FAIL';
 const functionalBlocked=environmentBlocked||readinessBlocked||[statuses.apiExit,statuses.extendedExit,statuses.restartExit,statuses.visualExit].some(value=>value===2)||api?.decision==='BLOCKED'||extended?.decision==='BLOCKED'||visual?.decision==='BLOCKED';
 const decision=functionalFailed?'FAILED':functionalBlocked?'BLOCKED':'READY FOR UAT';
-
-function collectPlaywright(node,out=[]){
-  if(!node||typeof node!=='object')return out;
-  if(Array.isArray(node.specs))for(const spec of node.specs){for(const test of spec.tests||[]){const result=test.results?.at(-1);out.push({title:spec.title,project:test.projectName||null,status:result?.status||test.status||'unknown',error:result?.error?.message?String(result.error.message).slice(0,240):null});}}
-  for(const suite of node.suites||[])collectPlaywright(suite,out);
-  return out;
-}
-const browserTests=collectPlaywright(playwright);
-const browserSummary={total:browserTests.length,passed:browserTests.filter(item=>item.status==='passed').length,failed:browserTests.filter(item=>item.status==='failed').length,skipped:browserTests.filter(item=>item.status==='skipped').length,failures:browserTests.filter(item=>item.status==='failed').map(item=>({title:item.title,project:item.project,error:item.error}))};
 const blockers=[];
 if(environmentBlocked)blockers.push('STAGING_ENVIRONMENT_OR_ARTIFACT_IDENTITY');
 if(statuses.adminMode!=='signed-roles')blockers.push('SIGNED_ADMIN_ROLE_MATRIX_PENDING');
