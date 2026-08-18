@@ -19,6 +19,7 @@ permissions:
   contents: read
   packages: read
   actions: read
+  issues: write
 
 concurrency:
   group: game-arena-staging
@@ -150,3 +151,33 @@ jobs:
       release_run_id: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
       deployment_run_id: ${{ github.run_id }}
     secrets: inherit
+
+  record:
+    needs: [deploy, certify]
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')) }}
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+      RELEASE_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.release_run_id }}
+      DEPLOY_RESULT: ${{ needs.deploy.result }}
+      CERTIFY_RESULT: ${{ needs.certify.result }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Record non-sensitive staging execution on issue 48
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="$(jq -n \
+            --arg sha "$IMAGE_TAG" \
+            --arg release "$RELEASE_RUN_ID" \
+            --arg deploy "$DEPLOY_RESULT" \
+            --arg certify "$CERTIFY_RESULT" \
+            --arg run "$run_url" \
+            '{body:("Automated staging execution for exact SHA `"+$sha+"`. Immutable-image publication run: `"+$release+"`. EC2 deployment job: **"+$deploy+"**. Certification job: **"+$certify+"**. Workflow evidence: "+$run+". A failed certification may represent either `FAILED` or an expected `BLOCKED` prerequisite; inspect the sanitized workflow summary/artifact for the machine decision. No production action is performed by this workflow.")}')"
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Content-Type: application/json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/48/comments" \
+            -d "$body" >/dev/null
