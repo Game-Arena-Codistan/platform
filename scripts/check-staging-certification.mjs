@@ -7,8 +7,10 @@ const root=fileURLToPath(new URL('..',import.meta.url));
 const required={
   '.github/workflows/release.yml':['org.opencontainers.image.revision=${{ github.sha }}','provenance: true','sbom: true'],
   '.github/workflows/deploy.yml':['Build and publish images','IMAGE_TAG:','Sync exact deployment configuration','Refusing non-SHA staging image','aws-staging-certification.yml','secrets: inherit'],
+  '.github/workflows/aws-staging.yml':['Managed AWS staging deployment - future lane','AWS_MANAGED_STAGING_ENABLED'],
   '.github/workflows/aws-staging-certification.yml':['name: Staging certification - EC2 Compose','Gate zero - prove deployed Compose artifact identity','compose-identity-certification.mjs','org.opencontainers.image.revision','STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_ADMIN_ASSERTIONS_JSON','STAGING_JAZZCASH_WEBHOOK_SECRET','127.0.0.1:8083','READY FOR UAT','FAILED','BLOCKED','visual-baselines.json'],
   '.github/workflows/promote-production.yml':['workflow_dispatch:','uat_record:','confirmation:','No successful staging deployment + certification workflow','AUTHORIZED FOR PRODUCTION PREPARATION','NO DEPLOYMENT PERFORMED'],
+  '.github/workflows/aws-production.yml':['Managed AWS production promotion - future lane','AWS_MANAGED_PRODUCTION_ENABLED','needs: guard'],
   'infra/docker-compose.staging.yml':['${IMAGE_TAG:?IMAGE_TAG is required}','${IMAGE_BASE}-api:${IMAGE_TAG}','${IMAGE_BASE}-web:${IMAGE_TAG}','${IMAGE_BASE}-admin:${IMAGE_TAG}','${IMAGE_BASE}-games:${IMAGE_TAG}','127.0.0.1:8083:8080'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
   'tests/staging/helpers.mjs':['STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_OTP_CODE','signInFromAccount','assertNoHorizontalOverflow'],
