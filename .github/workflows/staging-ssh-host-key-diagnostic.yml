@@ -1,0 +1,72 @@
+name: Staging SSH host-key diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/staging-ssh-host-key-diagnostic.yml'
+      - 'scripts/staging-ssh-host-key-fingerprint.sh'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  fingerprint:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Discover untrusted staging SSH fingerprints
+        id: fingerprint
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" || { echo 'DEPLOY_HOST is not configured.' >&2; exit 2; }
+          if [ -n "$DEPLOY_SSH_KNOWN_HOSTS" ]; then
+            echo 'status=already-pinned' >> "$GITHUB_OUTPUT"
+            echo 'Staging SSH known_hosts is already configured.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          fingerprints="$(bash scripts/staging-ssh-host-key-fingerprint.sh)"
+          test -n "$fingerprints"
+          {
+            echo 'status=needs-verification'
+            echo 'fingerprints<<EOF'
+            echo "$fingerprints"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo '## Staging SSH host identity discovery'
+            echo
+            echo 'These fingerprints are **discovery only** and are not trusted automatically.'
+            echo 'Compare them independently with the EC2/server console or an already-trusted administrator session before pinning the host key.'
+            echo
+            echo '```text'
+            echo "$fingerprints"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record verification request on launch gate
+        if: steps.fingerprint.outputs.status == 'needs-verification'
+        env:
+          FINGERPRINTS: ${{ steps.fingerprint.outputs.fingerprints }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="$(jq -n --arg fp "$FINGERPRINTS" --arg run "$run_url" '{body:("Staging SSH host-key discovery completed without authentication or trust. **Verify these fingerprints independently against the EC2/server console before setting `DEPLOY_SSH_KNOWN_HOSTS`:**\n\n```text\n"+$fp+"\n```\n\nDiagnostic run: "+$run+". The workflow does not auto-accept these keys and does not deploy anything.")}')"
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'Content-Type: application/json' \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/48/comments" \
+            -d "$body" >/dev/null
