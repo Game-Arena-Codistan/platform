@@ -6,7 +6,7 @@ import {join} from 'node:path';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const required={
   '.github/workflows/release.yml':['org.opencontainers.image.revision=${{ github.sha }}','provenance: true','sbom: true'],
-  '.github/workflows/deploy.yml':['Build and publish images','IMAGE_TAG:','Sync exact deployment configuration','Refusing non-SHA staging image','aws-staging-certification.yml','secrets: inherit'],
+  '.github/workflows/deploy.yml':['Build and publish images','IMAGE_TAG:','Sync exact deployment configuration','Refusing non-SHA staging image','aws-staging-certification.yml','secrets: inherit','issues: write','record:','issues/48/comments'],
   '.github/workflows/aws-staging.yml':['Managed AWS staging deployment - future lane','AWS_MANAGED_STAGING_ENABLED'],
   '.github/workflows/aws-staging-certification.yml':['name: Staging certification - EC2 Compose','Gate zero - prove deployed Compose artifact identity','compose-identity-certification.mjs','org.opencontainers.image.revision','STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_ADMIN_ASSERTIONS_JSON','STAGING_JAZZCASH_WEBHOOK_SECRET','127.0.0.1:8083','READY FOR UAT','FAILED','BLOCKED','visual-baselines.json'],
   '.github/workflows/promote-production.yml':['workflow_dispatch:','uat_record:','confirmation:','No successful staging deployment + certification workflow','AUTHORIZED FOR PRODUCTION PREPARATION','NO DEPLOYMENT PERFORMED'],
