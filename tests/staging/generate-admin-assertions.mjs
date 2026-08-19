@@ -2,7 +2,8 @@ import {createHmac} from 'node:crypto';
 import {readFile,writeFile} from 'node:fs/promises';
 
 const secret=process.env.ADMIN_PROXY_SECRET;
-const roles=JSON.parse(process.env.ADMIN_IDENTITY_ROLES_JSON||'{}');
+const mappingSource=process.env.ADMIN_IDENTITY_ROLES_JSON||await readFile(new URL('./admin-role-mapping.json',import.meta.url),'utf8');
+const roles=JSON.parse(mappingSource);
 const output=process.env.ADMIN_ASSERTIONS_OUTPUT||'/tmp/game-arena-admin-assertions.json';
 if(!secret)throw new Error('ADMIN_PROXY_SECRET is required.');
 if(!roles||typeof roles!=='object'||Array.isArray(roles))throw new Error('ADMIN_IDENTITY_ROLES_JSON must be an object.');
