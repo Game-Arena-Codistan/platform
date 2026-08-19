@@ -1,7 +1,4 @@
-import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
-
-const execFileAsync=promisify(execFile);
+import {spawn} from 'node:child_process';
 
 const remoteScript=String.raw`
 const identity=Buffer.from(process.env.QA_IDENTITY_B64||'', 'base64url').toString('utf8');
@@ -25,7 +22,8 @@ while(Date.now()<deadline){
       const content=await contentResponse.json();
       const delivered=(content.events||[]).some(event=>String(event.name||'').toLowerCase()==='delivered');
       if(!delivered)continue;
-      const match=String(content.body||'').match(/verification code(?: is)?\s+(\d{6})/i);
+      const readableBody=String(content.body||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+      const match=readableBody.match(/verification code(?: is)?\s+(\d{6})/i);
       if(match){process.stdout.write(match[1]);process.exit(0);}
     }
   }catch{}
@@ -35,6 +33,21 @@ process.stderr.write('BREVO_OTP_NOT_DELIVERED');
 process.exit(3);
 `;
 
+function runSsh(args,input,{timeout=60000,maxBuffer=4096}={}){
+  return new Promise((resolve,reject)=>{
+    const child=spawn('ssh',args,{stdio:['pipe','pipe','pipe']});
+    const stdout=[];const stderr=[];let size=0;let settled=false;
+    const timer=setTimeout(()=>{if(!settled){settled=true;child.kill('SIGKILL');reject(new Error('staging SSH OTP lookup timed out'));}},timeout);
+    const append=(target,chunk)=>{size+=chunk.length;if(size>maxBuffer){if(!settled){settled=true;clearTimeout(timer);child.kill('SIGKILL');reject(new Error('staging SSH OTP lookup exceeded output limit'));}return;}target.push(chunk);};
+    child.stdout.on('data',chunk=>append(stdout,chunk));
+    child.stderr.on('data',chunk=>append(stderr,chunk));
+    child.on('error',error=>{if(!settled){settled=true;clearTimeout(timer);reject(error);}});
+    child.on('close',code=>{if(settled)return;settled=true;clearTimeout(timer);const out=Buffer.concat(stdout).toString('utf8');if(code===0)resolve(out);else reject(new Error(`staging SSH OTP lookup exited ${code}`));});
+    child.stdin.on('error',()=>{});
+    child.stdin.end(input);
+  });
+}
+
 export async function fetchDeliveredBrevoOtp(identity,{notBefore=Date.now()-5000}={}){
   const host=String(process.env.DEPLOY_HOST||'').trim();
   const user=String(process.env.DEPLOY_USER||'').trim();
@@ -43,7 +56,7 @@ export async function fetchDeliveredBrevoOtp(identity,{notBefore=Date.now()-5000
   const identityB64=Buffer.from(identity,'utf8').toString('base64url');
   const remote=`cd /opt/codistan/platform && docker compose -f infra/docker-compose.staging.yml --env-file infra/.env exec -T -e QA_IDENTITY_B64=${identityB64} -e QA_NOT_BEFORE=${Math.floor(notBefore)} api node --input-type=module -`;
   try{
-    const {stdout}=await execFileAsync('ssh',['-i',key,'-o','BatchMode=yes',`${user}@${host}`,remote],{input:remoteScript,timeout:60000,maxBuffer:4096});
+    const stdout=await runSsh(['-i',key,'-o','BatchMode=yes',`${user}@${host}`,remote],remoteScript);
     const code=String(stdout||'').trim();
     if(!/^\d{6}$/.test(code))throw new Error('invalid remote response');
     return code;
