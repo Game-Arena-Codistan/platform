@@ -13,9 +13,9 @@ function protectedIdentity(tier='free'){
 }
 
 export function qaIdentifier(testInfo,label='player'){
-  const project=String(testInfo.project.name||'browser').replace(/[^a-z0-9]/gi,'-').toLowerCase();
-  const suffix=String(label).replace(/[^a-z0-9]/gi,'-').toLowerCase();
-  return `game.arena+qa-auto-${runId}-${project}-${suffix}@codistan.org`.slice(0,120).replace(/-+@/,'@');
+  const project=String(testInfo.project.name||'browser').replace(/[^a-z0-9]/gi,'-').toLowerCase().slice(0,10);
+  const suffix=String(label).replace(/[^a-z0-9]/gi,'-').toLowerCase().slice(0,18);
+  return `game.arena+qa-auto-${runId.slice(-10)}-${project}-${suffix}@codistan.org`;
 }
 
 export function protectedQaIdentifier(tier='free'){
