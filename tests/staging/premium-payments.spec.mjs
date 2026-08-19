@@ -1,5 +1,29 @@
-import {test,expect} from '@playwright/test';
+import {test,expect,request} from '@playwright/test';
 import {signInFromAccount,watchPage} from './helpers.mjs';
+
+function adminAssertions(){
+  try{return JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');}catch{return{};}
+}
+
+async function ensurePremiumEntitlement(page){
+  const sessionResponse=await page.context().request.get('/api/v1/session');
+  expect(sessionResponse.status()).toBe(200);
+  const session=await sessionResponse.json();
+  expect(session.authenticated).toBe(true);
+  if((session.entitlement?.tier||session.entitlement)==='premium'&&(!session.entitlement?.status||session.entitlement.status==='active'))return;
+  const adminUrl=String(process.env.STAGING_ADMIN_URL||'').trim();
+  const assertions=adminAssertions();
+  if(!adminUrl||!assertions.admin)throw new Error('BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');
+  const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:assertions.admin});
+  try{
+    const grant=await context.post(`/api/v1/admin/subscriptions/${encodeURIComponent(session.user.id)}/adjust`,{data:{action:'grant',durationDays:30,planId:'manual',reason:'AUTO-QA protected premium staging fixture'}});
+    expect(grant.status(),'audited premium fixture grant should succeed').toBe(200);
+    const payload=await grant.json();
+    expect(payload.entitlement?.tier).toBe('premium');
+    expect(payload.entitlement?.status).toBe('active');
+  }finally{await context.dispose();}
+  await page.reload();
+}
 
 test('@player premium page states the approved fixed-duration billing semantics',async({page})=>{
   const assertClean=watchPage(page);
@@ -49,9 +73,11 @@ test('@player a browser payment return cannot self-activate Arena+ without serve
   expect((await status.json()).status).toBe('pending');
 });
 
-test('@player protected premium QA account sees active entitlement and can start a premium title',async({page},testInfo)=>{
-  test.skip(!String(process.env.STAGING_QA_PREMIUM_PLAYER_IDENTIFIER||'').trim(),'No protected premium QA account is configured.');
-  await signInFromAccount(page,testInfo,{label:'premium-entitlement',tier:'premium'});
+test('@player protected premium QA account authenticates with delivered OTP, receives audited staging entitlement, and starts a premium title',async({page},testInfo)=>{
+  const assertions=adminAssertions();
+  test.skip(!String(process.env.STAGING_ADMIN_URL||'').trim()||!assertions.admin,'BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');
+  await signInFromAccount(page,testInfo,{label:'premium-entitlement',tier:'premium',protectedAccount:true});
+  await ensurePremiumEntitlement(page);
   await expect(page.getByText(/Game Arena\+ member/i)).toBeVisible();
   await page.goto('/#/premium');
   await expect(page.getByText(/Game Arena\+ is active on this account/i)).toBeVisible();
