@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {expect} from '@playwright/test';
 import {fetchDeliveredBrevoOtp} from './brevo-otp.mjs';
 
@@ -13,9 +14,10 @@ function protectedIdentity(tier='free'){
 }
 
 export function qaIdentifier(testInfo,label='player'){
-  const project=String(testInfo.project.name||'browser').replace(/[^a-z0-9]/gi,'-').toLowerCase().slice(0,10);
-  const suffix=String(label).replace(/[^a-z0-9]/gi,'-').toLowerCase().slice(0,18);
-  return `game.arena+qa-auto-${runId.slice(-10)}-${project}-${suffix}@codistan.org`;
+  const project=String(testInfo.project.name||'browser').replace(/[^a-z0-9]/gi,'-').toLowerCase();
+  const suffix=String(label).replace(/[^a-z0-9]/gi,'-').toLowerCase();
+  const token=createHash('sha256').update(`${runId}|${project}|${suffix}`).digest('hex').slice(0,12);
+  return `game.arena+qa-auto-${runId.slice(-10)}-${token}@codistan.org`;
 }
 
 export function protectedQaIdentifier(tier='free'){
