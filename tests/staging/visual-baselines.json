@@ -1,5 +1,11 @@
 {
   "schemaVersion":"game-arena-visual-baselines.v1",
+  "approvalPolicy":{
+    "reviewer":"ChatGPT QA reviewer (delegated by project owner)",
+    "mode":"explicit-visual-review",
+    "status":"pending-first-staging-captures",
+    "autoApprove":false
+  },
   "approvedFromStagingSha":null,
   "screenshots":{}
 }
