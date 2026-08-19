@@ -15,7 +15,7 @@ function protectedIdentity(tier='free'){
 export function qaIdentifier(testInfo,label='player'){
   const project=String(testInfo.project.name||'browser').replace(/[^a-z0-9]/gi,'-').toLowerCase();
   const suffix=String(label).replace(/[^a-z0-9]/gi,'-').toLowerCase();
-  return `autoqa+${runId}-${project}-${suffix}@example.invalid`;
+  return `game.arena+qa-auto-${runId}-${project}-${suffix}@codistan.org`.slice(0,120).replace(/-+@/,'@');
 }
 
 export function protectedQaIdentifier(tier='free'){
