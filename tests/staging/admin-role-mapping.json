@@ -1,0 +1,7 @@
+{
+  "autoqa-admin@game-arena.invalid": ["admin"],
+  "autoqa-operator@game-arena.invalid": ["operator"],
+  "autoqa-support@game-arena.invalid": ["support"],
+  "autoqa-security@game-arena.invalid": ["security"],
+  "autoqa-finance@game-arena.invalid": ["finance"]
+}
