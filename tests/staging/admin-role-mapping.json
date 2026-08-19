@@ -1,7 +1,7 @@
 {
-  "autoqa-admin@game-arena.invalid": ["admin"],
-  "autoqa-operator@game-arena.invalid": ["operator"],
-  "autoqa-support@game-arena.invalid": ["support"],
-  "autoqa-security@game-arena.invalid": ["security"],
-  "autoqa-finance@game-arena.invalid": ["finance"]
+  "game.arena+qa-admin@codistan.org": ["admin"],
+  "game.arena+qa-operator@codistan.org": ["operator"],
+  "game.arena+qa-support@codistan.org": ["support"],
+  "game.arena+qa-security@codistan.org": ["security"],
+  "game.arena+qa-finance@codistan.org": ["finance"]
 }
