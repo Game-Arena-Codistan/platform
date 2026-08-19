@@ -15,7 +15,7 @@ for(const role of wanted){
   if(!identity)throw new Error(`BLOCKED: staging admin identity mapping does not contain role ${role}`);
   selected[role]=identity;
 }
-selected.unauthorized='autoqa-unmapped@game-arena.invalid';
+selected.unauthorized='game.arena+qa-unmapped@codistan.org';
 
 const issuedAt=Date.now();
 function headers(identity,requestedRoles){
