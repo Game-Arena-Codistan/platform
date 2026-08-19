@@ -8,17 +8,19 @@ const required={
   '.github/workflows/release.yml':['org.opencontainers.image.revision=${{ github.sha }}','provenance: true','sbom: true'],
   '.github/workflows/deploy.yml':['Build and publish images','IMAGE_TAG:','Sync exact deployment configuration','Refusing non-SHA staging image','aws-staging-certification.yml','secrets: inherit','issues: write','record:','issues/48/comments'],
   '.github/workflows/aws-staging.yml':['Managed AWS staging deployment - future lane','AWS_MANAGED_STAGING_ENABLED'],
-  '.github/workflows/aws-staging-certification.yml':['name: Staging certification - EC2 Compose','Gate zero - prove deployed Compose artifact identity','compose-identity-certification.mjs','org.opencontainers.image.revision','STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_ADMIN_ASSERTIONS_JSON','STAGING_JAZZCASH_WEBHOOK_SECRET','127.0.0.1:8083','READY FOR UAT','FAILED','BLOCKED','visual-baselines.json'],
+  '.github/workflows/aws-staging-certification.yml':['name: Staging certification - EC2 Compose','Gate zero - prove deployed Compose artifact identity','compose-identity-certification.mjs','org.opencontainers.image.revision','STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_ADMIN_ASSERTIONS_JSON','STAGING_QA_REAL_OTP_MODE: brevo-remote','STAGING_JAZZCASH_WEBHOOK_SECRET','127.0.0.1:8083','READY FOR UAT','FAILED','BLOCKED','visual-baselines.json'],
   '.github/workflows/promote-production.yml':['workflow_dispatch:','uat_record:','confirmation:','No successful staging deployment + certification workflow','AUTHORIZED FOR PRODUCTION PREPARATION','NO DEPLOYMENT PERFORMED'],
   '.github/workflows/aws-production.yml':['Managed AWS production promotion - future lane','AWS_MANAGED_PRODUCTION_ENABLED','needs: guard'],
-  'infra/docker-compose.staging.yml':['${IMAGE_TAG:?IMAGE_TAG is required}','${IMAGE_BASE}-api:${IMAGE_TAG}','${IMAGE_BASE}-web:${IMAGE_TAG}','${IMAGE_BASE}-admin:${IMAGE_TAG}','${IMAGE_BASE}-games:${IMAGE_TAG}','127.0.0.1:8083:8080'],
+  'infra/docker-compose.staging.yml':['${IMAGE_TAG:?IMAGE_TAG is required}','${IMAGE_BASE}-api:${IMAGE_TAG}','${IMAGE_BASE}-web:${IMAGE_TAG}','${IMAGE_BASE}-admin:${IMAGE_TAG}','${IMAGE_BASE}-games:${IMAGE_TAG}','ADMIN_AUTH_MODE: signed-headers','game.arena+qa-admin@codistan.org','127.0.0.1:8083:8080'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
-  'tests/staging/helpers.mjs':['STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_OTP_CODE','signInFromAccount','assertNoHorizontalOverflow'],
+  'tests/staging/brevo-otp.mjs':['fetchDeliveredBrevoOtp','BREVO_API_KEY','transactionalEmails','BREVO_OTP_NOT_DELIVERED'],
+  'tests/staging/helpers.mjs':['STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_OTP_CODE','game.arena+qa-auto-','brevo-remote','signInFromAccount','assertNoHorizontalOverflow'],
+  'tests/staging/qa-identity-matrix.json':['game-arena-qa-identity-matrix.v1','game.arena@codistan.org','game.arena+qa-free@codistan.org','game.arena+qa-premium@codistan.org','game.arena+qa-unmapped@codistan.org'],
   'tests/staging/player.spec.mjs':['signInFromAccount','/v1/payments/jazzcash/checkout','@critical-mobile','game-frame','sameOriginPermission','support-status'],
   'tests/staging/home-feed.spec.mjs':['approved product proposition','discovery feed','locked premium play'],
-  'tests/staging/auth-session.spec.mjs':['OTP rejects a wrong code','resend guard','protected free QA account'],
+  'tests/staging/auth-session.spec.mjs':['OTP rejects a wrong code','resend guard','protected free QA account','delivered OTP'],
   'tests/staging/catalogue-gameplay.spec.mjs':['catalogue search','premium title','isolated iframe'],
-  'tests/staging/premium-payments.spec.mjs':['fixed-duration billing semantics','pending server transaction','cannot self-activate','protected premium QA account'],
+  'tests/staging/premium-payments.spec.mjs':['fixed-duration billing semantics','pending server transaction','cannot self-activate','protected premium QA account','audited staging entitlement'],
   'tests/staging/rewards.spec.mjs':['top-up','STAGING_QA_VOUCHER_CODE','duplicate'],
   'tests/staging/compete.spec.mjs':['leaderboards','premium tournament','multiplayer room'],
   'tests/staging/account-privacy.spec.mjs':['preferences persist','Export data','STAGING_QA_ALLOW_ACCOUNT_DELETION'],
@@ -33,7 +35,7 @@ const required={
   'tests/staging/restart-certification.mjs':['did not survive API restart'],
   'tests/staging/aggregate-certification.mjs':['game-arena-staging-certification.v2','READY FOR UAT','FAILED','BLOCKED','PM_QA_ACCOUNTS_PENDING','SIGNED_ADMIN_ROLE_MATRIX_PENDING'],
   'tests/staging/verify-visual-baselines.mjs':['VISUAL_REVIEW_REQUIRED','BLOCKED'],
-  'tests/staging/visual-baselines.json':['"screenshots":{}'],
+  'tests/staging/visual-baselines.json':['"schemaVersion":"game-arena-visual-baselines.v1"','"autoApprove":false','"screenshots":'],
   'docs/STAGING-CERTIFICATION.md':['## Deployment identity gate','## Game Arena coverage','## Visual approval','## Human UAT and production','EC2 Compose'],
   'docs/PRODUCTION-CUTOVER.md':['## Entry criteria','## Cutover rule','## Rollback triggers','## Old production retirement','same immutable SHA-tagged application artifacts']
 };
@@ -43,6 +45,7 @@ for(const [relative,markers] of Object.entries(required)){
   for(const marker of markers)if(!text.includes(marker))findings.push({file:relative,code:'missing_marker',marker});
 }
 const syntaxFiles=[
+  'tests/staging/brevo-otp.mjs',
   'tests/staging/helpers.mjs',
   'tests/staging/player.spec.mjs',
   'tests/staging/home-feed.spec.mjs',
@@ -63,6 +66,7 @@ const syntaxFiles=[
   'tests/staging/restart-certification.mjs',
   'tests/staging/aggregate-certification.mjs',
   'tests/staging/generate-admin-assertions.mjs',
+  'tests/staging/propose-visual-baselines.mjs',
   'tests/staging/verify-visual-baselines.mjs',
   'tests/staging/visual.spec.mjs'
 ];
