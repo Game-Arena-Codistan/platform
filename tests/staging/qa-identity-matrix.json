@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "game-arena-qa-identity-matrix.v1",
+  "baseMailbox": "game.arena@codistan.org",
+  "players": {
+    "free": {
+      "identity": "game.arena+qa-free@codistan.org",
+      "expectedEntitlement": "free",
+      "provisioning": "real OTP authentication; user auto-created by application after successful verification"
+    },
+    "premium": {
+      "identity": "game.arena+qa-premium@codistan.org",
+      "expectedEntitlement": "premium",
+      "provisioning": "real OTP authentication; user auto-created by application, then premium entitlement assigned through audited staging admin mechanism"
+    }
+  },
+  "admin": {
+    "admin": ["game.arena+qa-admin@codistan.org"],
+    "operator": ["game.arena+qa-operator@codistan.org"],
+    "support": ["game.arena+qa-support@codistan.org"],
+    "security": ["game.arena+qa-security@codistan.org"],
+    "finance": ["game.arena+qa-finance@codistan.org"]
+  },
+  "negative": {
+    "unmappedAdminIdentity": "game.arena+qa-unmapped@codistan.org",
+    "wrongOtp": "reuse free player identity with an intentionally incorrect OTP before the valid OTP"
+  },
+  "notes": [
+    "Admin identities are signed-header staging principals, not mailbox/password login accounts.",
+    "Do not create separate inboxes for these aliases.",
+    "Do not mark player accounts created or verified until real staging OTP verification succeeds.",
+    "Do not mark the premium player ready until an audited premium entitlement is confirmed on staging."
+  ]
+}
