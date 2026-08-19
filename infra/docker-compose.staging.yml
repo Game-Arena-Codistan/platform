@@ -40,10 +40,10 @@ services:
       BREVO_SMS_SENDER: ${BREVO_SMS_SENDER:-}
       JAZZCASH_MODE: ${JAZZCASH_MODE:-mock}
       JAZZCASH_WEBHOOK_SECRET: ${JAZZCASH_WEBHOOK_SECRET:?JAZZCASH_WEBHOOK_SECRET is required}
-      ADMIN_AUTH_MODE: ${ADMIN_AUTH_MODE:-local-key}
-      ADMIN_API_KEYS: ${ADMIN_API_KEYS:-}
+      ADMIN_AUTH_MODE: signed-headers
+      ADMIN_API_KEYS: ""
       ADMIN_PROXY_SECRET: ${ADMIN_PROXY_SECRET:-}
-      ADMIN_IDENTITY_ROLES_JSON: ${ADMIN_IDENTITY_ROLES_JSON:-}
+      ADMIN_IDENTITY_ROLES_JSON: '{"game.arena+qa-admin@codistan.org":["admin"],"game.arena+qa-operator@codistan.org":["operator"],"game.arena+qa-support@codistan.org":["support"],"game.arena+qa-security@codistan.org":["security"],"game.arena+qa-finance@codistan.org":["finance"]}'
       TOPUP_OFFERS_JSON: ${TOPUP_OFFERS_JSON:-}
       VOUCHER_CODES_JSON: ${VOUCHER_CODES_JSON:-}
       COMPETITIONS_ENABLED: ${COMPETITIONS_ENABLED:-true}
@@ -67,7 +67,7 @@ services:
     pull_policy: always
     environment:
       GAME_ARENA_ADMIN_API_BASE_URL: /api
-      GAME_ARENA_ADMIN_AUTH_MODE: ${GAME_ARENA_ADMIN_AUTH_MODE:-local-key}
+      GAME_ARENA_ADMIN_AUTH_MODE: signed-headers
     ports: ["127.0.0.1:8083:8080"]
     depends_on: {api: {condition: service_healthy}}
     restart: unless-stopped
