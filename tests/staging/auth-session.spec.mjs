@@ -43,9 +43,8 @@ test('@player OTP resend guard is enumeration-safe for the same pending challeng
   await expect(page.locator('#auth-status')).toContainText(/wait|try again/i);
 });
 
-test('@player protected free QA account authenticates and remains on the free entitlement',async({page},testInfo)=>{
-  test.skip(!String(process.env.STAGING_QA_FREE_PLAYER_IDENTIFIER||'').trim(),'No protected free QA account is configured.');
-  await signInFromAccount(page,testInfo,{label:'free-entitlement',tier:'free'});
+test('@player protected free QA account authenticates with delivered OTP and remains on the free entitlement',async({page},testInfo)=>{
+  await signInFromAccount(page,testInfo,{label:'free-entitlement',tier:'free',protectedAccount:true});
   await expect(page.getByText(/Free member/i)).toBeVisible();
   const session=await page.context().request.get('/api/v1/session');
   expect(session.status()).toBe(200);
