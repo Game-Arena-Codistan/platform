@@ -224,9 +224,11 @@ jobs:
           LOCAL_ADMIN_KEY: ${{ secrets.STAGING_QA_ADMIN_KEY }}
         run: |
           set -euo pipefail
-          if [ -n "$ADMIN_PROXY_SECRET" ] && [ -n "$ADMIN_IDENTITY_ROLES_JSON" ]; then
+          if [ -n "$ADMIN_PROXY_SECRET" ]; then
             echo "::add-mask::$ADMIN_PROXY_SECRET"
-            echo "::add-mask::$ADMIN_IDENTITY_ROLES_JSON"
+            if [ -n "$ADMIN_IDENTITY_ROLES_JSON" ]; then
+              echo "::add-mask::$ADMIN_IDENTITY_ROLES_JSON"
+            fi
             export ADMIN_ASSERTIONS_OUTPUT=/tmp/game-arena-admin-assertions.json
             node tests/staging/generate-admin-assertions.mjs
             assertions="$(cat /tmp/game-arena-admin-assertions.json)"
@@ -256,6 +258,7 @@ jobs:
         env:
           EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
           VISUAL_CAPTURE_DIR: visual-captures
+          STAGING_QA_REAL_OTP_MODE: brevo-remote
           STAGING_QA_ADMIN_KEY: ${{ secrets.STAGING_QA_ADMIN_KEY }}
           STAGING_QA_FREE_PLAYER_IDENTIFIER: ${{ vars.STAGING_QA_FREE_PLAYER_IDENTIFIER }}
           STAGING_QA_FREE_PLAYER_OTP_CODE: ${{ secrets.STAGING_QA_FREE_PLAYER_OTP_CODE }}
