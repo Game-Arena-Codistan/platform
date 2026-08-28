@@ -14,10 +14,10 @@ export const games=[previewGame,...enriched];
 export const genres=['All',...new Set(games.map(game=>game.genre))];
 export const plans=[
   {id:'monthly',name:'Monthly',price:299,period:'month',description:'Fixed-duration access for one month.'},
-  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'Fixed-duration access for one year.',recommended:true}
+  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'Fixed-duration access for one year.'}
 ];
-export const premiumFeatures=['Full catalogue access','Ad-free play','Downloadable games gallery','Premium challenges','Tournament access','Reward eligibility','2× Arena Coins','10% member top-up discount'];
-export const benefits={free:['Selected catalogue','Standard rewards','Basic leaderboards','Configurable play limits','Ad-supported surfaces'],premium:premiumFeatures};
+export const premiumFeatures=['Full catalogue access','Premium challenges','Tournament access','Reward eligibility','2× Arena Coins','10% member top-up discount'];
+export const benefits={free:['Selected catalogue','Standard rewards','Basic leaderboards','Configurable play limits'],premium:premiumFeatures};
 export const fallbackChallenges=[
   {id:'daily-play',title:'Daily Play',gameIds:['arena-dash'],target:{type:'completions',value:3},reward:40,premium:false,status:'live',progress:{value:1,target:3,complete:false}},
   {id:'arena-plus-week',title:'Arena+ Week',gameIds:games.filter(item=>item.tier==='premium').slice(0,5).map(item=>item.id),target:{type:'score',value:1000},reward:250,premium:true,status:'live',progress:{value:420,target:1000,complete:false}}
