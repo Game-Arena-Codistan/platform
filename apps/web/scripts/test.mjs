@@ -5,12 +5,16 @@ import {controlledPilotIds,games,plans,premiumFeatures,previewGame,mockTopups} f
 
 const contract=JSON.parse(await readFile(new URL('../../../contracts/api/v1/mock-responses.json',import.meta.url),'utf8'));
 const apiSource=await readFile(new URL('../src/api.js',import.meta.url),'utf8');
+const librarySource=await readFile(new URL('../src/views/library.js',import.meta.url),'utf8');
 
 test('commercial baseline matches approved plan',()=>{
   assert.equal(plans.find(plan=>plan.id==='monthly').price,299);
   assert.equal(plans.find(plan=>plan.id==='yearly').price,4999);
+  assert.equal(plans.some(plan=>plan.recommended),false);
   assert.ok(premiumFeatures.includes('2× Arena Coins'));
   assert.ok(premiumFeatures.includes('10% member top-up discount'));
+  assert.equal(premiumFeatures.includes('Downloadable games gallery'),false);
+  assert.equal(premiumFeatures.includes('Ad-free play'),false);
 });
 
 test('catalogue contains active imported games and a playable preview',()=>{
@@ -27,10 +31,11 @@ test('catalogue contains active imported games and a playable preview',()=>{
   }
 });
 
-test('MVP surfaces have data contracts',()=>{
+test('MVP surfaces have launch-safe data contracts',()=>{
   assert.ok(games.some(game=>game.multiplayer));
   assert.ok(mockTopups.length>=3);
-  assert.ok(premiumFeatures.includes('Downloadable games gallery'));
+  assert.match(librarySource,/game\.tier==='free'&&Boolean\(game\.downloadUrl\)/);
+  assert.match(librarySource,/!game\?\.downloadUrl\|\|game\.tier!=='free'/);
 });
 
 test('Vercel preview mocks match contract 1.0.0',()=>{
