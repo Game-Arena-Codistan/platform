@@ -8,8 +8,11 @@ test('@player competition hub loads leaderboards and protects premium tournament
   await page.locator('#leaderboard-game').selectOption({index:1});
   expect((await leaderboard).status()).toBe(200);
   await expect(page.locator('.leaderboard-list')).toBeVisible();
+  await page.waitForTimeout(300);
 
-  await page.getByRole('button',{name:'Tournaments'}).click();
+  const tournamentsTab=page.getByRole('button',{name:'Tournaments'});
+  await expect(tournamentsTab).toBeVisible();
+  await tournamentsTab.click();
   const premiumEntry=page.locator('[data-tournament][data-premium="true"]').first();
   await expect(premiumEntry).toBeVisible();
   await premiumEntry.click();
