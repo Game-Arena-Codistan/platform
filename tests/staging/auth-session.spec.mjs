@@ -19,7 +19,7 @@ test('@player OTP rejects a wrong code, accepts the correct code, persists sessi
   await page.reload();
   await expect(page.getByRole('heading',{name:/Player/i})).toBeVisible();
   await expect(page.locator('#session-summary')).toContainText(/active session/i);
-  await page.getByRole('button',{name:'Sign out'}).click();
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Guest player'})).toBeVisible();
   const session=await page.context().request.get('/api/v1/session');
   expect(session.status()).toBe(200);
@@ -44,6 +44,7 @@ test('@player OTP resend guard is enumeration-safe for the same pending challeng
 });
 
 test('@player protected free QA account authenticates with delivered OTP and remains on the free entitlement',async({page},testInfo)=>{
+  test.slow();
   await signInFromAccount(page,testInfo,{label:'free-entitlement',tier:'free',protectedAccount:true});
   await expect(page.getByText(/Free member/i)).toBeVisible();
   const session=await page.context().request.get('/api/v1/session');

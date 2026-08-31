@@ -38,7 +38,7 @@ test('@player @critical-mobile protected OTP sign-in launches a deployed game an
   await page.getByRole('button',{name:'Exit game'}).click();
 
   await page.goto('/#/premium');
-  await expect(page.getByText(/Fixed-duration purchase/i)).toBeVisible();
+  await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();
   await page.locator('[data-plan]').first().click();
   await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();
   const checkoutResponse=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');

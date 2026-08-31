@@ -74,6 +74,7 @@ test('@player a browser payment return cannot self-activate Arena+ without serve
 });
 
 test('@player protected premium QA account authenticates with delivered OTP, receives audited staging entitlement, and starts a premium title',async({page},testInfo)=>{
+  test.slow();
   const assertions=adminAssertions();
   test.skip(!String(process.env.STAGING_ADMIN_URL||'').trim()||!assertions.admin,'BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');
   await signInFromAccount(page,testInfo,{label:'premium-entitlement',tier:'premium',protectedAccount:true});

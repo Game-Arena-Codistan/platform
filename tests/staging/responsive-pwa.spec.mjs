@@ -16,6 +16,7 @@ test('@player primary navigation is keyboard-operable',async({page})=>{
   await expect(games).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#\/library/);
+  await expect(page.locator('#app')).toBeFocused();
 
   const account=page.locator('#profile-button');
   await account.focus();

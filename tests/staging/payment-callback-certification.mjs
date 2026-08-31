@@ -15,8 +15,18 @@ function expectStatus(actual,allowed,message){if(!allowed.includes(actual))throw
 async function lane(name,fn){try{record(name,'PASS',await fn()||{});}catch(error){record(name,error.blocked?'BLOCKED':'FAIL',{error:String(error.message||error).slice(0,300)});}}
 function block(message){const error=new Error(message);error.blocked=true;throw error;}
 function awsText(args){return execFileSync('aws',args,{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();}
+function resolveRuntimeWebhookSecret(){
+  const host=String(process.env.DEPLOY_HOST||'').trim();
+  const user=String(process.env.DEPLOY_USER||'').trim();
+  const key=String(process.env.STAGING_QA_SSH_KEY_PATH||`${process.env.HOME||''}/.ssh/game-arena-staging`).trim();
+  if(!host||!user||!key)return'';
+  const script=`set -euo pipefail\ncd /opt/codistan/platform\nvalue="$(grep -m1 '^JAZZCASH_WEBHOOK_SECRET=' infra/.env | cut -d= -f2- || true)"\nvalue="\${value#\\\"}"; value="\${value%\\\"}"\nvalue="\${value#\\'}"; value="\${value%\\'}"\nprintf '%s' "$value"\n`;
+  try{return execFileSync('ssh',['-i',key,'-o','BatchMode=yes',`${user}@${host}`,'bash -s'],{encoding:'utf8',input:script,stdio:['pipe','pipe','ignore']}).trim();}
+  catch{return'';}
+}
 function resolveWebhookSecret(){
   if(process.env.JAZZCASH_WEBHOOK_SECRET)return process.env.JAZZCASH_WEBHOOK_SECRET;
+  const runtime=resolveRuntimeWebhookSecret();if(runtime)return runtime;
   const prefix=process.env.AWS_CONFIG_PREFIX||'/game-arena/staging';
   try{
     const arn=awsText(['ssm','get-parameter','--name',`${prefix}/application-secret-arn`,'--query','Parameter.Value','--output','text']);
