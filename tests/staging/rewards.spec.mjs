@@ -3,7 +3,7 @@ import {signInFromAccount,runId} from './helpers.mjs';
 
 test('@player rewards page explains wallet semantics and gates account actions for guests',async({page})=>{
   await page.goto('/#/rewards');
-  await expect(page.getByRole('heading',{name:/coins$/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/^\d[\d,]* coins$/i})).toBeVisible();
   await expect(page.getByText(/non-transferable, non-withdrawable and have no cash value/i)).toBeVisible();
   const challenge=page.locator('[data-challenge]').first();
   await expect(challenge).toBeVisible();

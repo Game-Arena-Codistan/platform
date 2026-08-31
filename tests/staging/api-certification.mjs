@@ -1,10 +1,11 @@
 import {writeFile} from 'node:fs/promises';
+import {fetchDeliveredBrevoOtp} from './brevo-otp.mjs';
 
 const apiBase=String(process.env.STAGING_API_URL||'').replace(/\/$/,'');
 const playerUrl=String(process.env.STAGING_PLAYER_URL||'').replace(/\/$/,'');
 const runId=String(process.env.QA_RUN_ID||Date.now()).replace(/[^a-zA-Z0-9-]/g,'').slice(-32);
 const correlation=`AUTO-QA-${runId}`;
-const identifier=process.env.STAGING_QA_PLAYER_IDENTIFIER||`autoqa+${runId}@example.invalid`;
+const identifier=process.env.STAGING_QA_PLAYER_IDENTIFIER||`game.arena+qa-api-${runId.slice(-8)}@codistan.org`;
 if(!apiBase||!playerUrl)throw new Error('STAGING_API_URL and STAGING_PLAYER_URL are required.');
 
 const results=[];
@@ -57,10 +58,14 @@ await lane('catalogue',async()=>{
 });
 
 await lane('otp-session-negative-and-positive',async()=>{
-  if(ready?.otp!=='mock')block(`OTP provider mode ${ready?.otp||'unknown'} requires a protected staging QA identity/provider harness.`);
+  if(!['mock','brevo'].includes(ready?.otp))block(`OTP provider mode ${ready?.otp||'unknown'} requires a supported staging QA provider harness.`);
+  const requestedAt=Date.now();
   const otp=await call('/v1/auth/otp',{method:'POST',body:{identifier}});expectStatus(otp.response.status,[202],'OTP request failed');
-  const challenge=otp.data?.challengeId;const code=otp.data?.debugCode;
-  if(!challenge||!/^\d{6}$/.test(String(code||'')))block('Mock staging did not return a debug OTP code to the private certification runner.');
+  const challenge=otp.data?.challengeId;
+  if(!challenge)block('Staging OTP request did not return a challenge.');
+  let code=String(otp.data?.debugCode||'');
+  if(!/^\d{6}$/.test(code)&&ready?.otp==='brevo')code=await fetchDeliveredBrevoOtp(identifier,{notBefore:requestedAt});
+  if(!/^\d{6}$/.test(code))block('Staging OTP automation could not resolve a six-digit verification code.');
   const invalidCode=code==='000000'?'111111':'000000';
   const invalid=await call('/v1/auth/otp/verify',{method:'POST',body:{challengeId:challenge,code:invalidCode}});
   expectStatus(invalid.response.status,[400],'invalid OTP was not rejected');
@@ -70,7 +75,7 @@ await lane('otp-session-negative-and-positive',async()=>{
   csrf=verified.data.csrfToken;user=verified.data.user;
   const session=await call('/v1/session',{auth:true});expectStatus(session.response.status,[200],'session lookup failed');
   if(session.data?.authenticated!==true)throw new Error('session is not authenticated after OTP verification.');
-  return{authenticated:true};
+  return{authenticated:true,otpMode:ready.otp};
 });
 
 await lane('protected-access',async()=>{

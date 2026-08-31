@@ -6,7 +6,7 @@ const notBefore=Number(process.env.QA_NOT_BEFORE||0);
 const apiKey=process.env.BREVO_API_KEY||'';
 if(!identity||!Number.isFinite(notBefore)||!apiKey){process.stderr.write('BREVO_OTP_NOT_CONFIGURED');process.exit(2);}
 const headers={accept:'application/json','api-key':apiKey};
-const deadline=Date.now()+45000;
+const deadline=Date.now()+90000;
 while(Date.now()<deadline){
   try{
     const listResponse=await fetch('https://api.brevo.com/v3/smtp/emails?email='+encodeURIComponent(identity)+'&sort=desc&limit=10',{headers,signal:AbortSignal.timeout(10000)});
@@ -33,7 +33,7 @@ process.stderr.write('BREVO_OTP_NOT_DELIVERED');
 process.exit(3);
 `;
 
-function runSsh(args,input,{timeout=60000,maxBuffer=4096}={}){
+function runSsh(args,input,{timeout=105000,maxBuffer=4096}={}){
   return new Promise((resolve,reject)=>{
     const child=spawn('ssh',args,{stdio:['pipe','pipe','pipe']});
     const stdout=[];const stderr=[];let size=0;let settled=false;
