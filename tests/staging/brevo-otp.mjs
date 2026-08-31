@@ -59,9 +59,12 @@ export async function fetchDeliveredBrevoOtp(identity,{notBefore=Date.now()-5000
   const host=String(process.env.DEPLOY_HOST||'').trim();
   const user=String(process.env.DEPLOY_USER||'').trim();
   const key=String(process.env.STAGING_QA_SSH_KEY_PATH||`${process.env.HOME||''}/.ssh/game-arena-staging`).trim();
+  const imageBase=String(process.env.IMAGE_BASE||'').trim();
+  const imageTag=String(process.env.IMAGE_TAG||process.env.EXPECTED_RELEASE_SHA||'').trim();
   if(!host||!user||!key)throw new Error('BLOCKED: real staging OTP retrieval requires the protected staging SSH connection.');
+  if(!/^[a-z0-9./:_-]+$/i.test(imageBase)||!/^[0-9a-f]{40}$/.test(imageTag))throw new Error('BLOCKED: real staging OTP retrieval requires the exact immutable staging image identity.');
   const identityB64=Buffer.from(identity,'utf8').toString('base64url');
-  const remote=`cd /opt/codistan/platform && docker compose -f infra/docker-compose.staging.yml --env-file infra/.env exec -T -e QA_IDENTITY_B64=${identityB64} -e QA_NOT_BEFORE=${Math.floor(notBefore)} api node --input-type=module -`;
+  const remote=`cd /opt/codistan/platform && IMAGE_BASE=${imageBase} IMAGE_TAG=${imageTag} docker compose -f infra/docker-compose.staging.yml --env-file infra/.env exec -T -e QA_IDENTITY_B64=${identityB64} -e QA_NOT_BEFORE=${Math.floor(notBefore)} api node --input-type=module -`;
   try{
     const stdout=await runSsh(['-i',key,'-o','BatchMode=yes',`${user}@${host}`,remote],remoteScript);
     const code=String(stdout||'').trim();

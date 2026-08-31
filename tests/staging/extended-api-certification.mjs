@@ -34,7 +34,9 @@ await lane('controlled-game-origin-and-catalogue-media',async()=>{
   for(const game of sample){
     for(const [kind,url] of [['game',game.gameUrl],['icon',game.iconUrl],['banner',game.bannerUrl]]){
       if(!url)throw new Error(`${game.id} is missing ${kind} URL.`);
-      const parsed=new URL(url);if(parsed.protocol!=='https:')throw new Error(`${game.id} ${kind} URL is not HTTPS.`);
+      const base=kind==='game'?gameBase:playerUrl;
+      const parsed=new URL(url,base);
+      if(parsed.protocol!=='https:')throw new Error(`${game.id} ${kind} URL is not HTTPS.`);
       const response=await fetch(parsed,{redirect:'follow',headers:{'user-agent':'Game-Arena-Staging-Certification/1.0'}});
       if(response.status<200||response.status>=400)throw new Error(`${game.id} ${kind} returned HTTP ${response.status}.`);
       checked.push(`${game.id}:${kind}`);

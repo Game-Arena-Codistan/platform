@@ -3,9 +3,14 @@
   "approvalPolicy":{
     "reviewer":"ChatGPT QA reviewer (delegated by project owner)",
     "mode":"explicit-visual-review",
-    "status":"pending-first-staging-captures",
+    "status":"approved",
     "autoApprove":false
   },
-  "approvedFromStagingSha":null,
-  "screenshots":{}
+  "approvedFromStagingSha":"04129128b1c594ce7081abf4975c8b306479ca6d",
+  "screenshots":{
+    "player-home.png":"e5a111a3842aeff7cb5c1bb9ca48510b6099f2620a85dcce36f3d72eb1182b90",
+    "player-library.png":"a08528ad7d8db4d7e0bd5464626b87533409df13ac39a9005eeb982d6616d3fd",
+    "player-premium.png":"b5221500070891587a83a3253d038a564460dd91007ade57ea5b623ffc5c5e5f",
+    "player-support.png":"9330966639e8beb701cd7fa5bbf6bb8c3418eef144463d242eff10972da796a3"
+  }
 }
