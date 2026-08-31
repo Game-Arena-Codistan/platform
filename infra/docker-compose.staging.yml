@@ -48,6 +48,7 @@ services:
       ADMIN_AUTH_MODE: signed-headers
       ADMIN_API_KEYS: ""
       ADMIN_PROXY_SECRET: ${ADMIN_PROXY_SECRET:-}
+      ADMIN_PROXY_MAX_SKEW_SECONDS: ${ADMIN_PROXY_MAX_SKEW_SECONDS:-900}
       ADMIN_IDENTITY_ROLES_JSON: '{"game.arena+qa-admin@codistan.org":["admin"],"game.arena+qa-operator@codistan.org":["operator"],"game.arena+qa-support@codistan.org":["support"],"game.arena+qa-security@codistan.org":["security"],"game.arena+qa-finance@codistan.org":["finance"]}'
       TOPUP_OFFERS_JSON: ${TOPUP_OFFERS_JSON:-}
       VOUCHER_CODES_JSON: ${VOUCHER_CODES_JSON:-}
@@ -80,6 +81,8 @@ services:
   game-origin:
     image: ${IMAGE_BASE}-games:${IMAGE_TAG}
     pull_policy: always
+    environment:
+      GAME_ARENA_FRAME_ANCESTORS: "'self'"
     ports: ["127.0.0.1:8082:8080"]
     restart: unless-stopped
 
@@ -87,7 +90,7 @@ services:
     image: nginx:1.29-alpine
     volumes: [./gateway/nginx.conf:/etc/nginx/nginx.conf:ro]
     ports: ["8095:8080"]
-    depends_on: {api: {condition: service_healthy}, web: {condition: service_healthy}}
+    depends_on: {api: {condition: service_healthy}, web: {condition: service_healthy}, game-origin: {condition: service_healthy}}
     restart: unless-stopped
 
 volumes:
