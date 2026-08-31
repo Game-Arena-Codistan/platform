@@ -28,13 +28,13 @@ test('signed staging admin assertions accept canonical plus-addressed identities
   const identity='game.arena+qa-operator@codistan.org';
   const roles=['operator'];
   const issuedAt=Date.now();
-  const secret='qa-only-admin-signing-secret-1234567890';
-  const config=loadConfig({nodeEnv:'staging',adminAuthMode:'signed-headers',adminProxySecret:secret,adminProxyMaxSkewSeconds:60,adminIdentityRolesJson:mapping});
+  const signingKey='x'.repeat(32);
+  const config=loadConfig({nodeEnv:'staging',adminAuthMode:'signed-headers',adminProxySecret:signingKey,adminProxyMaxSkewSeconds:60,adminIdentityRolesJson:mapping});
   const request={headers:{
     'x-admin-identity':identity,
     'x-admin-roles':roles.join(','),
     'x-admin-issued-at':String(issuedAt),
-    'x-admin-signature':signAdminAssertion({identity,roles,issuedAt,secret})
+    'x-admin-signature':signAdminAssertion({identity,roles,issuedAt,secret:signingKey})
   }};
   const principal=authenticateAdmin(request,config,['operator']);
   assert.equal(principal.role,'operator');
