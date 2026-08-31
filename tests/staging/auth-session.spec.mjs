@@ -19,7 +19,7 @@ test('@player OTP rejects a wrong code, accepts the correct code, persists sessi
   await page.reload();
   await expect(page.getByRole('heading',{name:/Player/i})).toBeVisible();
   await expect(page.locator('#session-summary')).toContainText(/active session/i);
-  await page.getByRole('button',{name:'Sign out'}).click();
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Guest player'})).toBeVisible();
   const session=await page.context().request.get('/api/v1/session');
   expect(session.status()).toBe(200);
