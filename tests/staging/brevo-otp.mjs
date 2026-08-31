@@ -13,7 +13,7 @@ while(Date.now()<deadline){
     const listResponse=await fetch('https://api.brevo.com/v3/smtp/emails?email='+encodeURIComponent(identity)+'&sort=desc&limit=10',{headers,signal:AbortSignal.timeout(10000)});
     if(!listResponse.ok){
       if(listResponse.status===429||listResponse.status>=500){await pause(3000);continue;}
-      process.stderr.write('BREVO_OTP_LIST_REJECTED');process.exit(2);
+      process.stderr.write('BREVO_OTP_LIST_REJECTED_'+listResponse.status);process.exit(2);
     }
     const list=await listResponse.json();
     for(const item of list.transactionalEmails||[]){
@@ -24,7 +24,7 @@ while(Date.now()<deadline){
       const contentResponse=await fetch('https://api.brevo.com/v3/smtp/emails/'+encodeURIComponent(item.uuid),{headers,signal:AbortSignal.timeout(10000)});
       if(!contentResponse.ok){
         if(contentResponse.status===429||contentResponse.status>=500){await pause(2000);break;}
-        continue;
+        process.stderr.write('BREVO_OTP_CONTENT_REJECTED_'+contentResponse.status);process.exit(2);
       }
       const content=await contentResponse.json();
       const delivered=(content.events||[]).some(event=>String(event.name||'').toLowerCase()==='delivered');
@@ -44,12 +44,12 @@ function runSsh(args,input,{timeout=105000,maxBuffer=4096}={}){
   return new Promise((resolve,reject)=>{
     const child=spawn('ssh',args,{stdio:['pipe','pipe','pipe']});
     const stdout=[];const stderr=[];let size=0;let settled=false;
-    const timer=setTimeout(()=>{if(!settled){settled=true;child.kill('SIGKILL');reject(new Error('staging SSH OTP lookup timed out'));}},timeout);
-    const append=(target,chunk)=>{size+=chunk.length;if(size>maxBuffer){if(!settled){settled=true;clearTimeout(timer);child.kill('SIGKILL');reject(new Error('staging SSH OTP lookup exceeded output limit'));}return;}target.push(chunk);};
+    const timer=setTimeout(()=>{if(!settled){settled=true;child.kill('SIGKILL');reject(new Error('BREVO_OTP_SSH_TIMEOUT'));}},timeout);
+    const append=(target,chunk)=>{size+=chunk.length;if(size>maxBuffer){if(!settled){settled=true;clearTimeout(timer);child.kill('SIGKILL');reject(new Error('BREVO_OTP_SSH_OUTPUT_LIMIT'));}return;}target.push(chunk);};
     child.stdout.on('data',chunk=>append(stdout,chunk));
     child.stderr.on('data',chunk=>append(stderr,chunk));
-    child.on('error',error=>{if(!settled){settled=true;clearTimeout(timer);reject(error);}});
-    child.on('close',code=>{if(settled)return;settled=true;clearTimeout(timer);const out=Buffer.concat(stdout).toString('utf8');if(code===0)resolve(out);else reject(new Error(`staging SSH OTP lookup exited ${code}`));});
+    child.on('error',()=>{if(!settled){settled=true;clearTimeout(timer);reject(new Error('BREVO_OTP_SSH_ERROR'));}});
+    child.on('close',code=>{if(settled)return;settled=true;clearTimeout(timer);const out=Buffer.concat(stdout).toString('utf8');if(code===0){resolve(out);return;}const err=Buffer.concat(stderr).toString('utf8');const marker=err.match(/BREVO_OTP_[A-Z0-9_]+/)?.[0]||`BREVO_OTP_SSH_EXIT_${code}`;reject(new Error(marker));});
     child.stdin.on('error',()=>{});
     child.stdin.end(input);
   });
@@ -65,9 +65,10 @@ export async function fetchDeliveredBrevoOtp(identity,{notBefore=Date.now()-5000
   try{
     const stdout=await runSsh(['-i',key,'-o','BatchMode=yes',`${user}@${host}`,remote],remoteScript);
     const code=String(stdout||'').trim();
-    if(!/^\d{6}$/.test(code))throw new Error('invalid remote response');
+    if(!/^\d{6}$/.test(code))throw new Error('BREVO_OTP_INVALID_REMOTE_RESPONSE');
     return code;
-  }catch{
-    throw new Error('BLOCKED: a delivered Brevo OTP could not be retrieved for the protected staging QA identity.');
+  }catch(error){
+    const marker=String(error?.message||'BREVO_OTP_UNKNOWN').match(/BREVO_OTP_[A-Z0-9_]+/)?.[0]||'BREVO_OTP_UNKNOWN';
+    throw new Error(`BLOCKED: delivered Brevo OTP verification failed (${marker}).`);
   }
 }
