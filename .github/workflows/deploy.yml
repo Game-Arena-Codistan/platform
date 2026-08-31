@@ -102,6 +102,12 @@ jobs:
           "${compose[@]}" pull
           "${compose[@]}" up -d --remove-orphans
 
+          # The gateway configuration is bind-mounted. Updating the file does not
+          # make an already-running nginx process reload it, so validate the exact
+          # synced config and recreate only the gateway on every staging release.
+          "${compose[@]}" exec -T gateway nginx -t
+          "${compose[@]}" up -d --no-deps --force-recreate gateway
+
           for _ in $(seq 1 60); do
             gateway=0; api=0; admin=0; games=0
             curl --fail --silent http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || true
@@ -111,7 +117,11 @@ jobs:
             if [ "$gateway$api$admin$games" = 1111 ]; then break; fi
             sleep 2
           done
-          [ "$gateway$api$admin$games" = 1111 ] || { "${compose[@]}" ps; exit 1; }
+          if [ "$gateway$api$admin$games" != 1111 ]; then
+            echo "Staging readiness failed: gateway=$gateway api=$api admin=$admin games=$games" >&2
+            "${compose[@]}" ps
+            exit 1
+          fi
 
           for entry in api:api web:web admin:admin game-origin:games; do
             service="${entry%%:*}"; component="${entry##*:}"
