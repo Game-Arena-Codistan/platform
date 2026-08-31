@@ -243,7 +243,19 @@ jobs:
           LOCAL_ADMIN_KEY: ${{ secrets.STAGING_QA_ADMIN_KEY }}
         run: |
           set -euo pipefail
+          if [ -z "$ADMIN_PROXY_SECRET" ]; then
+            ADMIN_PROXY_SECRET="$(ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          value="$(grep -m1 '^ADMIN_PROXY_SECRET=' infra/.env | cut -d= -f2- || true)"
+          value="${value#\"}"; value="${value%\"}"
+          value="${value#\'}"; value="${value%\'}"
+          printf '%s' "$value"
+          REMOTE
+            )"
+          fi
           if [ -n "$ADMIN_PROXY_SECRET" ]; then
+            export ADMIN_PROXY_SECRET
             echo "::add-mask::$ADMIN_PROXY_SECRET"
             if [ -n "$ADMIN_IDENTITY_ROLES_JSON" ]; then
               echo "::add-mask::$ADMIN_IDENTITY_ROLES_JSON"
