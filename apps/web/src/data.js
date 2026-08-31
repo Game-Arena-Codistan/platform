@@ -9,7 +9,7 @@ export const controlledPilotIds=['duck-hunter','ranger-vs-zombies','robotex','sw
 const controlledPilots=new Set(controlledPilotIds);
 const source=[...catalogue1,...catalogue2].filter(game=>!controlledPilots.has(game.id));
 const enriched=source.map((game,index)=>{const media=catalogueArtwork[normalize(game.gameUrl)]||{};return{...game,icon:media.icon||'',banner:media.banner||'',art:media.banner?`linear-gradient(180deg,rgba(3,2,8,.08),rgba(3,2,8,.76)),url("${media.banner}") center/cover`:fallbackArt(index),downloadUrl:game.downloadUrl||'',multiplayer:Boolean(game.multiplayer),internalDemo:false};});
-export const previewGame={id:'arena-dash',title:'Arena Dash',genre:'Arcade',tier:'free',orientation:'portrait',description:'Dodge neon gates, build a streak and finish a complete reward-enabled run in the browser.',reward:20,gameUrl:'/demo-games/arena-dash/index.html',multiplayer:false,internalDemo:true,preview:true,downloadUrl:'/demo-games/arena-dash/index.html',art:'radial-gradient(circle at 70% 15%,rgba(255,255,255,.28),transparent 22%),linear-gradient(145deg,#5b21b6,#0891b2 55%,#0f172a)'};
+export const previewGame={id:'arena-dash',title:'Arena Dash',genre:'Arcade',tier:'free',orientation:'portrait',description:'Dodge neon gates, build a streak and finish a complete reward-enabled run in the browser.',reward:20,gameUrl:'/games/arena-dash/index.html',multiplayer:false,internalDemo:true,preview:true,downloadUrl:'/games/arena-dash/index.html',art:'radial-gradient(circle at 70% 15%,rgba(255,255,255,.28),transparent 22%),linear-gradient(145deg,#5b21b6,#0891b2 55%,#0f172a)'};
 export const games=[previewGame,...enriched];
 export const genres=['All',...new Set(games.map(game=>game.genre))];
 export const plans=[

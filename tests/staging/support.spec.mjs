@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {runId,watchPage} from './helpers.mjs';
+import {runId,signInFromAccount,watchPage} from './helpers.mjs';
 
 test('@player support form rejects invalid content without losing the entered reference',async({page})=>{
   await page.goto('/#/support');
@@ -14,8 +14,9 @@ test('@player support form rejects invalid content without losing the entered re
   await expect(page.locator('#support-reference')).toHaveValue(reference);
 });
 
-test('@player support form submits a correlated QA request and clears the form',async({page})=>{
+test('@player support form submits a correlated QA request and clears the form',async({page},testInfo)=>{
   const assertClean=watchPage(page);
+  await signInFromAccount(page,testInfo,{label:'support-browser'});
   await page.goto('/#/support');
   const reference=`AUTO-QA-${runId}-browser`;
   await page.locator('#support-topic').selectOption({index:0});
