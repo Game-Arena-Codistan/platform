@@ -7,10 +7,14 @@ const apiKey=process.env.BREVO_API_KEY||'';
 if(!identity||!Number.isFinite(notBefore)||!apiKey){process.stderr.write('BREVO_OTP_NOT_CONFIGURED');process.exit(2);}
 const headers={accept:'application/json','api-key':apiKey};
 const deadline=Date.now()+90000;
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 while(Date.now()<deadline){
   try{
     const listResponse=await fetch('https://api.brevo.com/v3/smtp/emails?email='+encodeURIComponent(identity)+'&sort=desc&limit=10',{headers,signal:AbortSignal.timeout(10000)});
-    if(!listResponse.ok){process.stderr.write('BREVO_OTP_LIST_REJECTED');process.exit(2);}
+    if(!listResponse.ok){
+      if(listResponse.status===429||listResponse.status>=500){await pause(3000);continue;}
+      process.stderr.write('BREVO_OTP_LIST_REJECTED');process.exit(2);
+    }
     const list=await listResponse.json();
     for(const item of list.transactionalEmails||[]){
       const sentAt=Date.parse(item.date||'');
@@ -18,7 +22,10 @@ while(Date.now()<deadline){
       if(!/Game Arena verification code/i.test(String(item.subject||'')))continue;
       if(!item.uuid)continue;
       const contentResponse=await fetch('https://api.brevo.com/v3/smtp/emails/'+encodeURIComponent(item.uuid),{headers,signal:AbortSignal.timeout(10000)});
-      if(!contentResponse.ok)continue;
+      if(!contentResponse.ok){
+        if(contentResponse.status===429||contentResponse.status>=500){await pause(2000);break;}
+        continue;
+      }
       const content=await contentResponse.json();
       const delivered=(content.events||[]).some(event=>String(event.name||'').toLowerCase()==='delivered');
       if(!delivered)continue;
@@ -27,7 +34,7 @@ while(Date.now()<deadline){
       if(match){process.stdout.write(match[1]);process.exit(0);}
     }
   }catch{}
-  await new Promise(resolve=>setTimeout(resolve,2000));
+  await pause(2000);
 }
 process.stderr.write('BREVO_OTP_NOT_DELIVERED');
 process.exit(3);
