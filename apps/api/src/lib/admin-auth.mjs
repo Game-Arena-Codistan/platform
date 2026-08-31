@@ -30,7 +30,7 @@ function signedPrincipal(req,config){
   const roles=normalizeRoles(req.headers['x-admin-roles']);
   const issuedAt=Number(req.headers['x-admin-issued-at']);
   const signature=String(req.headers['x-admin-signature']||'');
-  if(!/^[a-z0-9][a-z0-9_.:@-]{2,127}$/i.test(identity)||!roles.length||!Number.isFinite(issuedAt)||!signature)throw fail('Administrative authentication required.');
+  if(!/^[a-z0-9][a-z0-9_.:@+-]{2,127}$/i.test(identity)||!roles.length||!Number.isFinite(issuedAt)||!signature)throw fail('Administrative authentication required.');
   if(Math.abs(Date.now()-issuedAt)>config.adminProxyMaxSkewSeconds*1000)throw fail('Administrator proxy assertion expired.');
   const canonical=`${identity}\n${roles.slice().sort().join(',')}\n${issuedAt}`;
   if(!safeEqual(hmac(config.adminProxySecret,canonical),signature.toLowerCase()))throw fail('Administrative authentication required.');
