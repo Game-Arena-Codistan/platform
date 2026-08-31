@@ -105,7 +105,9 @@ jobs:
           # The gateway configuration is bind-mounted. Updating the file does not
           # make an already-running nginx process reload it, so validate the exact
           # synced config and recreate only the gateway on every staging release.
-          "${compose[@]}" exec -T gateway nginx -t
+          # Redirect stdin so docker compose exec cannot consume the remaining SSH
+          # here-doc before readiness checks and deployment markers are written.
+          "${compose[@]}" exec -T gateway nginx -t </dev/null
           "${compose[@]}" up -d --no-deps --force-recreate gateway
 
           for _ in $(seq 1 60); do
