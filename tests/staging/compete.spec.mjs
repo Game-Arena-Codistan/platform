@@ -24,7 +24,7 @@ test('@player authenticated user can create and rejoin a supported multiplayer r
   await page.getByRole('button',{name:'Create room'}).click();
   const dialog=page.getByRole('dialog',{name:/Create multiplayer room/i});
   await expect(dialog).toBeVisible();
-  const name=`QA ${runId.slice(-12)}`;
+  const name=`QA browser ${runId.slice(-10)}`;
   await dialog.locator('#room-name').fill(name);
   const gameOptions=await dialog.locator('#room-game option').count();
   test.skip(gameOptions===0,'No multiplayer-capable game is exposed to the deployed player.');
@@ -35,9 +35,10 @@ test('@player authenticated user can create and rejoin a supported multiplayer r
   expect(response.status()).toBe(201);
   const payload=await response.json();
   expect(payload.room?.id).toBeTruthy();
-  await expect(page.locator('.room-card').filter({hasText:name})).toBeVisible();
-
   const roomCard=page.locator('.room-card').filter({hasText:name});
+  await expect(roomCard).toHaveCount(1);
+  await expect(roomCard).toBeVisible();
+
   const joinResponse=page.waitForResponse(item=>item.url().includes(`/v1/multiplayer/rooms/${payload.room.id}/join`)&&item.request().method()==='POST');
   await roomCard.getByRole('button',{name:'Join'}).click();
   expect((await joinResponse).status()).toBe(200);
