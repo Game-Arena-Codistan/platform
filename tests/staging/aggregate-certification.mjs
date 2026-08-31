@@ -1,4 +1,5 @@
-import {readFile,writeFile} from 'node:fs/promises';
+import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {dirname} from 'node:path';
 
 async function json(path){try{return JSON.parse(await readFile(path,'utf8'));}catch{return null;}}
 function code(name){const raw=process.env[name];if(raw===undefined||raw==='')return null;const value=Number(raw);return Number.isFinite(value)?value:null;}
@@ -71,7 +72,11 @@ const report={
   visual,
   uatRule:'Human UAT is permitted only when decision is READY FOR UAT. Production still requires separate explicit approval.'
 };
-await writeFile(process.env.CERTIFICATION_JSON||'certification.json',JSON.stringify(report,null,2));
+const jsonOutput=process.env.CERTIFICATION_JSON||'certification.json';
+const mdOutput=process.env.CERTIFICATION_MD||'certification.md';
+await mkdir(dirname(jsonOutput),{recursive:true});
+await mkdir(dirname(mdOutput),{recursive:true});
+await writeFile(jsonOutput,JSON.stringify(report,null,2));
 const lines=[
   '# Game Arena staging certification',
   '',
@@ -104,6 +109,6 @@ const lines=[
   ...(blockers.length?['## Outstanding blockers','',...blockers.map(item=>`- ${item}`),'']:[]),
   'Human UAT and production approval remain separate manual gates.'
 ];
-await writeFile(process.env.CERTIFICATION_MD||'certification.md',lines.join('\n')+'\n');
+await writeFile(mdOutput,lines.join('\n')+'\n');
 console.log(JSON.stringify({decision,expectedSha,browser:browserSummary,blockers,visualReview:visual?.reviewRequired??null}));
 if(decision!=='READY FOR UAT')process.exitCode=decision==='FAILED'?1:2;

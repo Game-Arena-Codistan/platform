@@ -62,8 +62,22 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with: {node-version: 22}
 
+      - name: Prepare pinned SSH host identity
+        id: connectivity
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'test -d /opt/codistan/platform && docker version >/dev/null && docker compose version >/dev/null && test -f /opt/codistan/platform/infra/.env'
+
       - name: Resolve source, release run and staging origins
         id: guard
+        if: steps.connectivity.outcome == 'success'
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,8 +87,6 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'Certification image_tag must be a full SHA.' >&2; exit 1; }
-          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
-          git fetch origin main --prune
           git merge-base --is-ancestor "$IMAGE_TAG" origin/main || { echo 'Certification SHA is not reachable from main.' >&2; exit 1; }
 
           release_run="$RELEASE_RUN_INPUT"
@@ -85,9 +97,29 @@ jobs:
           [[ "$release_run" =~ ^[0-9]+$ ]] || { echo 'No successful immutable image publication run could be proven for the SHA.' >&2; exit 1; }
 
           player="${PLAYER_URL_INPUT%/}"
-          test -n "$player" || { echo 'STAGING_PLAYER_URL is not configured in the protected staging Environment.' >&2; exit 1; }
-          api="${API_URL_INPUT%/}"; [ -n "$api" ] || api="$player/api"
           game="${GAME_URL_INPUT%/}"
+          if [ -z "$player" ] || [ -z "$game" ]; then
+            runtime_origins="$(ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          read_env_value() {
+            key="$1"
+            value="$(grep -m1 "^${key}=" infra/.env | cut -d= -f2- || true)"
+            value="${value#\"}"; value="${value%\"}"
+            value="${value#\'}"; value="${value%\'}"
+            printf '%s\n' "$value"
+          }
+          read_env_value PUBLIC_ORIGIN
+          read_env_value GAME_ARENA_GAME_ORIGIN
+          REMOTE
+            )"
+            runtime_player="$(sed -n '1p' <<<"$runtime_origins")"
+            runtime_game="$(sed -n '2p' <<<"$runtime_origins")"
+            [ -n "$player" ] || player="${runtime_player%/}"
+            [ -n "$game" ] || game="${runtime_game%/}"
+          fi
+          test -n "$player" || { echo 'Staging player origin could not be resolved from the protected Environment or EC2 runtime config.' >&2; exit 1; }
+          api="${API_URL_INPUT%/}"; [ -n "$api" ] || api="$player/api"
           {
             echo "RELEASE_RUN_ID=$release_run"
             echo "DEPLOYMENT_RUN_ID=${DEPLOYMENT_RUN_INPUT:-unknown}"
@@ -96,22 +128,9 @@ jobs:
             echo "STAGING_GAME_URL=$game"
           } >> "$GITHUB_ENV"
 
-      - name: Prepare pinned SSH host identity
-        id: connectivity
-        if: steps.guard.outcome == 'success'
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
-          chmod 600 "$HOME/.ssh/game-arena-staging"
-          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/known_hosts"
-          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'test -d /opt/codistan/platform && docker version >/dev/null && docker compose version >/dev/null'
-
       - name: Gate zero - prove deployed Compose artifact identity
         id: identity
-        if: steps.connectivity.outcome == 'success'
+        if: steps.connectivity.outcome == 'success' && steps.guard.outcome == 'success'
         continue-on-error: true
         env:
           EXPECTED_RELEASE_SHA: ${{ inputs.image_tag }}
