@@ -5,6 +5,7 @@ const pilotIds=new Set(pilotCatalogue.map(game=>game.id));
 const ids=new Set();
 const errors=[];
 let activeCount=0;
+let internalCount=0;
 let pilotCount=0;
 
 for(const game of catalogue){
@@ -25,6 +26,15 @@ for(const game of catalogue){
     continue;
   }
 
+  if(game.internalDemo){
+    internalCount+=1;
+    if(game.id!=='arena-dash')errors.push(`${game.title}: unexpected internal demo`);
+    if(game.status!=='live')errors.push(`${game.title}: internal demo must be live`);
+    if(game.sourceType!=='internal-demo')errors.push(`${game.title}: internal demo source type missing`);
+    if(!String(game.gameUrl||'').startsWith('/demo-games/'))errors.push(`${game.title}: internal demo must use the controlled local runtime path`);
+    continue;
+  }
+
   activeCount+=1;
   if(game.status!=='live'||(game.qaStatus&&game.qaStatus!=='working'))errors.push(`${game.title}: not release-approved`);
   try{
@@ -39,9 +49,10 @@ for(const id of ids){
 }
 for(const id of pilotIds)if(!ids.has(id))errors.push(`${id}: controlled pilot missing from runtime catalogue`);
 
-if(catalogue.length!==46)errors.push(`expected 46 runtime catalogue records, found ${catalogue.length}`);
+if(catalogue.length!==47)errors.push(`expected 47 runtime catalogue records, found ${catalogue.length}`);
 if(activeCount!==42)errors.push(`expected 42 active external games, found ${activeCount}`);
+if(internalCount!==1)errors.push(`expected one internal demo, found ${internalCount}`);
 if(pilotCount!==4)errors.push(`expected four controlled pilots, found ${pilotCount}`);
 if(quarantinedCatalogue.length!==17)errors.push(`expected 17 quarantined source rows, found ${quarantinedCatalogue.length}`);
 if(errors.length)throw new Error(errors.join('\n'));
-console.log(`Catalogue checks passed: ${activeCount} active external, ${pilotCount} controlled pilots, ${quarantinedCatalogue.length} quarantined source rows.`);
+console.log(`Catalogue checks passed: ${activeCount} active external, ${internalCount} internal demo, ${pilotCount} controlled pilots, ${quarantinedCatalogue.length} quarantined source rows.`);
