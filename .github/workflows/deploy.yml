@@ -88,6 +88,22 @@ jobs:
             "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' RELEASE_RUN_ID='$RELEASE_RUN_ID' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /opt/codistan/platform
+
+          ensure_runtime_secret() {
+            key="$1"
+            value="$(grep -m1 "^${key}=" infra/.env | cut -d= -f2- || true)"
+            value="${value#\"}"; value="${value%\"}"
+            value="${value#\'}"; value="${value%\'}"
+            [ -n "$value" ] && return 0
+            generated="$(openssl rand -hex 32)"
+            if grep -q "^${key}=" infra/.env; then
+              sed -i "0,/^${key}=.*/s//${key}=${generated}/" infra/.env
+            else
+              printf '\n%s=%s\n' "$key" "$generated" >> infra/.env
+            fi
+          }
+          ensure_runtime_secret ADMIN_PROXY_SECRET
+
           compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
           export IMAGE_BASE IMAGE_TAG
 
