@@ -5,7 +5,10 @@ import {controlledPilotIds,games,plans,premiumFeatures,previewGame,mockTopups} f
 
 const contract=JSON.parse(await readFile(new URL('../../../contracts/api/v1/mock-responses.json',import.meta.url),'utf8'));
 const apiSource=await readFile(new URL('../src/api.js',import.meta.url),'utf8');
+const appSource=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
+const uiSource=await readFile(new URL('../src/ui.js',import.meta.url),'utf8');
 const librarySource=await readFile(new URL('../src/views/library.js',import.meta.url),'utf8');
+const competeSource=await readFile(new URL('../src/views/compete.js',import.meta.url),'utf8');
 
 test('commercial baseline matches approved plan',()=>{
   assert.equal(plans.find(plan=>plan.id==='monthly').price,299);
@@ -36,6 +39,15 @@ test('MVP surfaces have launch-safe data contracts',()=>{
   assert.ok(mockTopups.length>=3);
   assert.match(librarySource,/game\.tier==='free'&&Boolean\(game\.downloadUrl\)/);
   assert.match(librarySource,/!game\?\.downloadUrl\|\|game\.tier!=='free'/);
+  assert.match(competeSource,/games\.filter\(item=>item\.multiplayer\)/);
+  assert.doesNotMatch(competeSource,/item\.multiplayer\|\|item\.internalDemo/);
+});
+
+test('auth and PWA wiring preserve the staging browser contract',()=>{
+  assert.match(uiSource,/form\.onsubmit=async event=>/);
+  assert.doesNotMatch(uiSource,/form\.addEventListener\('submit'/);
+  assert.match(appSource,/document\.readyState==='complete'/);
+  assert.match(appSource,/registerServiceWorker\(\)/);
 });
 
 test('Vercel preview mocks match contract 1.0.0',()=>{
