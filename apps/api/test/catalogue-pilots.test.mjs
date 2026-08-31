@@ -27,3 +27,14 @@ test('paused pilots stay private while source quarantine evidence is preserved',
   assert.equal(quarantinedCatalogue.some(item=>item.id==='duck-hunter'),true);
   assert.equal(quarantinedCatalogue.some(item=>item.id==='swat-vs-zombies'),true);
 });
+
+test('Arena Dash is present in the authoritative server catalogue for live play sessions',()=>{
+  const store=new MemoryStore();
+  const arenaDash=store.getGame('arena-dash');
+  assert.ok(arenaDash);
+  assert.equal(arenaDash.status,'live');
+  assert.equal(arenaDash.tier,'free');
+  assert.equal(arenaDash.version,'demo');
+  assert.equal(arenaDash.internalDemo,true);
+  assert.equal(arenaDash.multiplayer,false);
+});
