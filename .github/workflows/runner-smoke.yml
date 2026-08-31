@@ -2,6 +2,9 @@ name: Runner Smoke
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - release/self-hosted-runner-probe
 
 permissions:
   contents: read
