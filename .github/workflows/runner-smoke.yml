@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   runner-smoke:
-    if: vars.SELF_HOSTED_CI_ENABLED == 'true'
     runs-on: [self-hosted, windows, x64, game-arena-ci]
     timeout-minutes: 30
     defaults:
