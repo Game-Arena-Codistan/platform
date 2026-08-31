@@ -8,7 +8,7 @@ test.beforeAll(async()=>{await mkdir(captureDir,{recursive:true});});
 test('@visual player critical surfaces',async({page})=>{
   for(const [name,hash,heading] of [
     ['home','#/home',/Play instantly/i],
-    ['library','#/library',/Games/i],
+    ['library','#/library',/Discover your next game/i],
     ['premium','#/premium',/More games/i],
     ['support','#/support',/How can we help/i]
   ]){
