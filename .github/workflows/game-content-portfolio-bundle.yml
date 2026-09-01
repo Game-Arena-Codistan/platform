@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   import:
-    runs-on: [self-hosted, windows, x64, game-arena-ci]
+    runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 120
     env:
@@ -46,9 +46,13 @@ jobs:
         shell: pwsh
         run: |
           $root = Join-Path $env:RUNNER_TEMP "game-arena-bundle-$env:GITHUB_RUN_ID"
-          New-Item -ItemType Directory -Force -Path $root, "$root\registry", "$root\ingress", "$root\artifacts", "$root\audit", "apps\game-ops\reports", "catalogue\releases" | Out-Null
+          $registry = Join-Path $root 'registry'
+          $ingress = Join-Path $root 'ingress'
+          $artifacts = Join-Path $root 'artifacts'
+          $audit = Join-Path $root 'audit'
+          New-Item -ItemType Directory -Force -Path $root, $registry, $ingress, $artifacts, $audit, 'apps/game-ops/reports', 'catalogue/releases' | Out-Null
           "BUNDLE_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "BUNDLE_REGISTRY=$root\registry\bundle-registry.json" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BUNDLE_REGISTRY=$(Join-Path $registry 'bundle-registry.json')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Download and validate private bundle registry
         shell: pwsh
@@ -110,23 +114,27 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $ingress = Join-Path $env:BUNDLE_ROOT 'ingress'
           $output = & node apps/game-ops/src/download-pilot-release.mjs `
             --tag "${{ inputs.release_tag }}" `
             --registry "$env:BUNDLE_REGISTRY" `
-            --output "$env:BUNDLE_ROOT\ingress" 2>&1
+            --output "$ingress" 2>&1
           if ($LASTEXITCODE -ne 0) { $output | Write-Host; throw 'Bundle asset download or digest verification failed.' }
-          $output | Tee-Object -FilePath "apps\game-ops\reports\bundle-download.json"
+          $output | Tee-Object -FilePath 'apps/game-ops/reports/bundle-download.json'
 
       - name: Preflight, scan and package all 60 builds
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $ingress = Join-Path $env:BUNDLE_ROOT 'ingress'
+          $artifacts = Join-Path $env:BUNDLE_ROOT 'artifacts'
+          $audit = Join-Path $env:BUNDLE_ROOT 'audit'
           $output = & node apps/game-ops/src/import-pilot-release.mjs `
             --registry "$env:BUNDLE_REGISTRY" `
-            --ingress "$env:BUNDLE_ROOT\ingress" `
-            --output "$env:BUNDLE_ROOT\artifacts" `
-            --audit "$env:BUNDLE_ROOT\audit" `
-            --report "apps\game-ops\reports\portfolio-bundle-import.json" 2>&1
+            --ingress "$ingress" `
+            --output "$artifacts" `
+            --audit "$audit" `
+            --report 'apps/game-ops/reports/portfolio-bundle-import.json' 2>&1
           if ($LASTEXITCODE -ne 0) { $output | Write-Host; throw 'Bundle preflight, scan or packaging failed.' }
           $output | Write-Host
 
@@ -143,12 +151,13 @@ jobs:
       - name: Create review-only release metadata
         shell: pwsh
         run: |
-          $manifests = @(Get-ChildItem -Path "$env:BUNDLE_ROOT\artifacts\games" -Filter game-manifest.json -Recurse | Sort-Object FullName)
+          $gamesRoot = Join-Path $env:BUNDLE_ROOT 'artifacts/games'
+          $manifests = @(Get-ChildItem -Path $gamesRoot -Filter game-manifest.json -Recurse | Sort-Object FullName)
           if ($manifests.Count -ne 60) { throw "Expected 60 packaged manifests; found $($manifests.Count)." }
           foreach ($item in $manifests) {
             $manifest = Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json
             if ($manifest.rolloutPercentage -ne 0) { throw "Bundle rollout must remain zero: $($manifest.slug)" }
-            $target = "catalogue\releases\$($manifest.slug)"
+            $target = Join-Path 'catalogue/releases' $manifest.slug
             New-Item -ItemType Directory -Force -Path $target | Out-Null
             $review = [ordered]@{
               schemaVersion=$manifest.schemaVersion; slug=$manifest.slug; title=$manifest.title; version=$manifest.version
@@ -158,7 +167,8 @@ jobs:
               publishedBy=$manifest.publishedBy; scan=$manifest.scan; productionActivation=$false
               ingressRelease="${{ inputs.release_tag }}"
             }
-            $review | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath "$target\$($manifest.version).json" -Encoding utf8
+            $reviewPath = Join-Path $target "$($manifest.version).json"
+            $review | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $reviewPath -Encoding utf8
           }
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -202,7 +212,8 @@ jobs:
           $bucket = aws ssm get-parameter --name "$prefix/game-artifact-bucket" --query Parameter.Value --output text
           if ($LASTEXITCODE -ne 0 -or -not $bucket) { throw 'Unable to resolve staging game artifact bucket.' }
 
-          $manifests = @(Get-ChildItem -Path "$env:BUNDLE_ROOT\artifacts\games" -Filter game-manifest.json -Recurse | Sort-Object FullName)
+          $gamesRoot = Join-Path $env:BUNDLE_ROOT 'artifacts/games'
+          $manifests = @(Get-ChildItem -Path $gamesRoot -Filter game-manifest.json -Recurse | Sort-Object FullName)
           foreach ($item in $manifests) {
             $manifest = Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json
             $key = "games/$($manifest.slug)/$($manifest.version)/game-manifest.json"
@@ -219,7 +230,7 @@ jobs:
               $headText = $head | Out-String
               if ($headText -notmatch '(?i)(Not Found|404|NoSuchKey)') { throw "S3 existence check failed for $($manifest.slug): $headText" }
               $source = Split-Path -LiteralPath $item.FullName -Parent
-              & aws s3 sync "$source\" "s3://$bucket/games/$($manifest.slug)/$($manifest.version)/" --only-show-errors --cache-control "public,max-age=31536000,immutable" --sse aws:kms
+              & aws s3 sync $source "s3://$bucket/games/$($manifest.slug)/$($manifest.version)/" --only-show-errors --cache-control 'public,max-age=31536000,immutable' --sse aws:kms
               if ($LASTEXITCODE -ne 0) { throw "S3 publication failed: $($manifest.slug)" }
             }
           }
@@ -255,4 +266,4 @@ jobs:
       - name: Clean bundle workspace
         if: always()
         shell: pwsh
-        run: Remove-Item -LiteralPath "$env:BUNDLE_ROOT" -Recurse -Force -ErrorAction SilentlyContinue
+        run: Remove-Item -LiteralPath $env:BUNDLE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
