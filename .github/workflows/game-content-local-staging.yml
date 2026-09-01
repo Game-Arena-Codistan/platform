@@ -315,8 +315,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CERT_FILE="$BUNDLE_ROOT/local/certification.json" STAGING_ORIGIN="$STAGING_ORIGIN" node <<'NODE'
-          const {readFile}=require('node:fs/promises');
+          CERT_FILE="$BUNDLE_ROOT/local/certification.json" STAGING_ORIGIN="$STAGING_ORIGIN" node --input-type=module <<'NODE'
+          import {readFile} from 'node:fs/promises';
           const cert=JSON.parse(await readFile(process.env.CERT_FILE,'utf8'));
           if(cert.games.length!==60) throw new Error(`Expected 60 certification records; found ${cert.games.length}`);
           const origin=process.env.STAGING_ORIGIN.replace(/\/$/,'');
