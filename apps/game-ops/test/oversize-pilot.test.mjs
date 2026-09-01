@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {loadContentLimits} from '../src/limits.mjs';
 import {preflightZip} from '../src/zip-preflight.mjs';
 import {scanBuild} from '../src/scanner.mjs';
+import {resolveReleaseByTag} from '../src/download-pilot-release.mjs';
 
 function centralZip(entries){
   const central=[];
@@ -43,3 +44,12 @@ test('scanner observes configured expanded-size ceiling',()=>withTemp(async root
   await mkdir(join(root,'game'));await writeFile(join(root,'game','index.html'),'x'.repeat(101));
   const result=await scanBuild(join(root,'game'),{maxExpandedBytes:100,maxEntries:10});assert.equal(result.ok,false);assert.equal(result.errors[0].code,'expanded_size_limit');
 }));
+
+test('draft release resolution uses authenticated release listing instead of tag endpoint',async()=>{
+  const urls=[];
+  const release=await resolveReleaseByTag({repository:'owner/repo',tag:'portfolio-ingress-60-20260901',token:'test-token',request:async url=>{
+    urls.push(url);
+    return [{id:123,tag_name:'portfolio-ingress-60-20260901',draft:true,assets:[]}];
+  }});
+  assert.equal(release.id,123);assert.equal(release.draft,true);assert.equal(urls.length,1);assert.match(urls[0],/\/releases\?per_page=100&page=1$/);assert.doesNotMatch(urls[0],/\/releases\/tags\//);
+});
