@@ -190,12 +190,24 @@ jobs:
           if-no-files-found: error
 
       - name: Validate protected AWS account
+        id: aws_guard
         if: inputs.publish_to_staging
         shell: pwsh
         env:
-          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          AWS_GAME_PUBLISH_ROLE_ARN: ${{ secrets.AWS_GAME_PUBLISH_ROLE_ARN }}
+          AWS_REGION_INPUT: ${{ vars.AWS_REGION }}
         run: |
-          if ($env:EXPECTED_AWS_ACCOUNT_ID -notmatch '^\d{12}$') { throw 'AWS_ACCOUNT_ID must be a twelve-digit protected staging variable.' }
+          $ErrorActionPreference = 'Stop'
+          $roleArn = [string]$env:AWS_GAME_PUBLISH_ROLE_ARN
+          if ($roleArn -notmatch '^arn:[^:]+:iam::(\d{12}):role\/.+$') {
+            throw 'AWS_GAME_PUBLISH_ROLE_ARN must be a valid protected IAM role ARN with a twelve-digit account id.'
+          }
+          $accountId = $Matches[1]
+          if ([string]::IsNullOrWhiteSpace($env:AWS_REGION_INPUT)) {
+            throw 'AWS_REGION must be configured for the protected staging environment.'
+          }
+          "account_id=$accountId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host 'Validated protected staging publish role and derived expected AWS account id.'
 
       - name: Authenticate to AWS through staging OIDC role
         if: inputs.publish_to_staging
@@ -203,7 +215,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_GAME_PUBLISH_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          allowed-account-ids: ${{ steps.aws_guard.outputs.account_id }}
           role-session-name: game-arena-portfolio-bundle-${{ github.run_id }}
 
       - name: Publish immutable bundle versions to staging
@@ -211,7 +223,7 @@ jobs:
         shell: pwsh
         env:
           CONFIG_PREFIX_INPUT: ${{ vars.AWS_CONFIG_PREFIX }}
-          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          EXPECTED_AWS_ACCOUNT_ID: ${{ steps.aws_guard.outputs.account_id }}
         run: |
           $account = aws sts get-caller-identity --query Account --output text
           if ($LASTEXITCODE -ne 0 -or $account -ne $env:EXPECTED_AWS_ACCOUNT_ID) { throw "Unexpected AWS account: $account" }
