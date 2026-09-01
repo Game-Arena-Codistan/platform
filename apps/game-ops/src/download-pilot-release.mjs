@@ -8,6 +8,17 @@ import {pathToFileURL} from 'node:url';
 
 function args(argv){const out={};for(let i=0;i<argv.length;i++){const item=argv[i];if(!item.startsWith('--'))continue;const next=argv[i+1];if(!next||next.startsWith('--'))out[item.slice(2)]=true;else{out[item.slice(2)]=next;i++;}}return out;}
 async function githubJson(url,token){const response=await fetch(url,{headers:{accept:'application/vnd.github+json',authorization:`Bearer ${token}`,'x-github-api-version':'2022-11-28','user-agent':'GameArenaPilotImporter/1.0'}});if(!response.ok)throw new Error(`GitHub API ${response.status}: ${await response.text()}`);return response.json();}
+
+export async function resolveReleaseByTag({repository,tag,token,request=githubJson}){
+  if(!repository||!repository.includes('/'))throw new Error('GitHub repository is required.');if(!tag)throw new Error('Release tag is required.');if(!token)throw new Error('GitHub token is required.');
+  for(let page=1;page<=10;page++){
+    const releases=await request(`https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`,token);
+    if(!Array.isArray(releases))throw new Error('GitHub releases response must be an array.');
+    const release=releases.find(item=>item?.tag_name===tag);if(release)return release;if(releases.length<100)break;
+  }
+  throw new Error(`Release not found in authenticated release list: ${tag}`);
+}
+
 async function downloadAsset(asset,destination,token,expected){
   const response=await fetch(asset.url,{redirect:'follow',headers:{accept:'application/octet-stream',authorization:`Bearer ${token}`,'x-github-api-version':'2022-11-28','user-agent':'GameArenaPilotImporter/1.0'}});
   if(!response.ok||!response.body)throw new Error(`Unable to download ${asset.name}: HTTP ${response.status}`);
@@ -20,7 +31,7 @@ async function downloadAsset(asset,destination,token,expected){
 export async function downloadPilotRelease({tag,registryPath,outputRoot,repository=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN}){
   if(!tag)throw new Error('Release tag is required.');if(!repository||!repository.includes('/'))throw new Error('GITHUB_REPOSITORY is required.');if(!token)throw new Error('GITHUB_TOKEN is required.');
   const registry=JSON.parse(await readFile(resolve(registryPath),'utf8'));await mkdir(resolve(outputRoot),{recursive:true});
-  const release=await githubJson(`https://api.github.com/repos/${repository}/releases/tags/${encodeURIComponent(tag)}`,token);
+  const release=await resolveReleaseByTag({repository,tag,token});
   if(!release.draft)throw new Error('Pilot ingress release must remain a draft.');
   const downloaded=[];
   for(const game of registry.games){const asset=release.assets.find(item=>item.name===game.assetName);if(!asset)throw new Error(`Release asset is missing: ${game.assetName}`);downloaded.push(await downloadAsset(asset,join(resolve(outputRoot),basename(game.assetName)),token,game));}
