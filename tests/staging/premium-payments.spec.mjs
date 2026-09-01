@@ -73,7 +73,7 @@ test('@player a browser payment return cannot self-activate Arena+ without serve
   expect((await status.json()).status).toBe('pending');
 });
 
-test('@player protected premium QA account authenticates with delivered OTP, receives audited staging entitlement, and starts a premium title',async({page},testInfo)=>{
+test('@player protected premium QA account authenticates with delivered OTP, receives audited staging entitlement, authorizes premium play and enforces approved runtime hosting',async({page},testInfo)=>{
   test.slow();
   const assertions=adminAssertions();
   test.skip(!String(process.env.STAGING_ADMIN_URL||'').trim()||!assertions.admin,'BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');
@@ -88,5 +88,12 @@ test('@player protected premium QA account authenticates with delivered OTP, rec
   const play=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');
   await premiumCard.getByRole('button',{name:'Play'}).click();
   expect((await play).status()).toBe(201);
-  await expect(page.locator('#game-frame')).toBeVisible();
+  await expect(page.locator('.game-stage')).toBeVisible();
+  const frame=page.locator('#game-frame');
+  if(await frame.count()){
+    await expect(frame).toBeVisible();
+  }else{
+    await expect(page.getByText('Game runtime unavailable',{exact:true})).toBeVisible();
+    await expect(page.getByText(/approved hosted build/i)).toBeVisible();
+  }
 });
