@@ -6,9 +6,9 @@
     "status":"approved",
     "autoApprove":false
   },
-  "approvedFromStagingSha":"f1fe62634b76ab0633bbb58e7f2f548be7e43e82",
+  "approvedFromStagingSha":"8887ae0223dd9c4e43b76dc3d642ab3c3ba145fb",
   "screenshots":{
-    "admin-shell.png":"ddde45c7e92dfa2590c8c9831cd3e2a912090f3a751f743cb5d836e66e2d627a",
+    "admin-shell.png":"1ed55f117a467e1039fe7611db5ba4cb715ba7382dfb8f43cdf0a3565a41345d",
     "player-home.png":"e5a111a3842aeff7cb5c1bb9ca48510b6099f2620a85dcce36f3d72eb1182b90",
     "player-library.png":"a08528ad7d8db4d7e0bd5464626b87533409df13ac39a9005eeb982d6616d3fd",
     "player-premium.png":"b5221500070891587a83a3253d038a564460dd91007ade57ea5b623ffc5c5e5f",
