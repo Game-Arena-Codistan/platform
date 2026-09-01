@@ -85,6 +85,8 @@ services:
     pull_policy: always
     environment:
       GAME_ARENA_FRAME_ANCESTORS: "'self'"
+    volumes:
+      - /opt/codistan/platform/game-content/games:/usr/share/nginx/html/games:ro
     ports: ["127.0.0.1:8082:8080"]
     restart: unless-stopped
 
