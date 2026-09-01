@@ -2,6 +2,14 @@ export class MockOtpProvider{
   constructor(name='mock'){this.name=name;}
   async send({identity,code}){return{provider:this.name,messageId:`${this.name}-${Date.now()}`,channel:identity.type,accepted:true,debugCode:code};}
 }
+export class SyntheticQaOtpProvider{
+  constructor({enabled=false,name='synthetic-qa'}={}){this.name=name;this.enabled=enabled;}
+  supports({identity}={}){return this.enabled&&identity?.type==='email'&&/^game\.arena\+qa-auto-[a-z0-9-]+@codistan\.org$/i.test(String(identity.value||''));}
+  async send({identity,code}){
+    if(!this.supports({identity}))throw Object.assign(new Error('Synthetic QA provider is not applicable.'),{code:'provider_not_applicable'});
+    return{provider:this.name,messageId:`${this.name}-${Date.now()}`,channel:identity.type,accepted:true,debugCode:code};
+  }
+}
 export class DisabledOtpProvider{
   constructor(name='disabled'){this.name=name;}
   async send(){throw Object.assign(new Error('OTP delivery provider is not configured.'),{code:'delivery_unavailable'});}
@@ -43,6 +51,7 @@ export class OtpDeliveryRouter{
   async send(request){
     const started=Date.now();const errors=[];
     for(const provider of this.providers){
+      if(typeof provider.supports==='function'&&!provider.supports(request))continue;
       const state=this.health.get(provider.name);if(state?.openUntil>Date.now())continue;
       try{const result=await provider.send(request);this.health.set(provider.name,{failures:0,openUntil:0});const event={at:new Date().toISOString(),provider:provider.name,channel:request.identity.type,status:'accepted',messageId:result.messageId};this.events.push(event);this.metrics?.increment('otp_delivery_total',{provider:provider.name,status:'accepted'});this.metrics?.observe('otp_delivery_duration_ms',Date.now()-started,{provider:provider.name});this.audit?.write({actor:'system',action:'otp.delivery.accepted',targetType:'identity',targetId:request.identity.type,metadata:event});return result;}catch(error){errors.push({provider:provider.name,code:error.code||'delivery_failed'});const previous=this.health.get(provider.name)||{failures:0};const failures=previous.failures+1;this.health.set(provider.name,{failures,openUntil:failures>=3?Date.now()+60000:0});this.metrics?.increment('otp_delivery_total',{provider:provider.name,status:'failed'});}
     }

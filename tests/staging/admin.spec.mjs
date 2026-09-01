@@ -30,7 +30,7 @@ test('@admin full admin credential resolves capabilities and renders operations 
   expect(payload.capabilities).toContain('reports.export');
   expect(payload.capabilities).toContain('subscription.manage_plans');
   await mkdir(captureDir,{recursive:true});
-  await page.screenshot({path:`${captureDir}/admin-shell.png`,fullPage:true,animations:'disabled',mask:[page.locator('#view')]});
+  await page.screenshot({path:`${captureDir}/admin-shell.png`,fullPage:false,animations:'disabled',mask:[page.locator('#view')]});
   await context.close();
 });
 

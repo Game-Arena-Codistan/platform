@@ -8,7 +8,7 @@ import {MemoryStore} from './adapters/memory-store.mjs';
 import {assertNormalizedPostgresRuntime} from './lib/persistence-readiness.mjs';
 import {JazzCashAdapter} from './adapters/jazzcash.mjs';
 import {SupportDelivery} from './adapters/support-delivery.mjs';
-import {BrevoOtpProvider,DisabledOtpProvider,HttpOtpProvider,MockOtpProvider,OtpDeliveryRouter} from './adapters/otp-delivery.mjs';
+import {BrevoOtpProvider,DisabledOtpProvider,HttpOtpProvider,MockOtpProvider,OtpDeliveryRouter,SyntheticQaOtpProvider} from './adapters/otp-delivery.mjs';
 import {PaymentService} from './services/payments.mjs';
 import {RewardPolicy} from './services/reward-policy.mjs';
 import {processAccountRetention} from './services/account-retention.mjs';
@@ -30,12 +30,14 @@ if(!config.allowExternalGames){
   }
 }
 
+const syntheticQaProviders=config.allowDebugOtp?[new SyntheticQaOtpProvider({enabled:true})]:[];
 const providers=config.otpProviderMode==='mock'
   ?[new MockOtpProvider()]
   :config.otpProviderMode==='brevo'
-    ?[new BrevoOtpProvider({apiKey:config.brevoApiKey,senderEmail:config.brevoSenderEmail,senderName:config.brevoSenderName,smsSender:config.brevoSmsSender})]
+    ?[...syntheticQaProviders,new BrevoOtpProvider({apiKey:config.brevoApiKey,senderEmail:config.brevoSenderEmail,senderName:config.brevoSenderName,smsSender:config.brevoSmsSender})]
     :config.otpProviderMode==='http'
       ?[
+        ...syntheticQaProviders,
         new HttpOtpProvider({name:config.otpPrimaryName,endpoint:config.otpPrimaryEndpoint,apiKey:config.otpPrimaryApiKey}),
         new HttpOtpProvider({name:config.otpSecondaryName,endpoint:config.otpSecondaryEndpoint,apiKey:config.otpSecondaryApiKey})
       ]

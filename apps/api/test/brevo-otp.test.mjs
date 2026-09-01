@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BrevoOtpProvider} from '../src/adapters/otp-delivery.mjs';
+import {BrevoOtpProvider,OtpDeliveryRouter,SyntheticQaOtpProvider} from '../src/adapters/otp-delivery.mjs';
 
 function response(body={messageId:'message-1'},status=201){
   return{ok:status>=200&&status<300,status,json:async()=>body};
@@ -60,4 +60,16 @@ test('Brevo email OTP fails closed without a sender email',async()=>{
 test('Brevo phone OTP fails closed without an SMS sender',async()=>{
   const provider=new BrevoOtpProvider({apiKey:'test-api-key',senderEmail:'qa@example.com',fetchImpl:async()=>response()});
   await assert.rejects(()=>provider.send({identity:{type:'phone',value:'+923001234567'},code:'123456'}),error=>error.code==='delivery_unavailable');
+});
+
+test('synthetic QA OTP routing avoids external delivery but real QA identities fall through',async()=>{
+  const externalCalls=[];
+  const external={name:'external',async send({identity}){externalCalls.push(identity.value);return{provider:'external',messageId:'real-1',channel:identity.type,accepted:true};}};
+  const router=new OtpDeliveryRouter({providers:[new SyntheticQaOtpProvider({enabled:true}),external]});
+  const synthetic=await router.send({identity:{type:'email',value:'game.arena+qa-auto-run-abc123@codistan.org'},code:'123456'});
+  assert.equal(synthetic.provider,'synthetic-qa');
+  assert.deepEqual(externalCalls,[]);
+  const protectedResult=await router.send({identity:{type:'email',value:'game.arena+qa-free@codistan.org'},code:'654321'});
+  assert.equal(protectedResult.provider,'external');
+  assert.deepEqual(externalCalls,['game.arena+qa-free@codistan.org']);
 });
