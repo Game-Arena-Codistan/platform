@@ -1,55 +1,40 @@
 # 60-game portfolio staging bundle
 
-This runbook covers the bounded 60-title portfolio currently being prepared under issues #74 and #79. It does not replace the general catalogue onboarding contract.
+This runbook covers the bounded 60-title portfolio under issues #74 and #79. The current staging target is the existing Codistan-hosted staging server. AWS and S3 are not part of this staging publication path.
 
-## Current local handoff
+## Validated ingress
 
-The operator-local migration state has 56 normal HTML5 titles prepared by migration script 1.0.5 after ZIP preflight and static scanning. `candy-super-lines` and `super-color-lines-match-5` required only legacy browser-support links in `index.html` to move from `http://` to `https://`; both then passed the same preflight/scanner controls.
+The private draft release `portfolio-ingress-60-20260901` contains `bundle-registry.json` plus the 60 normalized game ZIPs. The registry pins the exact ZIP size and SHA-256 for every title and keeps production activation disabled.
 
-The remaining four titles are the validated oversized set from `catalogue/pilots/oversize-four.json`:
+The import pipeline re-downloads the private assets, verifies every digest, applies bounded ZIP preflight and the static scanner, and packages all 60 builds before any server write is allowed. No game ZIPs or expanded binaries are committed to this repository.
 
-- `duck-hunter`
-- `ranger-vs-zombies`
-- `robotex`
-- `swat-vs-zombies`
+## Local staging publication
 
-No game ZIPs or expanded binaries belong in this repository.
+`.github/workflows/game-content-local-staging.yml` is the staging publication path for this bundle. It reuses the staging server's existing protected SSH deployment credentials rather than cloud-object-storage credentials.
 
-## Bundle ingress
+For every scanner-approved title it:
 
-`tools/game-content/Publish-PortfolioBundleRelease.ps1` packages each of the 56 prepared normal game directories into a portable ZIP while excluding the generated `game-manifest.json`, adds the four exact oversized assets, creates `bundle-registry.json`, and uploads the 61 files to a private draft GitHub Release.
+1. prepares an immutable package at `games/<slug>/<version>/`;
+2. transfers the validated package to the staging server over the pinned SSH host identity;
+3. installs it under `/opt/codistan/platform/game-content/games/<slug>/<version>/` without overwriting an existing different digest;
+4. bind-mounts `/opt/codistan/platform/game-content/games` read-only into the existing `game-origin` container at `/usr/share/nginx/html/games`;
+5. verifies the controlled-origin entrypoint locally through `game-origin`;
+6. writes the 60 catalogue records to the staging PostgreSQL runtime at `review` / rollout `0`;
+7. creates and merges the metadata-only review PR under `catalogue/releases/<slug>/<version>.json`;
+8. activates only those same digest-pinned records as `live` / rollout `100` on staging;
+9. restarts the API so the persisted catalogue is reloaded; and
+10. certifies all 60 public catalogue records and all 60 controlled-origin launch URLs through `https://gsmarena-play.codistan.org`.
 
-The registry pins the exact ZIP size and SHA-256 for every title and forces every manifest to rollout `0` with production activation disabled. The local script requires GitHub CLI authentication but does not require local AWS credentials.
+Rewards and competitions remain disabled for this imported portfolio. The workflow does not perform any production publication.
 
-Example:
+## Controlled local game origin
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+The staging gateway already routes `/games/` to the `game-origin` service. The game-origin Nginx configuration serves a local file first with `try_files`; therefore a mounted game is served directly at:
 
-.\tools\game-content\Publish-PortfolioBundleRelease.ps1 `
-  -RootPath 'D:\60 Games Bundle by Muscle-SS' `
-  -PreparedStatePath 'D:\60 Games Bundle by Muscle-SS\_game-arena-prepare-20260901-153049'
-```
+`/games/<slug>/<version>/<entrypoint>`
 
-The script dispatches `.github/workflows/game-content-portfolio-bundle.yml` after the draft release upload unless `-SkipWorkflowDispatch` is supplied.
-
-## Protected staging publication
-
-The bundle workflow:
-
-1. requires the ingress Release to remain draft/private;
-2. requires exactly 60 unique games and safe release asset names;
-3. verifies every ZIP against the registry size and SHA-256;
-4. applies the bounded ZIP preflight and static scanner to every build;
-5. creates immutable game manifests with rollout `0`;
-6. authenticates to staging AWS only through the protected GitHub OIDC role;
-7. resolves the staging artifact bucket from SSM;
-8. publishes with `aws:kms` server-side encryption;
-9. verifies an already-existing immutable version by `buildSha256` rather than overwriting it;
-10. opens a metadata-only review pull request and retains audit evidence.
-
-The workflow does not activate catalogue rollout, rewards, competitions or production.
+No S3 fallback is required for these 60 titles.
 
 ## Completion boundary
 
-Successful S3 publication is only the binary-publication step of #74. Titles remain paused until the metadata PR is reviewed and the controlled-origin/catalogue/API activation path is qualified. Rights/source approval remains governed by #73, and browser/controlled-origin certification remains governed by #75.
+For this staging bundle, completion means all of the following are true in one successful workflow run: 60/60 scanner/preflight pass, 60 immutable local versions are installed or verified as identical, metadata is recorded on `main`, 60/60 runtime catalogue records are live at 100% staging rollout, and 60/60 launch URLs return successfully from the controlled staging origin.
