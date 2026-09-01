@@ -106,7 +106,16 @@ jobs:
           if ($registry.schemaVersion -ne 1) { throw 'Bundle registry schemaVersion must be 1.' }
           if ($registry.productionActivation -ne $false) { throw 'Bundle registry must disable production activation.' }
           $games = @($registry.games)
-          if ($games.Count -ne 60) { throw "Bundle registry must contain exactly 60 games; found $($games.Count)." }
+          if ($games.Count -ne 60) {
+            & node tools/game-content/repair-local-staging-registry.mjs `
+              --registry "$env:BUNDLE_REGISTRY" `
+              --tag "$env:RELEASE_TAG" `
+              --report 'apps/game-ops/reports/registry-repair.json'
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to safely reconcile the draft registry with the 60 release ZIP assets.' }
+            $registry = Get-Content -LiteralPath $env:BUNDLE_REGISTRY -Raw | ConvertFrom-Json
+            $games = @($registry.games)
+          }
+          if ($games.Count -ne 60) { throw "Bundle registry must contain exactly 60 games after reconciliation; found $($games.Count)." }
           $slugs = @{}
           foreach ($game in $games) {
             $slug = [string]$game.slug
