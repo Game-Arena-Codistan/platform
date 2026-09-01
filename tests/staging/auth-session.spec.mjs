@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {qaIdentifier,signInFromAccount,watchPage} from './helpers.mjs';
+import {qaIdentifier,runId,signInFromAccount,watchPage} from './helpers.mjs';
 
 test('@player guest browsing stays anonymous until an action needs identity',async({page})=>{
   const assertClean=watchPage(page);
@@ -27,16 +27,17 @@ test('@player OTP rejects a wrong code, accepts the correct code, persists sessi
 });
 
 test('@player OTP resend guard is enumeration-safe for the same pending challenge',async({page},testInfo)=>{
+  await page.context().setExtraHTTPHeaders({'x-device-id':`autoqa-${runId}-otp-resend`.slice(0,120)});
   await page.goto('/#/account');
   await page.getByRole('button',{name:'Sign in'}).click();
   await page.locator('#identifier').fill(qaIdentifier(testInfo,'otp-resend'));
-  const first=page.waitForResponse(response=>response.url().includes('/v1/auth/otp')&&response.request().method()==='POST');
+  const first=page.waitForResponse(response=>response.url().includes('/v1/auth/otp')&&response.request().method()==='POST',{timeout:15000});
   await page.getByRole('button',{name:'Send OTP'}).click();
   expect((await first).status()).toBe(202);
   await page.reload();
   await page.getByRole('button',{name:'Sign in'}).click();
   await page.locator('#identifier').fill(qaIdentifier(testInfo,'otp-resend'));
-  const second=page.waitForResponse(response=>response.url().includes('/v1/auth/otp')&&response.request().method()==='POST');
+  const second=page.waitForResponse(response=>response.url().includes('/v1/auth/otp')&&response.request().method()==='POST',{timeout:15000});
   await page.getByRole('button',{name:'Send OTP'}).click();
   const response=await second;
   expect(response.status()).toBe(429);
