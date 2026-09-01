@@ -130,4 +130,5 @@ await writeFile(join(outputRoot,'runtime-review.sql'),reviewSql.join('\n')+'\n',
 await writeFile(join(outputRoot,'runtime-live.sql'),liveSql.join('\n')+'\n','utf8');
 await writeFile(join(outputRoot,'runtime-catalogue.json'),JSON.stringify({schemaVersion:1,releaseTag,games:runtime},null,2)+'\n','utf8');
 await writeFile(join(outputRoot,'certification.json'),JSON.stringify({schemaVersion:1,releaseTag,games:cert},null,2)+'\n','utf8');
+await writeFile(join(outputRoot,'certification.tsv'),cert.map(item=>[item.slug,item.version,item.entrypoint,item.buildSha256].join('\t')).join('\n')+'\n','utf8');
 console.log(JSON.stringify({prepared:runtime.length,releaseTag,mode:'local-staging-server'}));
