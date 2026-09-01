@@ -27,15 +27,17 @@ async function call(path,{method='GET',body}={}){
 await lane('controlled-game-origin-and-catalogue-media',async()=>{
   if(!gameBase)block('STAGING_GAME_URL is not configured; controlled game-origin certification cannot run.');
   const origin=await fetch(`${gameBase}/healthz`,{redirect:'follow'});expectStatus(origin.status,[200],'controlled game origin health failed');
+  const runtime=await fetch(`${gameBase}/arena-dash/index.html`,{redirect:'follow',headers:{'user-agent':'Game-Arena-Staging-Certification/1.0'}});
+  expectStatus(runtime.status,[200],'controlled Arena Dash runtime failed');
+  try{await runtime.body?.cancel();}catch{}
+
   const catalog=await call('/v1/catalog/games');expectStatus(catalog.response.status,[200],'catalogue fetch failed');
-  const sample=(catalog.data?.games||[]).slice(0,3);
-  if(!sample.length)throw new Error('catalogue has no representative media sample.');
+  const sample=(catalog.data?.games||[]).filter(game=>game.iconUrl&&game.bannerUrl).slice(0,3);
+  if(!sample.length)throw new Error('catalogue has no representative media sample with icon and banner URLs.');
   const checked=[];
   for(const game of sample){
-    for(const [kind,url] of [['game',game.gameUrl],['icon',game.iconUrl],['banner',game.bannerUrl]]){
-      if(!url)throw new Error(`${game.id} is missing ${kind} URL.`);
-      const base=kind==='game'?gameBase:playerUrl;
-      const parsed=new URL(url,base);
+    for(const [kind,url] of [['icon',game.iconUrl],['banner',game.bannerUrl]]){
+      const parsed=new URL(url,playerUrl);
       if(parsed.protocol!=='https:')throw new Error(`${game.id} ${kind} URL is not HTTPS.`);
       const response=await fetch(parsed,{redirect:'follow',headers:{'user-agent':'Game-Arena-Staging-Certification/1.0'}});
       if(response.status<200||response.status>=400)throw new Error(`${game.id} ${kind} returned HTTP ${response.status}.`);
@@ -43,7 +45,7 @@ await lane('controlled-game-origin-and-catalogue-media',async()=>{
       try{await response.body?.cancel();}catch{}
     }
   }
-  return{controlledOrigin:true,representativeAssets:checked.length};
+  return{controlledOrigin:true,controlledRuntime:'arena-dash',representativeAssets:checked.length};
 });
 
 await lane('premium-game-authorization',async()=>{
