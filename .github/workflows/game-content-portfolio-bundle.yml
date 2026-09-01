@@ -69,8 +69,16 @@ jobs:
             'X-GitHub-Api-Version' = '2022-11-28'
             'User-Agent' = 'GameArenaBundleImporter/1.0'
           }
-          $encodedTag = [Uri]::EscapeDataString($tag)
-          $release = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$encodedTag" -Headers $headers
+
+          $release = $null
+          for ($page = 1; $page -le 10 -and $null -eq $release; $page++) {
+            $pageReleases = @(
+              Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases?per_page=100&page=$page" -Headers $headers
+            )
+            $release = @($pageReleases | Where-Object { $_.tag_name -eq $tag }) | Select-Object -First 1
+            if ($pageReleases.Count -lt 100) { break }
+          }
+          if ($null -eq $release) { throw "Draft release not found in authenticated release list: $tag" }
           if (-not $release.draft) { throw 'Bundle ingress release must remain draft/private.' }
 
           $registryAssets = @($release.assets | Where-Object { $_.name -eq 'bundle-registry.json' })
