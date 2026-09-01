@@ -83,6 +83,8 @@ for(const manifestPath of manifests) {
   const tier=['free','premium'].includes(String(manifest.tier||'')) ? String(manifest.tier) : 'free';
   const orientation=['portrait','landscape','any'].includes(String(manifest.orientation||'')) ? String(manifest.orientation) : 'landscape';
   const minDeviceTier=['lite','standard','high'].includes(String(manifest.minDeviceTier||'')) ? String(manifest.minDeviceTier) : 'lite';
+  const permissions=manifest.permissions&&typeof manifest.permissions==='object' ? manifest.permissions : {};
+  const bridgeVersion=manifest.bridgeVersion??1;
   const gameUrl=`/games/${slug}/${version}/${entrypoint}`;
 
   const record={
@@ -91,7 +93,7 @@ for(const manifestPath of manifests) {
     genre,genres,tier,orientation,
     multiplayer:Boolean(manifest.multiplayer),reward:0,
     status:'review',state:'review',rolloutPercentage:0,
-    gameUrl,version,minDeviceTier,
+    gameUrl,version,minDeviceTier,permissions,bridgeVersion,
     preview:false,sourceType:'portfolio-bundle-local',
     rewardsEnabled:false,competitionsEnabled:false,
     buildSha256,entrypoint,localHosted:true,ingressRelease:releaseTag
@@ -112,7 +114,7 @@ for(const manifestPath of manifests) {
   await writeFile(join(releaseDir,`${version}.json`),JSON.stringify({
     schemaVersion:manifest.schemaVersion,slug,title,version,entrypoint,gameUrl,
     buildSha256,totalBytes:manifest.totalBytes,fileCount:manifest.fileCount,
-    permissions:manifest.permissions,bridgeVersion:manifest.bridgeVersion,minDeviceTier,
+    permissions,bridgeVersion,minDeviceTier,
     rolloutPercentage:0,publishedAt:manifest.publishedAt,publishedBy:manifest.publishedBy,
     scan:manifest.scan,productionActivation:false,ingressRelease:releaseTag,
     hosting:{mode:'local-staging-server',immutablePath:`games/${slug}/${version}/`}
