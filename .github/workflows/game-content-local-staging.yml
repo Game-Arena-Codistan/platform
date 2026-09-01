@@ -192,10 +192,13 @@ jobs:
           set -euo pipefail
           stage="/opt/codistan/platform/.game-content-stage-$GITHUB_RUN_ID"
           ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -e; rm -rf '$stage'; mkdir -p '$stage/games' '$stage/control'"
+            "set -e; rm -rf '$stage'; mkdir -p '$stage/games' '$stage/control' '$stage/baseline'"
           tar -C "$BUNDLE_ROOT/artifacts/games" -czf - . | \
             ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
               "tar -xzf - -C '$stage/games'"
+          tar -C apps/game-origin/public/games -czf - arena-dash | \
+            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+              "tar -xzf - -C '$stage/baseline'"
           scp -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes \
             "$BUNDLE_ROOT/local/runtime-review.sql" \
             "$BUNDLE_ROOT/local/runtime-live.sql" \
@@ -237,6 +240,11 @@ jobs:
               installed=$((installed+1))
             fi
           done
+
+          if [ ! -f "$final/arena-dash/index.html" ]; then
+            mkdir -p "$final/arena-dash"
+            cp "$stage/baseline/arena-dash/index.html" "$final/arena-dash/index.html"
+          fi
           chmod -R a+rX game-content/games
 
           IMAGE_BASE='ghcr.io/game-arena-codistan/platform'
@@ -260,9 +268,10 @@ jobs:
             checked=$((checked+1))
           done < "$stage/control/certification.tsv"
           [ "$checked" -eq 60 ] || { echo "Expected 60 local origin checks; found $checked" >&2; exit 1; }
+          curl --fail --silent --show-error http://127.0.0.1:8082/games/arena-dash/index.html -o /dev/null
 
           "${compose[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U game_arena -d game_arena < "$stage/control/runtime-review.sql"
-          printf 'installed=%s resumed=%s origin_checked=%s\n' "$installed" "$resumed" "$checked"
+          printf 'installed=%s resumed=%s origin_checked=%s baseline_preserved=arena-dash\n' "$installed" "$resumed" "$checked"
           REMOTE
 
       - name: Merge generated local-staging release metadata
@@ -373,5 +382,6 @@ jobs:
             echo '- Scanner/preflight: 60/60 passed.'
             echo '- Catalogue: 60/60 live at 100% staging rollout.'
             echo '- Launch URL certification: 60/60 passed.'
+            echo '- Existing bundled `arena-dash` demo remains reachable after the local content mount.'
             echo '- Rewards and competitions remain disabled for this imported portfolio.'
           } >> "$GITHUB_STEP_SUMMARY"
