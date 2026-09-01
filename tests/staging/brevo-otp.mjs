@@ -23,6 +23,7 @@ while(Date.now()<deadline){
       if(!item.uuid)continue;
       const contentResponse=await fetch('https://api.brevo.com/v3/smtp/emails/'+encodeURIComponent(item.uuid),{headers,signal:AbortSignal.timeout(10000)});
       if(!contentResponse.ok){
+        if(contentResponse.status===404)continue;
         if(contentResponse.status===429||contentResponse.status>=500){await pause(2000);break;}
         process.stderr.write('BREVO_OTP_CONTENT_REJECTED_'+contentResponse.status);process.exit(2);
       }
