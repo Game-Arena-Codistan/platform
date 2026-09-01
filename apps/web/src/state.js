@@ -4,7 +4,7 @@ const defaults={
   onboardingComplete:false,installPromptAvailable:false,
   settings:{dataSaver:true,reducedMotion:false,sound:true,analytics:false},
   continuation:null,rewardsLoaded:false,liveChallenges:[],liveTournaments:[],
-  walletLoaded:false,walletEntries:[],roomsLoaded:false,rooms:[],leaderboardGameId:'arena-dash',leaderboard:[]
+  walletLoaded:false,walletEntries:[],roomsLoaded:false,rooms:[],leaderboardGameId:'arena-dash',leaderboardLoaded:false,leaderboard:[]
 };
 function load(){try{const value=JSON.parse(localStorage.getItem(KEY)||'null');return value&&value.version===2?{...defaults,...value.data,settings:{...defaults.settings,...value.data.settings}}:{...defaults};}catch{return{...defaults};}}
 let state=load();const listeners=new Set();
@@ -17,4 +17,4 @@ export function toggleFavourite(id){update(current=>({favourites:current.favouri
 export function addRecent(id){update(current=>({recent:[id,...current.recent.filter(item=>item!==id)].slice(0,20)}));}
 export function isPremium(){return state.entitlement==='premium';}
 export function telemetryEnabled(){return Boolean(state.settings.analytics);}
-export function resetSession(){update({user:null,entitlement:'free',continuation:null,rewardsLoaded:false,liveChallenges:[],liveTournaments:[],walletLoaded:false,walletEntries:[],roomsLoaded:false,rooms:[],leaderboard:[]});}
+export function resetSession(){update({user:null,entitlement:'free',continuation:null,rewardsLoaded:false,liveChallenges:[],liveTournaments:[],walletLoaded:false,walletEntries:[],roomsLoaded:false,rooms:[],leaderboardLoaded:false,leaderboard:[]});}
