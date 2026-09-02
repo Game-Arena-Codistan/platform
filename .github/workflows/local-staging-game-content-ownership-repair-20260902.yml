@@ -1,0 +1,78 @@
+name: Repair local staging game-content ownership and redispatch exact-60
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/local-staging-game-content-ownership-repair-20260902.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: portfolio-ingress-60-20260901
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+
+    steps:
+      - name: Prepare pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Repair staging game-content ownership with local container helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/codistan/platform
+          final='game-content/games'
+          test -d "$final"
+          uid="$(id -u)"
+          gid="$(id -g)"
+          mapfile -t origin_images < <(docker ps --filter 'name=game-origin' --format '{{.Image}}' | sort -u)
+          [ "${#origin_images[@]}" -eq 1 ] || { echo "Expected one running game-origin image; found ${#origin_images[@]}" >&2; exit 1; }
+          helper_image="${origin_images[0]}"
+          docker image inspect "$helper_image" >/dev/null
+          echo "before_owner=$(stat -c '%U:%G %a' "$final")"
+          docker run --rm --user 0:0 --entrypoint sh \
+            -v "$PWD/game-content:/work" \
+            "$helper_image" \
+            -c "chown -R '$uid:$gid' /work/games && chmod -R a+rX /work/games"
+          test -w "$final"
+          probe="$final/.ownership-probe-$$"
+          : > "$probe"
+          rm -f "$probe"
+          echo "after_owner=$(stat -c '%U:%G %a' "$final")"
+          echo 'STAGING_GAME_CONTENT_OWNERSHIP_READY'
+          REMOTE
+
+      - name: Redispatch protected exact-60 publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run game-content-local-staging.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_tag="$RELEASE_TAG"
