@@ -1,0 +1,367 @@
+{
+  "tag": "portfolio-ingress-60-20260901",
+  "releaseId": 380493117,
+  "releaseUrl": "https://github.com/Game-Arena-Codistan/platform/releases/tag/untagged-180f377112d8ef1f65b7",
+  "downloaded": [
+    {
+      "assetName": "balloon-paradise.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/balloon-paradise.zip",
+      "size": 3814246,
+      "sha256": "06f17d0a1746393bfc9c93871f37f6673c782fb87d2f9a3ad91f623cbba3e40c"
+    },
+    {
+      "assetName": "brick-out.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/brick-out.zip",
+      "size": 8322650,
+      "sha256": "bc44321269be3f4eac49264101e163d841229e77088f392ddb73fdbe8923a560"
+    },
+    {
+      "assetName": "candy-match-3.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/candy-match-3.zip",
+      "size": 5021986,
+      "sha256": "815e72d593b568fdd28e82293ec6be799e7d7beae4ee48e8be30f55c3a5266c8"
+    },
+    {
+      "assetName": "candy-super-lines.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/candy-super-lines.zip",
+      "size": 8185338,
+      "sha256": "c68826fccba2ab5a2468e990c4d808570f47df55ae456b62ff8df05922d43b3a"
+    },
+    {
+      "assetName": "car-physics.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/car-physics.zip",
+      "size": 4552743,
+      "sha256": "9b94b31af4c3bd03918cf18652f8429a544e495550af48c776d31409c9e790a3"
+    },
+    {
+      "assetName": "cartoon-candy.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/cartoon-candy.zip",
+      "size": 1819138,
+      "sha256": "6923fc6e7cc7b6335830c4dca498dadd4595769306eff192a30408bbe0c4aed8"
+    },
+    {
+      "assetName": "casino-cards-memory.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/casino-cards-memory.zip",
+      "size": 10203683,
+      "sha256": "171f479bb89771619e34d574e74022630c214c814863553a3bb06edbf4223269"
+    },
+    {
+      "assetName": "christmas-balloons.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/christmas-balloons.zip",
+      "size": 2976272,
+      "sha256": "045e9d8a1acb058c9d0dc78ddafba84957d516afeb5edc223962f8f139e47567"
+    },
+    {
+      "assetName": "christmas-match-3.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/christmas-match-3.zip",
+      "size": 4752773,
+      "sha256": "d59de7b809bac9e749e585b1250c99bbba85f01a0b9e9a3013e019c89df36473"
+    },
+    {
+      "assetName": "christmas-panda-run.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/christmas-panda-run.zip",
+      "size": 4868240,
+      "sha256": "6316da2b9873be68f7beaae817cb9fb5860467d30740e743585f762a80069411"
+    },
+    {
+      "assetName": "crazy-runner.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/crazy-runner.zip",
+      "size": 3864241,
+      "sha256": "a1fd0b5a7cdcd1c98e45151b20a76361974e3126263dde5baad08350e02fb487"
+    },
+    {
+      "assetName": "crossword-for-kids.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/crossword-for-kids.zip",
+      "size": 4554515,
+      "sha256": "2113d0f70bf1b4cb519016bfd598b3425d2b447580db2e719aff7f95e147c662"
+    },
+    {
+      "assetName": "duck-hunter.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/duck-hunter.zip",
+      "size": 31974209,
+      "sha256": "33864d4654a9c7e96f1d073159b9fbcbc8df5f81c167530eca4575dfb08638c5"
+    },
+    {
+      "assetName": "duck-shooter.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/duck-shooter.zip",
+      "size": 4898589,
+      "sha256": "fe1f61bf0caed9c9f2dbd727f476bac43053bd5dd6d4889631269aa82a3631e6"
+    },
+    {
+      "assetName": "easter-memory.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/easter-memory.zip",
+      "size": 3752515,
+      "sha256": "6cf4221d3b77cb7688c4565065d02ef4ef76c199c988b170656e7ec19ee9305d"
+    },
+    {
+      "assetName": "fishing-frenzy.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/fishing-frenzy.zip",
+      "size": 7947879,
+      "sha256": "e5ca3d48ecd39d9ea675fd084644123345e9a4daad21a12850fa86c956daa4cd"
+    },
+    {
+      "assetName": "fish-world-match-3.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/fish-world-match-3.zip",
+      "size": 6069839,
+      "sha256": "1dec0b6ad76d519d53555420ca6af887698873e6d7f1ac077de5b91827944f70"
+    },
+    {
+      "assetName": "flappy-ball.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/flappy-ball.zip",
+      "size": 4026547,
+      "sha256": "3de807b438f85994084e4b108f175a32b7782364266bd6ae44029c911b652f44"
+    },
+    {
+      "assetName": "flappy-bounce.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/flappy-bounce.zip",
+      "size": 3974313,
+      "sha256": "9646266b0903b2ef179656664b214b708abe90acd9c6e887519a0c0971386db9"
+    },
+    {
+      "assetName": "fruit-slasher.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/fruit-slasher.zip",
+      "size": 9767919,
+      "sha256": "6b634ab814b85c7add17e11a05301bb5d73ab96ea5ac05ba6eb26ecc463b0797"
+    },
+    {
+      "assetName": "fruit-snake.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/fruit-snake.zip",
+      "size": 7298446,
+      "sha256": "3523a2700a2171f6d0e5f1c2ef6ffd285a78d33eb9b434a335f2ed500cbd7665"
+    },
+    {
+      "assetName": "girl-dress-up.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/girl-dress-up.zip",
+      "size": 8462086,
+      "sha256": "6995a479a1271081d0e2a349375f19467a45830c802faa6743b6f4779bfe2f72"
+    },
+    {
+      "assetName": "gold-miner.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/gold-miner.zip",
+      "size": 4120716,
+      "sha256": "0dc5d06bedd934b31a797ee5eb5b30e2c532da2ba730c8f55c1a233021c5eb6d"
+    },
+    {
+      "assetName": "great-air-battles.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/great-air-battles.zip",
+      "size": 2635435,
+      "sha256": "a8ee164a0d35e23b8fb71fdc4a4e585fa1e0f2cacdb09aad3364523b3a979280"
+    },
+    {
+      "assetName": "halloween-bubble-shooter.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/halloween-bubble-shooter.zip",
+      "size": 5130893,
+      "sha256": "23acdb2c5e5e99b6b5ecd608730ecb2a555ab2f2a65e0a99b90cd16df8e7ac83"
+    },
+    {
+      "assetName": "halloween-memory.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/halloween-memory.zip",
+      "size": 19297671,
+      "sha256": "0ae73d2fa58001afd4761e41b492ed64e927485c6452ce77ffb227782f60f8e9"
+    },
+    {
+      "assetName": "hot-jewels.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/hot-jewels.zip",
+      "size": 5274695,
+      "sha256": "818d156ee3400875648efb52a428578b3e128058ea8ccde50219492b317a1e0c"
+    },
+    {
+      "assetName": "jelly-match-3.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/jelly-match-3.zip",
+      "size": 4863271,
+      "sha256": "3fbaa3739849a66dc5effdfb5932b1f2d83beff02ae59abf105a68c549278698"
+    },
+    {
+      "assetName": "kids-true-color.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/kids-true-color.zip",
+      "size": 17141209,
+      "sha256": "e329be2e1fb6016e9cbe7f6b8668d29b583690b604227f0375d8980b39f5a367"
+    },
+    {
+      "assetName": "mad-shark.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/mad-shark.zip",
+      "size": 5363432,
+      "sha256": "9484116504b731a06473ec78d825db27a51f098f9fab2e798aeb99cf9b7ba3df"
+    },
+    {
+      "assetName": "math-game-for-kids.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/math-game-for-kids.zip",
+      "size": 8475002,
+      "sha256": "f2ec34241af0690b7a3300f7fc9057747fef364c3f3a1a10585a50e4037af8a9"
+    },
+    {
+      "assetName": "memory-game.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/memory-game.zip",
+      "size": 5541896,
+      "sha256": "886413b24a2f6a41d84980f8d97f7ce2fc5c2e77a06e644a80d4c5402156dd52"
+    },
+    {
+      "assetName": "mummy-candies.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/mummy-candies.zip",
+      "size": 6798126,
+      "sha256": "6fb38912d4f4514036af1e7dbdb6b85b35ece8fa28c599ee94ebcd43b5591878"
+    },
+    {
+      "assetName": "ninja-run.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/ninja-run.zip",
+      "size": 3440720,
+      "sha256": "73689837bbe266fcf13aa6c5f50d687c5f5153218bc3c12dca49bfa2b54af381"
+    },
+    {
+      "assetName": "ninja-run-new.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/ninja-run-new.zip",
+      "size": 8023300,
+      "sha256": "f2749082680b11b72cd32633f19569738a25728ebf0a024263d92da9b5a3b6c4"
+    },
+    {
+      "assetName": "plumber.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/plumber.zip",
+      "size": 7320911,
+      "sha256": "baf89d878d35d38dbb6db71c1c1aef7350416d25cb771d5a545e3b0fb0004580"
+    },
+    {
+      "assetName": "professor-bubble.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/professor-bubble.zip",
+      "size": 4173121,
+      "sha256": "74d97147c5ab58bd140e542b3a552756395377928a09b7d5e8cc957320f6e1e8"
+    },
+    {
+      "assetName": "quick-dice.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/quick-dice.zip",
+      "size": 5346858,
+      "sha256": "0f8dd13c8bdb2494002321b8a742922351dd8e4fd682eaa6748e0a8e42eff91a"
+    },
+    {
+      "assetName": "ranger-vs-zombies.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/ranger-vs-zombies.zip",
+      "size": 29933802,
+      "sha256": "b9b62c7835030049affe3b0989a2bce8bcca518e58d3b5436b7c24f93d3aeb1e"
+    },
+    {
+      "assetName": "robotex.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/robotex.zip",
+      "size": 40401437,
+      "sha256": "4bc0f1cb49db2c22ece93acd3e8c563cceb9d267c10ea0efa7a488e365904bf7"
+    },
+    {
+      "assetName": "schitalochka.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/schitalochka.zip",
+      "size": 8777334,
+      "sha256": "717dea9aa2946917c2325c527edcc2c4901adfcad1befae3239c995469710ff0"
+    },
+    {
+      "assetName": "shoot-robbers.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/shoot-robbers.zip",
+      "size": 3723140,
+      "sha256": "d954268efac04acba70b78e30713d18337f565231b38040843ecc6e17a67c1bd"
+    },
+    {
+      "assetName": "smiles.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/smiles.zip",
+      "size": 3825580,
+      "sha256": "1e8fb20b0b4b6c71d6e8f0d5b5d1ece4f6d1b1f822abe865a17fabc569e2c734"
+    },
+    {
+      "assetName": "space-purge.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/space-purge.zip",
+      "size": 24934106,
+      "sha256": "4d0e1dd13eb399c526b6bdc3fd198b7d6c85172d8cd523cd3742862e638b9637"
+    },
+    {
+      "assetName": "speed-racer.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/speed-racer.zip",
+      "size": 9630270,
+      "sha256": "2e1cdde4bec1f267a46b3d3472d18fde5af054767f142f32420cf05b63fdfa3b"
+    },
+    {
+      "assetName": "stick-monkey.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/stick-monkey.zip",
+      "size": 5795329,
+      "sha256": "04851b408f51ba75c4570ec894bdc03c4af2db2194c24df0deb82f6e9bb36171"
+    },
+    {
+      "assetName": "stick-soldier.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/stick-soldier.zip",
+      "size": 2346543,
+      "sha256": "5a23c1aafa67d3e98fee1bfe7223ef1863775c536c18c7929831d149147ebc95"
+    },
+    {
+      "assetName": "supercars-puzzle.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/supercars-puzzle.zip",
+      "size": 24510012,
+      "sha256": "f868f87a655bf9d0783beb48f7225866f55b6379c4fdb3c48d399390dfd3f03b"
+    },
+    {
+      "assetName": "super-color-lines-match-5.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/super-color-lines-match-5.zip",
+      "size": 8352085,
+      "sha256": "de00e6be967906216bf8a0ae231fd7e792c087f606a74beed050cfa7897a7074"
+    },
+    {
+      "assetName": "super-cowboy-run.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/super-cowboy-run.zip",
+      "size": 6181812,
+      "sha256": "04e5e76e970ab112591ed2c7f8eda6d1a005fd31f87922f9d7b01db3e3877860"
+    },
+    {
+      "assetName": "super-pongoal.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/super-pongoal.zip",
+      "size": 8858891,
+      "sha256": "9e92b6d5a37fb5a8dcc008e5fab3166342caaf994bb819de8b1be37803bd9267"
+    },
+    {
+      "assetName": "swat-vs-zombies.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/swat-vs-zombies.zip",
+      "size": 86495953,
+      "sha256": "e81b265da331ebe0ff0a2047200eebc2e1a20044e2d841f9a5ea42ba0b9fb129"
+    },
+    {
+      "assetName": "tank-defender.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/tank-defender.zip",
+      "size": 10917362,
+      "sha256": "70bca34c485065d8e5410577614555f82f66cfe424bf8707b738d0975389dcdb"
+    },
+    {
+      "assetName": "tank-wars.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/tank-wars.zip",
+      "size": 13279581,
+      "sha256": "5471d0497d382ee9a471f0767f2979e63cd1e9269342368ac1f65becbd5653bd"
+    },
+    {
+      "assetName": "touch-ball.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/touch-ball.zip",
+      "size": 5329901,
+      "sha256": "4ea73e781f68d81f9a77e90a7fa606ae52f65abfda3dd1748a1e1f6ea75453d6"
+    },
+    {
+      "assetName": "traffic.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/traffic.zip",
+      "size": 7643933,
+      "sha256": "d0b58546c89583a66f54d8a880507f7e22d06818eca788dcf2298feaa357fb02"
+    },
+    {
+      "assetName": "viking-escape.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/viking-escape.zip",
+      "size": 22267546,
+      "sha256": "4936dbb70ee03af34e16c798ebaea5a4fa8b3ae803381995f4ebcf03506c1e40"
+    },
+    {
+      "assetName": "zombie-buster.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/zombie-buster.zip",
+      "size": 12727009,
+      "sha256": "b130848fc59a80e0f427ed779ddb8068668dc0c8a723edfac64d0c5de6cafcdb"
+    },
+    {
+      "assetName": "zombie-shooter.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/zombie-shooter.zip",
+      "size": 4702732,
+      "sha256": "fa28ab1838a99f90278137689a6b82e8c6b4e054594e379d7808363b1c612679"
+    },
+    {
+      "assetName": "zombie-uprising.zip",
+      "path": "/home/runner/work/_temp/game-arena-local-33661255938/ingress/zombie-uprising.zip",
+      "size": 8768523,
+      "sha256": "89aeb441e42b94d85c88ae5e11430f8e0d7fc0e8df53f59f73d3d65dfd39a161"
+    }
+  ]
+}

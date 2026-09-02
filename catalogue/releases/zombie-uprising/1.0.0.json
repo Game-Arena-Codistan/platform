@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "slug": "zombie-uprising",
+  "title": "Zombie Uprising",
+  "version": "1.0.0",
+  "entrypoint": "index.html",
+  "gameUrl": "/games/zombie-uprising/1.0.0/index.html",
+  "buildSha256": "979196608c1358beacdc7d0874fd5e94859c7f9e73fc2ac9e7789ce5e62c872d",
+  "totalBytes": 9867033,
+  "fileCount": 54,
+  "permissions": {
+    "fullscreen": true,
+    "orientationLock": false,
+    "pointerLock": false,
+    "autoplayAudio": true
+  },
+  "bridgeVersion": "1.0",
+  "minDeviceTier": "lite",
+  "rolloutPercentage": 0,
+  "publishedAt": "2026-09-02T17:28:51.967Z",
+  "publishedBy": "github-actions:github-actions[bot]",
+  "scan": {
+    "warnings": [
+      {
+        "code": "dynamic_code",
+        "file": "box2d.wasm.js",
+        "message": "Potentially unsafe API detected: dynamic_code."
+      },
+      {
+        "code": "storage_access",
+        "file": "data.json",
+        "message": "Potentially unsafe API detected: storage_access."
+      },
+      {
+        "code": "dynamic_code",
+        "file": "scripts/c3runtime.js",
+        "message": "Potentially unsafe API detected: dynamic_code."
+      },
+      {
+        "code": "storage_access",
+        "file": "scripts/c3runtime.js",
+        "message": "Potentially unsafe API detected: storage_access."
+      },
+      {
+        "code": "clipboard_access",
+        "file": "scripts/c3runtime.js",
+        "message": "Potentially unsafe API detected: clipboard_access."
+      },
+      {
+        "code": "popup",
+        "file": "scripts/main.js",
+        "message": "Potentially unsafe API detected: popup."
+      },
+      {
+        "code": "top_navigation",
+        "file": "scripts/main.js",
+        "message": "Potentially unsafe API detected: top_navigation."
+      },
+      {
+        "code": "dynamic_code",
+        "file": "scripts/opus.wasm.js",
+        "message": "Potentially unsafe API detected: dynamic_code."
+      },
+      {
+        "code": "service_worker",
+        "file": "scripts/register-sw.js",
+        "message": "Potentially unsafe API detected: service_worker."
+      }
+    ],
+    "limits": {
+      "maxFiles": 10000,
+      "maxExpandedBytes": 536870912
+    }
+  },
+  "productionActivation": false,
+  "ingressRelease": "portfolio-ingress-60-20260901",
+  "hosting": {
+    "mode": "local-staging-server",
+    "immutablePath": "games/zombie-uprising/1.0.0/"
+  }
+}
