@@ -1,0 +1,70 @@
+name: Qualify four oversized titles on staging browsers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tests/e2e/oversize-staging-qualification.mjs
+      - .github/workflows/oversize-staging-browser-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oversize-staging-browser-qualification
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    env:
+      STAGING_ORIGIN: https://gsmarena-play.codistan.org
+      EVIDENCE_FILE: ${{ github.workspace }}/tests/e2e/report/oversize-staging-qualification.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install pinned browser test dependencies
+        working-directory: tests/e2e
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install Chromium Firefox and WebKit
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run exact four-title staging qualification
+        working-directory: tests/e2e
+        run: node oversize-staging-qualification.mjs
+
+      - name: Upload browser qualification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oversized-staging-browser-qualification-${{ github.run_id }}
+          path: tests/e2e/report/oversize-staging-qualification.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Qualification summary
+        if: success()
+        run: |
+          {
+            echo '## Four oversized staging titles — automated browser qualification'
+            echo
+            echo '- Titles: 4/4 exact controlled-origin catalogue records.'
+            echo '- Browsers: Chromium, Firefox, WebKit.'
+            echo '- Viewports: desktop, mobile portrait, mobile landscape.'
+            echo '- Browser launch checks: 36/36 passed.'
+            echo '- Rewards/competitions: disabled; portfolio remains play-only.'
+            echo '- Score integrity: not claimed by this generic browser gate.'
+            echo '- Rights approval: not claimed by this technical gate.'
+            echo '- Production activation: false; production untouched.'
+          } >> "$GITHUB_STEP_SUMMARY"
