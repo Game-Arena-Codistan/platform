@@ -1,0 +1,219 @@
+name: Diagnose exact-60 local staging install failure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/local-staging-install-diagnostic-20260902.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      SOURCE_RUN_ID: '33659811049'
+      RELEASE_TAG: portfolio-ingress-60-20260901
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+
+    steps:
+      - name: Prepare pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Replay failed staging install with sanitized diagnostics
+        id: replay
+        shell: bash
+        run: |
+          set -uo pipefail
+          local_diag="$RUNNER_TEMP/local-staging-install-diagnostic-$GITHUB_RUN_ID.txt"
+          remote_stage="/opt/codistan/platform/.game-content-stage-$SOURCE_RUN_ID"
+          remote_diag="$remote_stage/control/install-diagnostic-$GITHUB_RUN_ID.txt"
+
+          set +e
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "SOURCE_RUN_ID='$SOURCE_RUN_ID' DIAG_RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/codistan/platform
+          stage=".game-content-stage-$SOURCE_RUN_ID"
+          final="game-content/games"
+          diag="$stage/control/install-diagnostic-$DIAG_RUN_ID.txt"
+          mkdir -p "$stage/control"
+          : > "$diag"
+          exec > >(tee -a "$diag") 2>&1
+
+          checkpoint='bootstrap'
+          fail() {
+            echo "ASSERTION_FAILED checkpoint=$checkpoint message=$*" >&2
+            return 1
+          }
+          diagnose() {
+            rc=$?
+            trap - ERR
+            set +e
+            echo "DIAGNOSTIC_FAILURE rc=$rc checkpoint=$checkpoint line=${BASH_LINENO[0]:-unknown} command=${BASH_COMMAND:-unknown}"
+            echo "source_run_id=$SOURCE_RUN_ID"
+            echo "deployed_sha=$(cat .deployed-sha 2>/dev/null || echo unavailable)"
+            echo '--- filesystem ---'
+            ls -ld game-content game-content/games "$stage" "$stage/control" 2>&1 || true
+            namei -l game-content/games 2>&1 || true
+            printf 'staged_manifests='; find "$stage/games" -name game-manifest.json -type f 2>/dev/null | wc -l || true
+            printf 'installed_manifests='; find game-content/games -name game-manifest.json -type f 2>/dev/null | wc -l || true
+            echo '--- image/container ---'
+            if [ -n "${IMAGE_BASE:-}" ] && [ -n "${IMAGE_TAG:-}" ]; then
+              docker image inspect "$IMAGE_BASE-games:$IMAGE_TAG" --format 'image_id={{.Id}} created={{.Created}}' 2>&1 || true
+            fi
+            if declare -p compose >/dev/null 2>&1; then
+              "${compose[@]}" ps game-origin 2>&1 || true
+              cid="$("${compose[@]}" ps -q game-origin 2>/dev/null || true)"
+              if [ -n "$cid" ]; then
+                docker inspect "$cid" --format 'container={{.Name}} image={{.Config.Image}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' 2>&1 || true
+                docker inspect "$cid" --format '{{range .Mounts}}mount={{.Source}} -> {{.Destination}} rw={{.RW}}{{println}}{{end}}' 2>&1 || true
+                docker logs --tail 200 "$cid" 2>&1 || true
+              fi
+            fi
+            echo '--- local ports ---'
+            curl --silent --show-error --max-time 5 -o /dev/null -w 'health_http=%{http_code}\n' http://127.0.0.1:8082/healthz 2>&1 || true
+            echo '--- end diagnostics ---'
+            exit "$rc"
+          }
+          trap diagnose ERR
+
+          checkpoint='validate-stage'
+          [ -d "$stage/games" ] || fail "missing staged games directory: $stage/games"
+          [ -f "$stage/control/certification.tsv" ] || fail 'missing certification.tsv'
+          [ -f "$stage/control/runtime-review.sql" ] || fail 'missing runtime-review.sql'
+          mkdir -p "$final"
+          shopt -s nullglob
+          manifests=("$stage"/games/*/*/game-manifest.json)
+          [ "${#manifests[@]}" -eq 60 ] || fail "expected 60 staged manifests; found ${#manifests[@]}"
+          echo "CHECKPOINT_OK validate-stage manifests=${#manifests[@]}"
+
+          checkpoint='install-immutable-files'
+          installed=0
+          resumed=0
+          for manifest in "${manifests[@]}"; do
+            source_dir="$(dirname "$manifest")"
+            version="$(basename "$source_dir")"
+            slug="$(basename "$(dirname "$source_dir")")"
+            hash="$(tr -d '\r\n' < "$source_dir/.game-arena-build-sha256")"
+            entry="$(tr -d '\r\n' < "$source_dir/.game-arena-entrypoint")"
+            target="$final/$slug/$version"
+            if [ -e "$target" ]; then
+              [ -f "$target/.game-arena-build-sha256" ] || fail "unverifiable immutable collision: $slug@$version"
+              existing="$(tr -d '\r\n' < "$target/.game-arena-build-sha256")"
+              [ "$existing" = "$hash" ] || fail "immutable version collision: $slug@$version"
+              [ -f "$target/$entry" ] || fail "existing immutable entrypoint missing: $slug@$version/$entry"
+              resumed=$((resumed+1))
+            else
+              mkdir -p "$final/$slug"
+              mv "$source_dir" "$target"
+              installed=$((installed+1))
+            fi
+          done
+          echo "CHECKPOINT_OK install-immutable-files installed=$installed resumed=$resumed"
+
+          checkpoint='preserve-baseline-and-permissions'
+          if [ ! -f "$final/arena-dash/index.html" ]; then
+            mkdir -p "$final/arena-dash"
+            cp "$stage/baseline/arena-dash/index.html" "$final/arena-dash/index.html"
+          fi
+          chmod -R a+rX game-content/games
+          echo 'CHECKPOINT_OK preserve-baseline-and-permissions'
+
+          checkpoint='compose-config-and-local-image'
+          IMAGE_BASE='ghcr.io/game-arena-codistan/platform'
+          IMAGE_TAG="$(cat .deployed-sha)"
+          export IMAGE_BASE IMAGE_TAG
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          "${compose[@]}" config >/tmp/game-arena-local-content-compose.yml
+          docker image inspect "$IMAGE_BASE-games:$IMAGE_TAG" --format 'CHECKPOINT_OK local-image image_id={{.Id}}' 
+          echo 'CHECKPOINT_OK compose-config'
+
+          checkpoint='recreate-game-origin'
+          "${compose[@]}" up -d --no-deps --force-recreate game-origin
+          echo 'CHECKPOINT_OK recreate-game-origin'
+
+          checkpoint='game-origin-health'
+          healthy=0
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8082/healthz >/dev/null; then healthy=1; break; fi
+            sleep 2
+          done
+          [ "$healthy" = 1 ] || fail 'local game-origin failed readiness'
+          echo 'CHECKPOINT_OK game-origin-health'
+
+          checkpoint='verify-60-local-urls'
+          checked=0
+          while IFS=$'\t' read -r slug version entry hash; do
+            [ -n "$slug" ] || continue
+            checkpoint="verify-local-url:$slug"
+            test -f "$final/$slug/$version/$entry"
+            curl --fail --silent --show-error "http://127.0.0.1:8082/games/$slug/$version/$entry" -o /dev/null
+            checked=$((checked+1))
+          done < "$stage/control/certification.tsv"
+          checkpoint='verify-60-local-urls-count'
+          [ "$checked" -eq 60 ] || fail "expected 60 local origin checks; found $checked"
+          curl --fail --silent --show-error http://127.0.0.1:8082/games/arena-dash/index.html -o /dev/null
+          echo "CHECKPOINT_OK verify-60-local-urls checked=$checked"
+
+          checkpoint='rollout-zero-sql'
+          "${compose[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U game_arena -d game_arena < "$stage/control/runtime-review.sql"
+          echo 'CHECKPOINT_OK rollout-zero-sql'
+          trap - ERR
+          printf 'DIAGNOSTIC_READY installed=%s resumed=%s origin_checked=%s\n' "$installed" "$resumed" "$checked"
+          REMOTE
+          rc=$?
+          set -e
+
+          scp -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST:$remote_diag" "$local_diag" || true
+          if [ -f "$local_diag" ]; then
+            {
+              echo '## Local staging install diagnostic'
+              echo
+              echo '```text'
+              tail -n 240 "$local_diag"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$rc"
+
+      - name: Upload sanitized staging diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: local-staging-install-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/local-staging-install-diagnostic-${{ github.run_id }}.txt
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Re-dispatch protected exact-60 publication after successful replay
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run game-content-local-staging.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_tag="$RELEASE_TAG"
