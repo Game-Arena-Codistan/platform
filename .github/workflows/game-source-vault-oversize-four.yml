@@ -35,19 +35,11 @@ jobs:
         with:
           tofu_version: 1.12.5
 
-      - name: Validate protected staging account
-        env:
-          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo 'AWS_ACCOUNT_ID must be a twelve-digit staging variable.' >&2; exit 1; }
-
       - name: Authenticate to AWS with staging infrastructure OIDC role
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_INFRA_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
           role-session-name: game-arena-source-vault-${{ github.run_id }}
 
       - name: Prepare protected staging OpenTofu configuration
@@ -55,16 +47,22 @@ jobs:
           STATE_BUCKET: ${{ vars.AWS_TF_STATE_BUCKET }}
           STATE_KMS_KEY_ID: ${{ vars.AWS_TF_STATE_KMS_KEY_ID }}
           TFVARS_B64: ${{ secrets.AWS_TFVARS_JSON_B64 }}
-          EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          ROLE_ARN: ${{ secrets.AWS_INFRA_ROLE_ARN }}
         run: |
           set -euo pipefail
           test -n "$STATE_BUCKET"
           test -n "$TFVARS_B64"
+          test -n "$ROLE_ARN"
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          test "$account_id" = "$EXPECTED_AWS_ACCOUNT_ID"
+          [[ "$account_id" =~ ^[0-9]{12}$ ]] || { echo 'Authenticated staging account is invalid.' >&2; exit 1; }
+          case "$ROLE_ARN" in
+            arn:aws:iam::${account_id}:role/*) ;;
+            *) echo 'Authenticated AWS account does not match the protected infrastructure role ARN.' >&2; exit 1 ;;
+          esac
           printf '%s' "$TFVARS_B64" | base64 -d > infra/opentofu/aws/environment.auto.tfvars.json
-          jq -e --arg account "$EXPECTED_AWS_ACCOUNT_ID" '.environment == "staging" and .expected_aws_account_id == $account' infra/opentofu/aws/environment.auto.tfvars.json >/dev/null
+          jq -e --arg account "$account_id" '.environment == "staging" and .expected_aws_account_id == $account' infra/opentofu/aws/environment.auto.tfvars.json >/dev/null
           chmod 600 infra/opentofu/aws/environment.auto.tfvars.json
+          echo "EXPECTED_AWS_ACCOUNT_ID=$account_id" >> "$GITHUB_ENV"
           if [ -n "$STATE_KMS_KEY_ID" ]; then
             echo "STATE_KMS_ARGUMENT=-backend-config=kms_key_id=$STATE_KMS_KEY_ID" >> "$GITHUB_ENV"
           fi
