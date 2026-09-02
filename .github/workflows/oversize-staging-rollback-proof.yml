@@ -1,0 +1,205 @@
+name: Prove four oversized staging kill-switch and rollback controls
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/oversize-staging-rollback-proof.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oversize-staging-rollback-proof
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      STAGING_ORIGIN: https://gsmarena-play.codistan.org
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Prepare exact four-title proof manifest and pinned SSH identity
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          node --input-type=module <<'NODE' > "$RUNNER_TEMP/oversize-proof.tsv"
+          import {readFile} from 'node:fs/promises';
+          const games=[['duck-hunter','1.0.0-pilot.1'],['ranger-vs-zombies','1.0.0-pilot.1'],['robotex','1.0.0-pilot.1'],['swat-vs-zombies','1.0.0-pilot.1']];
+          for(const [slug,version] of games){
+            const record=JSON.parse(await readFile(`catalogue/releases/${slug}/${version}.json`,'utf8'));
+            if(record.productionActivation!==false) throw new Error(`${slug}: production activation must remain disabled`);
+            if(!/^[a-f0-9]{64}$/.test(record.buildSha256)) throw new Error(`${slug}: invalid build digest`);
+            console.log([slug,version,record.buildSha256,record.gameUrl].join('\t'));
+          }
+          NODE
+          test "$(wc -l < "$RUNNER_TEMP/oversize-proof.tsv" | tr -d ' ')" = 4
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Verify immutable files then prove kill switch and restore one title at a time
+        run: |
+          set -Eeuo pipefail
+          proof="$RUNNER_TEMP/oversize-proof.tsv"
+          evidence="$RUNNER_TEMP/oversize-rollback-evidence.jsonl"
+          : > "$evidence"
+
+          remote_patch() {
+            local slug="$1" hash="$2" status="$3" rollout="$4"
+            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+              "SLUG='$slug' HASH='$hash' STATUS='$status' ROLLOUT='$rollout' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/codistan/platform
+          [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{1,63}$ ]]
+          [[ "$HASH" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$STATUS" =~ ^(review|live)$ ]]
+          [[ "$ROLLOUT" =~ ^(0|100)$ ]]
+          IMAGE_BASE='ghcr.io/game-arena-codistan/platform'
+          IMAGE_TAG="$(cat .deployed-sha)"
+          export IMAGE_BASE IMAGE_TAG
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          changed="$("${compose[@]}" exec -T postgres psql -At -v ON_ERROR_STOP=1 -U game_arena -d game_arena \
+            -v slug="$SLUG" -v hash="$HASH" -v status="$STATUS" -v rollout="$ROLLOUT" <<'SQL'
+          WITH changed AS (
+            UPDATE ga_runtime_games
+            SET revision=revision+1,
+                record=record || jsonb_build_object(
+                  'status', :'status',
+                  'state', :'status',
+                  'rolloutPercentage', (:'rollout')::integer,
+                  'rewardsEnabled', false,
+                  'competitionsEnabled', false
+                ),
+                updated_at=clock_timestamp()
+            WHERE record_key=:'slug'
+              AND deleted_at IS NULL
+              AND record->>'buildSha256'=:'hash'
+            RETURNING 1
+          )
+          SELECT count(*) FROM changed;
+          SQL
+          )"
+          test "$(echo "$changed" | tail -n1 | tr -d '[:space:]')" = 1
+          "${compose[@]}" restart api >/dev/null
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8095/api/readyz >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          REMOTE
+          }
+
+          restore_all() {
+            set +e
+            while IFS=$'\t' read -r slug version hash game_url; do
+              remote_patch "$slug" "$hash" live 100 >/dev/null 2>&1 || true
+            done < "$proof"
+          }
+          trap restore_all EXIT
+
+          check_public() {
+            local slug="$1" game_url="$2" mode="$3"
+            SLUG="$slug" GAME_URL="$game_url" MODE="$mode" STAGING_ORIGIN="$STAGING_ORIGIN" node --input-type=module <<'NODE'
+          const response=await fetch(`${process.env.STAGING_ORIGIN}/api/v1/catalog/games`,{signal:AbortSignal.timeout(20000)});
+          if(!response.ok) throw new Error(`catalogue HTTP ${response.status}`);
+          const payload=await response.json();
+          const record=(payload.games||[]).find(game=>game.id===process.env.SLUG);
+          if(process.env.MODE==='killed'){
+            if(record&&record.status==='live'&&Number(record.rolloutPercentage)===100) throw new Error(`${process.env.SLUG}: kill switch did not remove live/100 state`);
+            console.log(JSON.stringify({slug:process.env.SLUG,killSwitchObserved:true}));
+          }else{
+            if(!record) throw new Error(`${process.env.SLUG}: missing after restore`);
+            if(record.status!=='live'||Number(record.rolloutPercentage)!==100) throw new Error(`${process.env.SLUG}: not live/100 after restore`);
+            if(record.gameUrl!==process.env.GAME_URL) throw new Error(`${process.env.SLUG}: gameUrl mismatch after restore`);
+            if(record.rewardsEnabled!==false||record.competitionsEnabled!==false) throw new Error(`${process.env.SLUG}: rewards/competitions enabled after restore`);
+            console.log(JSON.stringify({slug:process.env.SLUG,restoredLive:true}));
+          }
+          NODE
+          }
+
+          while IFS=$'\t' read -r slug version hash game_url; do
+            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+              "SLUG='$slug' VERSION='$version' HASH='$hash' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/codistan/platform
+          target="game-content/games/$SLUG/$VERSION"
+          test -f "$target/.game-arena-build-sha256"
+          test "$(tr -d '\r\n' < "$target/.game-arena-build-sha256")" = "$HASH"
+          REMOTE
+
+            remote_patch "$slug" "$hash" review 0
+            check_public "$slug" "$game_url" killed
+            remote_patch "$slug" "$hash" live 100
+            check_public "$slug" "$game_url" restored
+            jq -n --arg slug "$slug" --arg version "$version" --arg hash "$hash" --arg gameUrl "$game_url" \
+              '{slug:$slug,version:$version,buildSha256:$hash,gameUrl:$gameUrl,immutableVerified:true,killSwitchObserved:true,restoredLive:true,rewardsEnabled:false,competitionsEnabled:false}' >> "$evidence"
+          done < "$proof"
+
+          trap - EXIT
+          restore_all
+          jq -s '{schemaVersion:1,decision:(if length==4 then "READY" else "NOT_READY" end),titlesTested:length,productionActivation:false,tests:.}' "$evidence" > "$RUNNER_TEMP/oversize-rollback-evidence.json"
+          jq -e '.decision=="READY" and .titlesTested==4 and ([.tests[]|select(.killSwitchObserved!=true or .restoredLive!=true)]|length)==0' "$RUNNER_TEMP/oversize-rollback-evidence.json" >/dev/null
+          cat "$RUNNER_TEMP/oversize-rollback-evidence.json"
+
+      - name: Final four-title public-state certification
+        run: |
+          set -euo pipefail
+          PROOF="$RUNNER_TEMP/oversize-proof.tsv" STAGING_ORIGIN="$STAGING_ORIGIN" node --input-type=module <<'NODE'
+          import {readFile} from 'node:fs/promises';
+          const rows=(await readFile(process.env.PROOF,'utf8')).trim().split(/\r?\n/).map(line=>line.split('\t'));
+          const response=await fetch(`${process.env.STAGING_ORIGIN}/api/v1/catalog/games`,{signal:AbortSignal.timeout(20000)});
+          if(!response.ok) throw new Error(`catalogue HTTP ${response.status}`);
+          const payload=await response.json();
+          const byId=new Map((payload.games||[]).map(game=>[game.id,game]));
+          for(const [slug,,hash,gameUrl] of rows){
+            const record=byId.get(slug);
+            if(!record||record.status!=='live'||Number(record.rolloutPercentage)!==100||record.gameUrl!==gameUrl) throw new Error(`${slug}: final live state mismatch`);
+            if(record.rewardsEnabled!==false||record.competitionsEnabled!==false) throw new Error(`${slug}: final safety flags mismatch`);
+            const launch=await fetch(`${process.env.STAGING_ORIGIN}${gameUrl}`,{signal:AbortSignal.timeout(20000)});
+            if(!launch.ok) throw new Error(`${slug}: final launch HTTP ${launch.status}`);
+            await launch.body?.cancel();
+          }
+          console.log(JSON.stringify({decision:'READY',titles:4,liveAt100:4,launchUrlsPassed:4,productionActivation:false}));
+          NODE
+
+      - name: Upload rollback proof evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: oversized-staging-rollback-proof-${{ github.run_id }}
+          path: ${{ runner.temp }}/oversize-rollback-evidence.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Completion summary
+        if: success()
+        run: |
+          {
+            echo '## Four oversized staging titles — rollback proof'
+            echo
+            echo '- Immutable version/digest guard: 4/4 passed.'
+            echo '- Rollout-to-zero / review kill switch: 4/4 observed.'
+            echo '- Restore to live / 100%: 4/4 passed.'
+            echo '- Final controlled-origin launch URLs: 4/4 passed.'
+            echo '- Rewards/competitions remained disabled.'
+            echo '- Production activation: false; production untouched.'
+          } >> "$GITHUB_STEP_SUMMARY"
