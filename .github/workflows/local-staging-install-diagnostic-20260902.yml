@@ -40,7 +40,6 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Replay failed staging install with sanitized diagnostics
-        id: replay
         shell: bash
         run: |
           set -uo pipefail
@@ -90,32 +89,28 @@ jobs:
                 docker logs --tail 200 "$cid" 2>&1 || true
               fi
             fi
-            echo '--- local ports ---'
+            echo '--- local port ---'
             curl --silent --show-error --max-time 5 -o /dev/null -w 'health_http=%{http_code}\n' http://127.0.0.1:8082/healthz 2>&1 || true
             echo '--- end diagnostics ---'
             exit "$rc"
           }
           trap diagnose ERR
 
-          checkpoint='validate-stage'
-          [ -d "$stage/games" ] || fail "missing staged games directory: $stage/games"
+          checkpoint='validate-stage-control'
           [ -f "$stage/control/certification.tsv" ] || fail 'missing certification.tsv'
           [ -f "$stage/control/runtime-review.sql" ] || fail 'missing runtime-review.sql'
+          cert_count="$(grep -cve '^[[:space:]]*$' "$stage/control/certification.tsv")"
+          [ "$cert_count" -eq 60 ] || fail "expected 60 certification records; found $cert_count"
           mkdir -p "$final"
-          shopt -s nullglob
-          manifests=("$stage"/games/*/*/game-manifest.json)
-          [ "${#manifests[@]}" -eq 60 ] || fail "expected 60 staged manifests; found ${#manifests[@]}"
-          echo "CHECKPOINT_OK validate-stage manifests=${#manifests[@]}"
+          echo "CHECKPOINT_OK validate-stage-control certification_records=$cert_count"
 
-          checkpoint='install-immutable-files'
+          checkpoint='install-or-resume-immutable-files'
           installed=0
           resumed=0
-          for manifest in "${manifests[@]}"; do
-            source_dir="$(dirname "$manifest")"
-            version="$(basename "$source_dir")"
-            slug="$(basename "$(dirname "$source_dir")")"
-            hash="$(tr -d '\r\n' < "$source_dir/.game-arena-build-sha256")"
-            entry="$(tr -d '\r\n' < "$source_dir/.game-arena-entrypoint")"
+          while IFS=$'\t' read -r slug version entry hash; do
+            [ -n "$slug" ] || continue
+            checkpoint="install-or-resume:$slug"
+            source_dir="$stage/games/$slug/$version"
             target="$final/$slug/$version"
             if [ -e "$target" ]; then
               [ -f "$target/.game-arena-build-sha256" ] || fail "unverifiable immutable collision: $slug@$version"
@@ -124,15 +119,23 @@ jobs:
               [ -f "$target/$entry" ] || fail "existing immutable entrypoint missing: $slug@$version/$entry"
               resumed=$((resumed+1))
             else
+              [ -d "$source_dir" ] || fail "neither staged nor installed immutable version exists: $slug@$version"
+              [ -f "$source_dir/.game-arena-build-sha256" ] || fail "staged build digest missing: $slug@$version"
+              source_hash="$(tr -d '\r\n' < "$source_dir/.game-arena-build-sha256")"
+              [ "$source_hash" = "$hash" ] || fail "staged build digest mismatch: $slug@$version"
+              [ -f "$source_dir/$entry" ] || fail "staged entrypoint missing: $slug@$version/$entry"
               mkdir -p "$final/$slug"
               mv "$source_dir" "$target"
               installed=$((installed+1))
             fi
-          done
-          echo "CHECKPOINT_OK install-immutable-files installed=$installed resumed=$resumed"
+          done < "$stage/control/certification.tsv"
+          checkpoint='install-or-resume-count'
+          [ $((installed + resumed)) -eq 60 ] || fail "expected 60 installed/resumed versions; got installed=$installed resumed=$resumed"
+          echo "CHECKPOINT_OK install-or-resume installed=$installed resumed=$resumed"
 
           checkpoint='preserve-baseline-and-permissions'
           if [ ! -f "$final/arena-dash/index.html" ]; then
+            [ -f "$stage/baseline/arena-dash/index.html" ] || fail 'baseline arena-dash source missing'
             mkdir -p "$final/arena-dash"
             cp "$stage/baseline/arena-dash/index.html" "$final/arena-dash/index.html"
           fi
@@ -145,7 +148,7 @@ jobs:
           export IMAGE_BASE IMAGE_TAG
           compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
           "${compose[@]}" config >/tmp/game-arena-local-content-compose.yml
-          docker image inspect "$IMAGE_BASE-games:$IMAGE_TAG" --format 'CHECKPOINT_OK local-image image_id={{.Id}}' 
+          docker image inspect "$IMAGE_BASE-games:$IMAGE_TAG" --format 'CHECKPOINT_OK local-image image_id={{.Id}}'
           echo 'CHECKPOINT_OK compose-config'
 
           checkpoint='recreate-game-origin'
@@ -161,7 +164,6 @@ jobs:
           [ "$healthy" = 1 ] || fail 'local game-origin failed readiness'
           echo 'CHECKPOINT_OK game-origin-health'
 
-          checkpoint='verify-60-local-urls'
           checked=0
           while IFS=$'\t' read -r slug version entry hash; do
             [ -n "$slug" ] || continue
