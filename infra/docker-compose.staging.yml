@@ -61,7 +61,6 @@ services:
 
   web:
     image: ${IMAGE_BASE}-web:${IMAGE_TAG}
-    pull_policy: always
     environment:
       GAME_ARENA_MODE: live
       GAME_ARENA_RELEASE_SHA: ${IMAGE_TAG}
@@ -72,7 +71,6 @@ services:
 
   admin:
     image: ${IMAGE_BASE}-admin:${IMAGE_TAG}
-    pull_policy: always
     environment:
       GAME_ARENA_ADMIN_API_BASE_URL: /api
       GAME_ARENA_ADMIN_AUTH_MODE: signed-headers
