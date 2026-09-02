@@ -82,7 +82,6 @@ services:
 
   game-origin:
     image: ${IMAGE_BASE}-games:${IMAGE_TAG}
-    pull_policy: always
     environment:
       GAME_ARENA_FRAME_ANCESTORS: "'self'"
     volumes:
