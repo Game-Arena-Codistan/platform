@@ -1,4 +1,4 @@
-name: Bootstrap corrected 60-game local staging publication
+name: Bootstrap corrected 60-game local staging publication after game-origin recreation fix
 
 on:
   push:
