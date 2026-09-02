@@ -1,0 +1,225 @@
+name: Activate and certify exact-60 local staging portfolio
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/local-staging-activate-exact60-20260903.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  activate-and-certify:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      SOURCE_RUN_ID: '33661255938'
+      STAGING_ORIGIN: https://gsmarena-play.codistan.org
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Prepare pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Validate merged metadata and exact server stage
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="/opt/codistan/platform/.game-content-stage-$SOURCE_RUN_ID"
+          cert="$RUNNER_TEMP/exact60-certification.tsv"
+          scp -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST:$stage/control/certification.tsv" "$cert"
+          test "$(grep -cve '^[[:space:]]*$' "$cert")" = 60
+          echo "CERT_FILE=$cert" >> "$GITHUB_ENV"
+
+          CERT_FILE="$cert" node --input-type=module <<'NODE'
+          import {readFile} from 'node:fs/promises';
+          const rows=(await readFile(process.env.CERT_FILE,'utf8')).trim().split(/\r?\n/).map(line=>line.split('\t'));
+          if(rows.length!==60) throw new Error(`Expected 60 certification rows; found ${rows.length}`);
+          const seen=new Set();
+          for(const [slug,version,entry,hash] of rows){
+            if(seen.has(slug)) throw new Error(`Duplicate certification slug: ${slug}`);
+            seen.add(slug);
+            const path=`catalogue/releases/${slug}/${version}.json`;
+            const record=JSON.parse(await readFile(path,'utf8'));
+            if(record.slug!==slug||record.version!==version) throw new Error(`${slug}: merged catalogue identity mismatch`);
+            if(record.entrypoint!==entry) throw new Error(`${slug}: merged entrypoint mismatch`);
+            if(record.buildSha256!==hash) throw new Error(`${slug}: merged digest mismatch`);
+            if(Number(record.rolloutPercentage)!==0) throw new Error(`${slug}: repository metadata must remain rollout 0 before runtime activation`);
+            if(record.productionActivation!==false) throw new Error(`${slug}: productionActivation must remain false`);
+            if(record.hosting?.mode!=='local-staging-server') throw new Error(`${slug}: expected local-staging-server hosting metadata`);
+          }
+          console.log(JSON.stringify({mergedMetadataValidated:rows.length,productionActivation:false}));
+          NODE
+
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "SOURCE_RUN_ID='$SOURCE_RUN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/codistan/platform
+          stage=".game-content-stage-$SOURCE_RUN_ID"
+          final="game-content/games"
+          test -f "$stage/control/runtime-review.sql"
+          test -f "$stage/control/runtime-live.sql"
+          test -f "$stage/control/certification.tsv"
+          test "$(grep -cve '^[[:space:]]*$' "$stage/control/certification.tsv")" = 60
+          curl --fail --silent --show-error http://127.0.0.1:8082/healthz -o /dev/null
+          checked=0
+          while IFS=$'\t' read -r slug version entry hash; do
+            [ -n "$slug" ] || continue
+            test -f "$final/$slug/$version/$entry"
+            test "$(tr -d '\r\n' < "$final/$slug/$version/.game-arena-build-sha256")" = "$hash"
+            curl --fail --silent --show-error "http://127.0.0.1:8082/games/$slug/$version/$entry" -o /dev/null
+            checked=$((checked+1))
+          done < "$stage/control/certification.tsv"
+          test "$checked" = 60
+          curl --fail --silent --show-error http://127.0.0.1:8082/games/arena-dash/index.html -o /dev/null
+          echo "SERVER_PREFLIGHT_READY exact_files=$checked source_run=$SOURCE_RUN_ID"
+          REMOTE
+
+      - name: Activate all 60 runtime records atomically
+        id: activate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "SOURCE_RUN_ID='$SOURCE_RUN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/codistan/platform
+          stage=".game-content-stage-$SOURCE_RUN_ID"
+          IMAGE_BASE='ghcr.io/game-arena-codistan/platform'
+          IMAGE_TAG="$(cat .deployed-sha)"
+          export IMAGE_BASE IMAGE_TAG
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          "${compose[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U game_arena -d game_arena < "$stage/control/runtime-live.sql"
+          "${compose[@]}" restart api
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8095/api/readyz >/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          echo 'RUNTIME_ACTIVATION_READY live=60 rollout=100'
+          REMOTE
+
+      - name: Certify public catalogue and all 60 launch URLs
+        id: certify
+        shell: bash
+        run: |
+          set -euo pipefail
+          CERT_FILE="$CERT_FILE" STAGING_ORIGIN="$STAGING_ORIGIN" EVIDENCE_FILE="$RUNNER_TEMP/exact60-public-certification.json" node --input-type=module <<'NODE'
+          import {readFile,writeFile} from 'node:fs/promises';
+          const rows=(await readFile(process.env.CERT_FILE,'utf8')).trim().split(/\r?\n/).map(line=>line.split('\t'));
+          if(rows.length!==60) throw new Error(`Expected 60 certification rows; found ${rows.length}`);
+          const expected=rows.map(([slug,version,entry,hash])=>({slug,version,entry,hash,gameUrl:`/games/${slug}/${version}/${entry}`}));
+          const origin=process.env.STAGING_ORIGIN.replace(/\/$/,'');
+          const catalogueResponse=await fetch(`${origin}/api/v1/catalog/games`,{signal:AbortSignal.timeout(20000)});
+          if(!catalogueResponse.ok) throw new Error(`Catalogue request failed: HTTP ${catalogueResponse.status}`);
+          const payload=await catalogueResponse.json();
+          const byId=new Map((payload.games||[]).map(game=>[game.id,game]));
+          const failures=[];
+          let cursor=0;
+          const workers=Array.from({length:8},async()=>{
+            while(true){
+              const index=cursor++;
+              if(index>=expected.length) return;
+              const item=expected[index];
+              const record=byId.get(item.slug);
+              if(!record){failures.push(`${item.slug}: missing from public catalogue`);continue;}
+              if(record.status!=='live'||Number(record.rolloutPercentage)!==100){failures.push(`${item.slug}: expected live at 100% rollout`);continue;}
+              if(record.gameUrl!==item.gameUrl){failures.push(`${item.slug}: gameUrl mismatch`);continue;}
+              if(record.rewardsEnabled!==false||record.competitionsEnabled!==false){failures.push(`${item.slug}: rewards/competitions unexpectedly enabled`);continue;}
+              try{
+                const response=await fetch(`${origin}${item.gameUrl}`,{redirect:'follow',signal:AbortSignal.timeout(20000)});
+                if(!response.ok) failures.push(`${item.slug}: launch returned HTTP ${response.status}`);
+                else await response.body?.cancel();
+              }catch(error){failures.push(`${item.slug}: ${error.message}`);}
+            }
+          });
+          await Promise.all(workers);
+          const baseline=await fetch(`${origin}/games/arena-dash/index.html`,{redirect:'follow',signal:AbortSignal.timeout(20000)});
+          if(!baseline.ok) failures.push(`arena-dash baseline: HTTP ${baseline.status}`);
+          else await baseline.body?.cancel();
+          const evidence={
+            decision:failures.length?'NOT_READY':'READY',
+            origin,
+            catalogueGames:Array.isArray(payload.games)?payload.games.length:0,
+            portfolioExpected:60,
+            portfolioLive:failures.length?null:60,
+            launchUrlsPassed:failures.length?null:60,
+            baselinePreserved:baseline.ok,
+            rewardsEnabled:false,
+            competitionsEnabled:false,
+            productionActivation:false,
+            sourceRunId:process.env.SOURCE_RUN_ID||'33661255938',
+            failures
+          };
+          await writeFile(process.env.EVIDENCE_FILE,JSON.stringify(evidence,null,2)+'\n','utf8');
+          if(failures.length) throw new Error(`Exact-60 staging certification failed:\n${failures.join('\n')}`);
+          console.log(JSON.stringify(evidence));
+          NODE
+
+      - name: Roll back runtime catalogue to rollout zero on failed completion
+        if: ${{ failure() && steps.preflight.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "SOURCE_RUN_ID='$SOURCE_RUN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd /opt/codistan/platform
+          stage=".game-content-stage-$SOURCE_RUN_ID"
+          IMAGE_BASE='ghcr.io/game-arena-codistan/platform'
+          IMAGE_TAG="$(cat .deployed-sha)"
+          export IMAGE_BASE IMAGE_TAG
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          "${compose[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U game_arena -d game_arena < "$stage/control/runtime-review.sql"
+          "${compose[@]}" restart api
+          echo 'ROLLBACK_COMPLETE rollout=0 status=review'
+          REMOTE
+
+      - name: Upload exact-60 activation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: exact60-staging-activation-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/exact60-certification.tsv
+            ${{ runner.temp }}/exact60-public-certification.json
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Exact-60 staging completion summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '## Exact-60 local staging activation'
+            echo
+            echo '- Merged repository metadata: 60/60 validated at rollout 0 with productionActivation=false.'
+            echo '- Server immutable files: 60/60 digest and local-origin checks passed.'
+            echo '- Runtime catalogue: 60/60 live at 100% staging rollout.'
+            echo '- Public launch URL certification: 60/60 passed.'
+            echo '- Existing arena-dash baseline: preserved and reachable.'
+            echo '- Rewards and competitions: disabled for imported portfolio.'
+            echo '- Production activation: false; production untouched.'
+          } >> "$GITHUB_STEP_SUMMARY"
