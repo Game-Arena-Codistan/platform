@@ -1,0 +1,124 @@
+name: Diagnose 60-game staging SSH transport
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/local-staging-ssh-preflight-20260902.yml
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+      RELEASE_TAG: portfolio-ingress-60-20260901
+    steps:
+      - name: Validate protected staging SSH material
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+
+      - name: Prepare pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Classify strict SSH transport without server mutation
+        id: transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          error_file="$(mktemp)"
+          trap 'rm -f "$error_file"' EXIT
+          result=unknown
+          last_status=1
+
+          for attempt in 1 2 3; do
+            : > "$error_file"
+            set +e
+            timeout 20s ssh \
+              -i "$HOME/.ssh/game-arena-staging" \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=12 \
+              -o ConnectionAttempts=1 \
+              -o ServerAliveInterval=5 \
+              -o ServerAliveCountMax=2 \
+              "$DEPLOY_USER@$DEPLOY_HOST" 'true' \
+              2>"$error_file"
+            last_status=$?
+            set -e
+
+            if [ "$last_status" -eq 0 ]; then
+              result=healthy
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "$result" != healthy ]; then
+            message="$(cat "$error_file")"
+            if [ "$last_status" -eq 124 ] || grep -Eqi 'timed out|operation timed out|no route to host|network is unreachable' <<<"$message"; then
+              result=network_timeout
+            elif grep -Eqi 'connection refused' <<<"$message"; then
+              result=connection_refused
+            elif grep -Eqi 'host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED' <<<"$message"; then
+              result=host_key_rejected
+            elif grep -Eqi 'permission denied|authentication failed|no supported authentication methods' <<<"$message"; then
+              result=authentication_rejected
+            elif grep -Eqi 'could not resolve hostname|name or service not known|temporary failure in name resolution' <<<"$message"; then
+              result=dns_failure
+            else
+              result=ssh_unavailable_other
+            fi
+          fi
+
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          echo "Strict staging SSH transport classification: $result"
+
+      - name: Dispatch protected 60-game publication when SSH is healthy
+        if: steps.transport.outputs.result == 'healthy'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run game-content-local-staging.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_tag="$RELEASE_TAG"
+
+      - name: Record sanitized transport result on rollout tracker
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ steps.transport.outputs.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$RESULT" = healthy ]; then
+            body="60-game staging SSH preflight: **healthy**. Strict pinned-host SSH succeeded without server mutation, so the protected 60-game local-staging workflow was dispatched automatically for release \`$RELEASE_TAG\`. Evidence: $run_url. Production remains untouched."
+          else
+            body="60-game staging SSH preflight: **$RESULT**. The protected credentials are present, but strict pinned-host SSH could not establish a usable session after three bounded attempts. No server mutation occurred and the 60-game publication was not re-dispatched. DevOps should correct only the staging SSH/network boundary indicated by this classification, then rerun this preflight. Evidence: $run_url. Production remains untouched."
+          fi
+          gh issue comment 74 --repo "$GITHUB_REPOSITORY" --body "$body"
