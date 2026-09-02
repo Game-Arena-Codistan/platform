@@ -64,7 +64,10 @@ for(const manifestPath of manifests) {
   const manifest=JSON.parse(await readFile(manifestPath,'utf8'));
   const slug=safeSlug(manifest.slug);
   const version=safeVersion(manifest.version);
-  const entrypoint=safeEntrypoint(manifest.entrypoint);
+  const entrypoint=safeEntrypoint(manifest.entryFile);
+  const expectedHostedEntrypoint=`/games/${slug}/${version}/${entrypoint}`;
+  const packagedEntrypoint=firstString(manifest.entrypoint);
+  if(packagedEntrypoint&&packagedEntrypoint!==expectedHostedEntrypoint) throw new Error(`Unexpected hosted entrypoint for ${slug}: ${packagedEntrypoint}`);
   const buildSha256=String(manifest.buildSha256||'');
   if(!/^[a-f0-9]{64}$/.test(buildSha256)) throw new Error(`Invalid buildSha256 for ${slug}`);
   if(seen.has(slug)) throw new Error(`Duplicate slug: ${slug}`);
@@ -85,7 +88,7 @@ for(const manifestPath of manifests) {
   const minDeviceTier=['lite','standard','high'].includes(String(manifest.minDeviceTier||'')) ? String(manifest.minDeviceTier) : 'lite';
   const permissions=manifest.permissions&&typeof manifest.permissions==='object' ? manifest.permissions : {};
   const bridgeVersion=manifest.bridgeVersion??1;
-  const gameUrl=`/games/${slug}/${version}/${entrypoint}`;
+  const gameUrl=expectedHostedEntrypoint;
 
   const record={
     id:slug,slug,title,
