@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "releaseTag": "pilot-ingress-four-games-20260801",
+  "releaseId": 363598339,
+  "productionActivation": false,
+  "sourceVault": {
+    "mode": "private-versioned-s3",
+    "ssmParameter": "/game-arena/staging/game-source-vault-bucket",
+    "keyPattern": "sources/<slug>/<variant>/<sha256>/<assetName>"
+  },
+  "games": [
+    {
+      "slug": "duck-hunter",
+      "sources": [
+        {
+          "variant": "modified",
+          "assetName": "duck-hunter-modified-source.zip",
+          "bytes": 71713778,
+          "sha256": "d693dbbea355a41c676707ee2a78ff2b15fc21cc791d6f3efea58c5909e625e8",
+          "vaultKey": "sources/duck-hunter/modified/d693dbbea355a41c676707ee2a78ff2b15fc21cc791d6f3efea58c5909e625e8/duck-hunter-modified-source.zip"
+        },
+        {
+          "variant": "original",
+          "assetName": "duck-hunter-original-source.zip",
+          "bytes": 220909089,
+          "sha256": "36621e91d8b4aceca02001e194863c4d535ade8dc5867cbbcf3f2e850e05a9e8",
+          "vaultKey": "sources/duck-hunter/original/36621e91d8b4aceca02001e194863c4d535ade8dc5867cbbcf3f2e850e05a9e8/duck-hunter-original-source.zip"
+        }
+      ]
+    },
+    {
+      "slug": "ranger-vs-zombies",
+      "sources": [
+        {
+          "variant": "modified",
+          "assetName": "ranger-vs-zombies-modified-source.zip",
+          "bytes": 74215844,
+          "sha256": "72ed103e1243cd66f383dada1149155e2172985fd0faad5118787159cb9f8f76",
+          "vaultKey": "sources/ranger-vs-zombies/modified/72ed103e1243cd66f383dada1149155e2172985fd0faad5118787159cb9f8f76/ranger-vs-zombies-modified-source.zip"
+        },
+        {
+          "variant": "original",
+          "assetName": "ranger-vs-zombies-original-source.zip",
+          "bytes": 232513671,
+          "sha256": "d0bc6b899bc1a84cf40cdb9cdb3722769871520276e6d01a36cb748c782828f8",
+          "vaultKey": "sources/ranger-vs-zombies/original/d0bc6b899bc1a84cf40cdb9cdb3722769871520276e6d01a36cb748c782828f8/ranger-vs-zombies-original-source.zip"
+        }
+      ]
+    },
+    {
+      "slug": "robotex",
+      "sources": [
+        {
+          "variant": "modified",
+          "assetName": "robotex-modified-source.zip",
+          "bytes": 88785132,
+          "sha256": "a24c4c081884f9b575c4074d092c97c8b10cf54961be6150545c0fe425205c62",
+          "vaultKey": "sources/robotex/modified/a24c4c081884f9b575c4074d092c97c8b10cf54961be6150545c0fe425205c62/robotex-modified-source.zip"
+        },
+        {
+          "variant": "original",
+          "assetName": "robotex-original-source.zip",
+          "bytes": 216045267,
+          "sha256": "3695eb8200a139b9c078bb30dcfa3674c176f612e6c4c5368b9dfbb940255b58",
+          "vaultKey": "sources/robotex/original/3695eb8200a139b9c078bb30dcfa3674c176f612e6c4c5368b9dfbb940255b58/robotex-original-source.zip"
+        }
+      ]
+    },
+    {
+      "slug": "swat-vs-zombies",
+      "sources": [
+        {
+          "variant": "modified",
+          "assetName": "swat-vs-zombies-modified-source.zip",
+          "bytes": 218255221,
+          "sha256": "7ddd9b40f7bcc0dcfc92c65b7e431acad530886750ddde221471d7579e998613",
+          "vaultKey": "sources/swat-vs-zombies/modified/7ddd9b40f7bcc0dcfc92c65b7e431acad530886750ddde221471d7579e998613/swat-vs-zombies-modified-source.zip"
+        },
+        {
+          "variant": "original",
+          "assetName": "swat-vs-zombies-original-source.zip",
+          "bytes": 524784432,
+          "sha256": "c32fd39e995bdab85c952cc8c785487bbcc14eecf89105d91f72db8bd6257061",
+          "vaultKey": "sources/swat-vs-zombies/original/c32fd39e995bdab85c952cc8c785487bbcc14eecf89105d91f72db8bd6257061/swat-vs-zombies-original-source.zip"
+        }
+      ]
+    }
+  ]
+}
