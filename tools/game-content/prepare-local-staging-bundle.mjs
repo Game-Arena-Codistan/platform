@@ -1,5 +1,6 @@
 import {readFile,readdir,writeFile,mkdir,access} from 'node:fs/promises';
 import {resolve,relative,dirname,join,sep} from 'node:path';
+import {catalogue as canonicalCatalogue} from '../../apps/api/src/catalogue/index.mjs';
 
 function argument(name, fallback='') {
   const index=process.argv.indexOf(`--${name}`);
@@ -44,6 +45,7 @@ async function collectManifests(root) {
 }
 function firstString(...values) { return values.find(value=>typeof value==='string'&&value.trim())?.trim(); }
 
+const canonicalById=new Map(canonicalCatalogue.map(game=>[game.id,game]));
 const gamesRoot=required('games-root');
 const outputRoot=required('output');
 const catalogueRoot=required('catalogue-root');
@@ -80,29 +82,36 @@ for(const manifestPath of manifests) {
   if(!entryPath.startsWith(`${resolve(versionDir)}${sep}`)) throw new Error(`Entrypoint escapes version directory: ${slug}`);
   await access(entryPath);
 
-  const title=firstString(manifest.title,slug.replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase()));
-  const genre=firstString(manifest.genre,Array.isArray(manifest.genres)?manifest.genres[0]:undefined,'Arcade');
-  const genres=Array.isArray(manifest.genres)&&manifest.genres.length ? manifest.genres.map(String) : [genre];
-  const tier=['free','premium'].includes(String(manifest.tier||'')) ? String(manifest.tier) : 'free';
-  const orientation=['portrait','landscape','any'].includes(String(manifest.orientation||'')) ? String(manifest.orientation) : 'landscape';
+  const canonical=canonicalById.get(slug)||{};
+  const title=firstString(manifest.title,canonical.title,slug.replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase()));
+  const description=firstString(manifest.description,canonical.description,`Play ${title} on Game Arena.`);
+  const genre=firstString(manifest.genre,Array.isArray(manifest.genres)?manifest.genres[0]:undefined,canonical.genre,Array.isArray(canonical.genres)?canonical.genres[0]:undefined,'Arcade');
+  const genres=Array.isArray(manifest.genres)&&manifest.genres.length ? manifest.genres.map(String) : Array.isArray(canonical.genres)&&canonical.genres.length ? canonical.genres.map(String) : [genre];
+  const tier=['free','premium'].includes(String(manifest.tier||'')) ? String(manifest.tier) : ['free','premium'].includes(String(canonical.tier||'')) ? String(canonical.tier) : 'free';
+  const orientation=['portrait','landscape','any'].includes(String(manifest.orientation||'')) ? String(manifest.orientation) : ['portrait','landscape','any'].includes(String(canonical.orientation||'')) ? String(canonical.orientation) : 'landscape';
+  const multiplayer=typeof manifest.multiplayer==='boolean' ? manifest.multiplayer : Boolean(canonical.multiplayer);
+  const reward=Number.isFinite(Number(manifest.reward)) ? Number(manifest.reward) : Number.isFinite(Number(canonical.reward)) ? Number(canonical.reward) : 0;
+  const matchSupport=firstString(manifest.matchSupport,canonical.matchSupport);
   const minDeviceTier=['lite','standard','high'].includes(String(manifest.minDeviceTier||'')) ? String(manifest.minDeviceTier) : 'lite';
   const permissions=manifest.permissions&&typeof manifest.permissions==='object' ? manifest.permissions : {};
   const bridgeVersion=manifest.bridgeVersion??1;
   const gameUrl=expectedHostedEntrypoint;
 
   const record={
-    id:slug,slug,title,
-    description:firstString(manifest.description,`Play ${title} on Game Arena.`),
+    id:slug,slug,title,description,
     genre,genres,tier,orientation,
-    multiplayer:Boolean(manifest.multiplayer),reward:0,
+    multiplayer,reward,
     status:'review',state:'review',rolloutPercentage:0,
     gameUrl,version,minDeviceTier,permissions,bridgeVersion,
     preview:false,sourceType:'portfolio-bundle-local',
     rewardsEnabled:false,competitionsEnabled:false,
     buildSha256,entrypoint,localHosted:true,ingressRelease:releaseTag
   };
-  if(firstString(manifest.iconUrl)) record.iconUrl=manifest.iconUrl;
-  if(firstString(manifest.bannerUrl)) record.bannerUrl=manifest.bannerUrl;
+  if(matchSupport) record.matchSupport=matchSupport;
+  const iconUrl=firstString(manifest.iconUrl,canonical.iconUrl);
+  const bannerUrl=firstString(manifest.bannerUrl,canonical.bannerUrl);
+  if(iconUrl) record.iconUrl=iconUrl;
+  if(bannerUrl) record.bannerUrl=bannerUrl;
   runtime.push(record);
 
   await writeFile(join(versionDir,'.game-arena-build-sha256'),`${buildSha256}\n`,'utf8');
@@ -115,7 +124,8 @@ for(const manifestPath of manifests) {
   const releaseDir=join(catalogueRoot,slug);
   await mkdir(releaseDir,{recursive:true});
   await writeFile(join(releaseDir,`${version}.json`),JSON.stringify({
-    schemaVersion:manifest.schemaVersion,slug,title,version,entrypoint,gameUrl,
+    schemaVersion:manifest.schemaVersion,slug,title,description,genre,genres,tier,orientation,multiplayer,reward,
+    ...(matchSupport?{matchSupport}:{}),version,entrypoint,gameUrl,
     buildSha256,totalBytes:manifest.totalBytes,fileCount:manifest.fileCount,
     permissions,bridgeVersion,minDeviceTier,
     rolloutPercentage:0,publishedAt:manifest.publishedAt,publishedBy:manifest.publishedBy,
