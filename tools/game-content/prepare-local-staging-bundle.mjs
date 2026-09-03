@@ -83,14 +83,31 @@ for(const manifestPath of manifests) {
   await access(entryPath);
 
   const canonical=canonicalById.get(slug)||{};
-  const title=firstString(manifest.title,canonical.title,slug.replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase()));
-  const description=firstString(manifest.description,canonical.description,`Play ${title} on Game Arena.`);
-  const genre=firstString(manifest.genre,Array.isArray(manifest.genres)?manifest.genres[0]:undefined,canonical.genre,Array.isArray(canonical.genres)?canonical.genres[0]:undefined,'Arcade');
-  const genres=Array.isArray(manifest.genres)&&manifest.genres.length ? manifest.genres.map(String) : Array.isArray(canonical.genres)&&canonical.genres.length ? canonical.genres.map(String) : [genre];
-  const tier=['free','premium'].includes(String(manifest.tier||'')) ? String(manifest.tier) : ['free','premium'].includes(String(canonical.tier||'')) ? String(canonical.tier) : 'free';
-  const orientation=['portrait','landscape','any'].includes(String(manifest.orientation||'')) ? String(manifest.orientation) : ['portrait','landscape','any'].includes(String(canonical.orientation||'')) ? String(canonical.orientation) : 'landscape';
-  const multiplayer=typeof manifest.multiplayer==='boolean' ? manifest.multiplayer : Boolean(canonical.multiplayer);
-  const reward=Number.isFinite(Number(manifest.reward)) ? Number(manifest.reward) : Number.isFinite(Number(canonical.reward)) ? Number(canonical.reward) : 0;
+  const hasCanonical=canonicalById.has(slug);
+  const manifestTitle=firstString(manifest.title);
+  const canonicalTitle=firstString(canonical.title);
+  const title=firstString(manifestTitle,canonicalTitle,slug.replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase()));
+  const manifestDescription=firstString(manifest.description);
+  const canonicalDescription=firstString(canonical.description);
+  const description=firstString(manifestDescription,canonicalDescription,`Play ${title} on Game Arena.`);
+  const manifestGenre=firstString(manifest.genre,Array.isArray(manifest.genres)?manifest.genres[0]:undefined);
+  const canonicalGenre=firstString(canonical.genre,Array.isArray(canonical.genres)?canonical.genres[0]:undefined);
+  const genre=firstString(manifestGenre,canonicalGenre,'Arcade');
+  const manifestGenres=Array.isArray(manifest.genres)&&manifest.genres.length ? manifest.genres.map(String) : null;
+  const canonicalGenres=Array.isArray(canonical.genres)&&canonical.genres.length ? canonical.genres.map(String) : null;
+  const genres=manifestGenres||canonicalGenres||[genre];
+  const manifestTier=['free','premium'].includes(String(manifest.tier||'')) ? String(manifest.tier) : null;
+  const canonicalTier=['free','premium'].includes(String(canonical.tier||'')) ? String(canonical.tier) : null;
+  const tier=manifestTier||canonicalTier||'free';
+  const manifestOrientation=['portrait','landscape','any'].includes(String(manifest.orientation||'')) ? String(manifest.orientation) : null;
+  const canonicalOrientation=['portrait','landscape','any'].includes(String(canonical.orientation||'')) ? String(canonical.orientation) : null;
+  const orientation=manifestOrientation||canonicalOrientation||'landscape';
+  const hasManifestMultiplayer=typeof manifest.multiplayer==='boolean';
+  const hasCanonicalMultiplayer=typeof canonical.multiplayer==='boolean';
+  const multiplayer=hasManifestMultiplayer ? manifest.multiplayer : hasCanonicalMultiplayer ? canonical.multiplayer : false;
+  const hasManifestReward=manifest.reward!==undefined&&manifest.reward!==null&&Number.isFinite(Number(manifest.reward));
+  const hasCanonicalReward=canonical.reward!==undefined&&canonical.reward!==null&&Number.isFinite(Number(canonical.reward));
+  const reward=hasManifestReward ? Number(manifest.reward) : hasCanonicalReward ? Number(canonical.reward) : 0;
   const matchSupport=firstString(manifest.matchSupport,canonical.matchSupport);
   const minDeviceTier=['lite','standard','high'].includes(String(manifest.minDeviceTier||'')) ? String(manifest.minDeviceTier) : 'lite';
   const permissions=manifest.permissions&&typeof manifest.permissions==='object' ? manifest.permissions : {};
@@ -108,16 +125,41 @@ for(const manifestPath of manifests) {
     buildSha256,entrypoint,localHosted:true,ingressRelease:releaseTag
   };
   if(matchSupport) record.matchSupport=matchSupport;
-  const iconUrl=firstString(manifest.iconUrl,canonical.iconUrl);
-  const bannerUrl=firstString(manifest.bannerUrl,canonical.bannerUrl);
+  const manifestIcon=firstString(manifest.iconUrl);
+  const canonicalIcon=firstString(canonical.iconUrl);
+  const iconUrl=firstString(manifestIcon,canonicalIcon);
+  const manifestBanner=firstString(manifest.bannerUrl);
+  const canonicalBanner=firstString(canonical.bannerUrl);
+  const bannerUrl=firstString(manifestBanner,canonicalBanner);
   if(iconUrl) record.iconUrl=iconUrl;
   if(bannerUrl) record.bannerUrl=bannerUrl;
   runtime.push(record);
 
+  const updateRecord={
+    id:slug,slug,
+    status:'review',state:'review',rolloutPercentage:0,
+    gameUrl,version,minDeviceTier,permissions,bridgeVersion,
+    preview:false,sourceType:'portfolio-bundle-local',
+    rewardsEnabled:false,competitionsEnabled:false,
+    buildSha256,entrypoint,localHosted:true,ingressRelease:releaseTag
+  };
+  if(manifestTitle||canonicalTitle) updateRecord.title=title;
+  if(manifestDescription||canonicalDescription) updateRecord.description=description;
+  if(manifestGenre||canonicalGenre) updateRecord.genre=genre;
+  if(manifestGenres||canonicalGenres) updateRecord.genres=genres;
+  if(manifestTier||canonicalTier) updateRecord.tier=tier;
+  if(manifestOrientation||canonicalOrientation) updateRecord.orientation=orientation;
+  if(hasManifestMultiplayer||hasCanonicalMultiplayer) updateRecord.multiplayer=multiplayer;
+  if(hasManifestReward||hasCanonicalReward) updateRecord.reward=reward;
+  if(matchSupport) updateRecord.matchSupport=matchSupport;
+  if(manifestIcon||canonicalIcon) updateRecord.iconUrl=iconUrl;
+  if(manifestBanner||canonicalBanner) updateRecord.bannerUrl=bannerUrl;
+  if(hasCanonical && !hasCanonicalMultiplayer) throw new Error(`Canonical multiplayer metadata is invalid for ${slug}`);
+
   await writeFile(join(versionDir,'.game-arena-build-sha256'),`${buildSha256}\n`,'utf8');
   await writeFile(join(versionDir,'.game-arena-entrypoint'),`${entrypoint}\n`,'utf8');
 
-  reviewSql.push(`INSERT INTO ga_runtime_games(record_key,revision,record,deleted_at,updated_at) VALUES (${sqlLiteral(slug)},1,${jsonExpression(record)},NULL,clock_timestamp()) ON CONFLICT(record_key) DO UPDATE SET revision=ga_runtime_games.revision+1,record=ga_runtime_games.record || EXCLUDED.record,deleted_at=NULL,updated_at=clock_timestamp();`);
+  reviewSql.push(`INSERT INTO ga_runtime_games(record_key,revision,record,deleted_at,updated_at) VALUES (${sqlLiteral(slug)},1,${jsonExpression(record)},NULL,clock_timestamp()) ON CONFLICT(record_key) DO UPDATE SET revision=ga_runtime_games.revision+1,record=ga_runtime_games.record || ${jsonExpression(updateRecord)},deleted_at=NULL,updated_at=clock_timestamp();`);
   const livePatch={status:'live',state:'live',rolloutPercentage:100,rewardsEnabled:false,competitionsEnabled:false};
   liveSql.push(`UPDATE ga_runtime_games SET revision=revision+1,record=record || ${jsonExpression(livePatch)},updated_at=clock_timestamp() WHERE record_key=${sqlLiteral(slug)} AND deleted_at IS NULL AND record->>'buildSha256'=${sqlLiteral(buildSha256)};`);
 
