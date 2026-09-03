@@ -1,0 +1,123 @@
+name: Repair imported local-staging game metadata
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/game-content/prepare-local-staging-bundle.mjs
+      - tools/game-content/repair-local-staging-canonical-metadata.mjs
+      - .github/workflows/repair-local-staging-canonical-metadata.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: game-arena-staging
+  cancel-in-progress: false
+
+env:
+  STAGING_ORIGIN: https://gsmarena-play.codistan.org
+  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+  DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+  DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+  DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Generate exact guarded metadata repair
+        run: |
+          set -euo pipefail
+          node tools/game-content/repair-local-staging-canonical-metadata.mjs \
+            --releases-root catalogue/releases \
+            --output "$RUNNER_TEMP/canonical-metadata-repair.sql" \
+            --evidence "$RUNNER_TEMP/canonical-metadata-repair.json"
+          jq -e '.decision == "READY_TO_REPAIR" and .records == 60 and .productionActivation == false and (.multiplayerIds | length) > 0' "$RUNNER_TEMP/canonical-metadata-repair.json" >/dev/null
+          jq -e 'any(.repaired[]; .slug == "tank-wars" and .multiplayer == true)' "$RUNNER_TEMP/canonical-metadata-repair.json" >/dev/null
+
+      - name: Prepare pinned SSH host identity
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Apply canonical metadata repair to guarded staging records
+        run: |
+          set -euo pipefail
+          remote_sql="/tmp/game-arena-canonical-metadata-$GITHUB_RUN_ID.sql"
+          scp -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes \
+            "$RUNNER_TEMP/canonical-metadata-repair.sql" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$remote_sql"
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "REMOTE_SQL='$remote_sql' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          IMAGE_BASE='ghcr.io/game-arena-codistan/platform'
+          IMAGE_TAG="$(cat .deployed-sha)"
+          export IMAGE_BASE IMAGE_TAG
+          compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
+          "${compose[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U game_arena -d game_arena < "$REMOTE_SQL"
+          rm -f "$REMOTE_SQL"
+          "${compose[@]}" restart api
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8081/readyz >/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          [ "$ready" = 1 ] || { echo 'API did not recover after canonical metadata repair.' >&2; exit 1; }
+          REMOTE
+
+      - name: Certify repaired public multiplayer metadata
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$STAGING_ORIGIN/api/v1/catalog/games" > "$RUNNER_TEMP/public-catalogue.json"
+          jq -e '.games | type == "array" and length >= 60' "$RUNNER_TEMP/public-catalogue.json" >/dev/null
+          while IFS= read -r slug; do
+            jq -e --arg slug "$slug" 'any(.games[]; .id == $slug and .multiplayer == true and (.status | ascii_downcase) == "live" and ((.rolloutPercentage // .rolloutPercent // 100) | tonumber) == 100)' "$RUNNER_TEMP/public-catalogue.json" >/dev/null
+          done < <(jq -r '.multiplayerIds[]' "$RUNNER_TEMP/canonical-metadata-repair.json")
+          jq -e 'any(.games[]; .id == "tank-wars" and .multiplayer == true)' "$RUNNER_TEMP/public-catalogue.json" >/dev/null
+          jq -n \
+            --arg decision READY \
+            --argjson repaired "$(jq '.records' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
+            --argjson multiplayer "$(jq '.multiplayerIds | length' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
+            '{schemaVersion:1,decision:$decision,recordsRepaired:$repaired,multiplayerGamesVerified:$multiplayer,productionActivation:false}' \
+            > "$RUNNER_TEMP/canonical-metadata-certification.json"
+
+      - name: Upload repair evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: local-staging-canonical-metadata-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/canonical-metadata-repair.json
+            ${{ runner.temp }}/canonical-metadata-certification.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Completion summary
+        run: |
+          {
+            echo '## Local-staging canonical metadata repair'
+            echo
+            echo '- Guarded portfolio records repaired: 60/60.'
+            echo "- Multiplayer-capable public records verified: $(jq '.multiplayerIds | length' "$RUNNER_TEMP/canonical-metadata-repair.json")."
+            echo '- Tank Wars multiplayer capability: restored and publicly verified.'
+            echo '- Rollout: preserved at live/100%.'
+            echo '- Rewards/competitions: preserved disabled for imported portfolio records.'
+            echo '- Production activation: false; production untouched.'
+          } >> "$GITHUB_STEP_SUMMARY"
