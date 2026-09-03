@@ -44,7 +44,7 @@ jobs:
             --releases-root catalogue/releases \
             --output "$RUNNER_TEMP/canonical-metadata-repair.sql" \
             --evidence "$RUNNER_TEMP/canonical-metadata-repair.json"
-          jq -e '.decision == "READY_TO_REPAIR" and .records == 60 and .productionActivation == false and (.multiplayerIds | length) > 0' "$RUNNER_TEMP/canonical-metadata-repair.json" >/dev/null
+          jq -e '.decision == "READY_TO_REPAIR" and .scannedRecords == 60 and .records > 0 and .records <= 60 and .productionActivation == false and (.multiplayerIds | length) > 0' "$RUNNER_TEMP/canonical-metadata-repair.json" >/dev/null
           jq -e 'any(.repaired[]; .slug == "tank-wars" and .multiplayer == true)' "$RUNNER_TEMP/canonical-metadata-repair.json" >/dev/null
 
       - name: Prepare pinned SSH host identity
@@ -94,9 +94,10 @@ jobs:
           jq -e 'any(.games[]; .id == "tank-wars" and .multiplayer == true)' "$RUNNER_TEMP/public-catalogue.json" >/dev/null
           jq -n \
             --arg decision READY \
+            --argjson scanned "$(jq '.scannedRecords' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
             --argjson repaired "$(jq '.records' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
             --argjson multiplayer "$(jq '.multiplayerIds | length' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
-            '{schemaVersion:1,decision:$decision,recordsRepaired:$repaired,multiplayerGamesVerified:$multiplayer,productionActivation:false}' \
+            '{schemaVersion:1,decision:$decision,recordsScanned:$scanned,canonicalRecordsRepaired:$repaired,multiplayerGamesVerified:$multiplayer,productionActivation:false}' \
             > "$RUNNER_TEMP/canonical-metadata-certification.json"
 
       - name: Upload repair evidence
@@ -114,10 +115,12 @@ jobs:
           {
             echo '## Local-staging canonical metadata repair'
             echo
-            echo '- Guarded portfolio records repaired: 60/60.'
+            echo '- Imported portfolio records safety-checked: 60/60.'
+            echo "- Reviewed canonical records repaired: $(jq '.records' "$RUNNER_TEMP/canonical-metadata-repair.json")."
+            echo "- Imported-only records left product-metadata-neutral: $(jq '.skippedNoCanonical | length' "$RUNNER_TEMP/canonical-metadata-repair.json")."
             echo "- Multiplayer-capable public records verified: $(jq '.multiplayerIds | length' "$RUNNER_TEMP/canonical-metadata-repair.json")."
             echo '- Tank Wars multiplayer capability: restored and publicly verified.'
-            echo '- Rollout: preserved at live/100%.'
+            echo '- Rollout: preserved at live/100% for all 60 imported records.'
             echo '- Rewards/competitions: preserved disabled for imported portfolio records.'
             echo '- Production activation: false; production untouched.'
           } >> "$GITHUB_STEP_SUMMARY"
