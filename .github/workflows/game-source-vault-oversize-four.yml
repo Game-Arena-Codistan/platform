@@ -20,6 +20,7 @@ concurrency:
 env:
   RELEASE_TAG: pilot-ingress-four-games-20260801
   PROVENANCE_FILE: catalogue/sources/oversize-four-source-provenance.json
+  STAGING_AWS_REGION: ap-south-1
 
 jobs:
   archive:
@@ -39,7 +40,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ secrets.AWS_INFRA_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ env.STAGING_AWS_REGION }}
           role-session-name: game-arena-source-vault-${{ github.run_id }}
 
       - name: Prepare protected staging OpenTofu configuration
@@ -60,7 +61,7 @@ jobs:
             *) echo 'Authenticated AWS account does not match the protected infrastructure role ARN.' >&2; exit 1 ;;
           esac
           printf '%s' "$TFVARS_B64" | base64 -d > infra/opentofu/aws/environment.auto.tfvars.json
-          jq -e --arg account "$account_id" '.environment == "staging" and .expected_aws_account_id == $account' infra/opentofu/aws/environment.auto.tfvars.json >/dev/null
+          jq -e --arg account "$account_id" --arg region "$STAGING_AWS_REGION" '.environment == "staging" and .expected_aws_account_id == $account and .aws_region == $region' infra/opentofu/aws/environment.auto.tfvars.json >/dev/null
           chmod 600 infra/opentofu/aws/environment.auto.tfvars.json
           echo "EXPECTED_AWS_ACCOUNT_ID=$account_id" >> "$GITHUB_ENV"
           if [ -n "$STATE_KMS_KEY_ID" ]; then
@@ -71,7 +72,7 @@ jobs:
         working-directory: infra/opentofu/aws
         env:
           STATE_BUCKET: ${{ vars.AWS_TF_STATE_BUCKET }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_REGION: ${{ env.STAGING_AWS_REGION }}
         run: |
           set -euo pipefail
           tofu init -input=false -upgrade=false -lockfile=readonly \
