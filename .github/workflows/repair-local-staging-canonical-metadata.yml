@@ -1,16 +1,14 @@
 name: Repair imported local-staging game metadata
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - tools/game-content/prepare-local-staging-bundle.mjs
-      - tools/game-content/repair-local-staging-canonical-metadata.mjs
-      - .github/workflows/repair-local-staging-canonical-metadata.yml
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Build and Deploy Game Arena Platform - Staging"]
+    types: [completed]
 
 permissions:
   contents: read
+  actions: read
+  packages: read
 
 concurrency:
   group: game-arena-staging
@@ -28,16 +26,39 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 30
+    outputs:
+      eligible: ${{ steps.gate.outputs.eligible }}
+      deployed_sha: ${{ steps.gate.outputs.deployed_sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Require the completed deployment to still be current main
+        id: gate
+        run: |
+          set -euo pipefail
+          event_sha='${{ github.event.workflow_run.head_sha }}'
+          [[ "$event_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid deployment SHA.' >&2; exit 1; }
+          git fetch --no-tags origin main
+          latest="$(git rev-parse origin/main)"
+          echo "deployed_sha=$event_sha" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$event_sha" ]; then
+            echo 'eligible=false' >> "$GITHUB_OUTPUT"
+            echo "Skipping stale deployment event $event_sha because current main is $latest."
+            exit 0
+          fi
+          echo 'eligible=true' >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.gate.outputs.eligible == 'true'
         with:
           node-version: 22
 
       - name: Generate exact guarded metadata repair
+        if: steps.gate.outputs.eligible == 'true'
         run: |
           set -euo pipefail
           node tools/game-content/repair-local-staging-canonical-metadata.mjs \
@@ -48,6 +69,7 @@ jobs:
           jq -e 'any(.repaired[]; .slug == "tank-wars" and .multiplayer == true)' "$RUNNER_TEMP/canonical-metadata-repair.json" >/dev/null
 
       - name: Prepare pinned SSH host identity
+        if: steps.gate.outputs.eligible == 'true'
         run: |
           set -euo pipefail
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER" && test -n "$DEPLOY_SSH_KEY" && test -n "$DEPLOY_SSH_KNOWN_HOSTS"
@@ -57,7 +79,10 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Apply canonical metadata repair to guarded staging records
+      - name: Apply canonical metadata repair to exact deployed staging SHA
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          EXPECTED_SHA: ${{ steps.gate.outputs.deployed_sha }}
         run: |
           set -euo pipefail
           remote_sql="/tmp/game-arena-canonical-metadata-$GITHUB_RUN_ID.sql"
@@ -65,11 +90,13 @@ jobs:
             "$RUNNER_TEMP/canonical-metadata-repair.sql" \
             "$DEPLOY_USER@$DEPLOY_HOST:$remote_sql"
           ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "REMOTE_SQL='$remote_sql' bash -s" <<'REMOTE'
+            "REMOTE_SQL='$remote_sql' EXPECTED_SHA='$EXPECTED_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /opt/codistan/platform
+          deployed="$(cat .deployed-sha)"
+          [ "$deployed" = "$EXPECTED_SHA" ] || { echo "Staging SHA changed before repair: $deployed != $EXPECTED_SHA" >&2; rm -f "$REMOTE_SQL"; exit 1; }
           IMAGE_BASE='ghcr.io/game-arena-codistan/platform'
-          IMAGE_TAG="$(cat .deployed-sha)"
+          IMAGE_TAG="$deployed"
           export IMAGE_BASE IMAGE_TAG
           compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
           "${compose[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U game_arena -d game_arena < "$REMOTE_SQL"
@@ -81,9 +108,11 @@ jobs:
             sleep 2
           done
           [ "$ready" = 1 ] || { echo 'API did not recover after canonical metadata repair.' >&2; exit 1; }
+          [ "$(cat .deployed-sha)" = "$EXPECTED_SHA" ] || { echo 'Deployed SHA changed during repair.' >&2; exit 1; }
           REMOTE
 
       - name: Certify repaired public multiplayer metadata
+        if: steps.gate.outputs.eligible == 'true'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error "$STAGING_ORIGIN/api/v1/catalog/games" > "$RUNNER_TEMP/public-catalogue.json"
@@ -94,13 +123,15 @@ jobs:
           jq -e 'any(.games[]; .id == "tank-wars" and .multiplayer == true)' "$RUNNER_TEMP/public-catalogue.json" >/dev/null
           jq -n \
             --arg decision READY \
+            --arg deployedSha '${{ steps.gate.outputs.deployed_sha }}' \
             --argjson scanned "$(jq '.scannedRecords' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
             --argjson repaired "$(jq '.records' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
             --argjson multiplayer "$(jq '.multiplayerIds | length' "$RUNNER_TEMP/canonical-metadata-repair.json")" \
-            '{schemaVersion:1,decision:$decision,recordsScanned:$scanned,canonicalRecordsRepaired:$repaired,multiplayerGamesVerified:$multiplayer,productionActivation:false}' \
+            '{schemaVersion:1,decision:$decision,deployedSha:$deployedSha,recordsScanned:$scanned,canonicalRecordsRepaired:$repaired,multiplayerGamesVerified:$multiplayer,productionActivation:false}' \
             > "$RUNNER_TEMP/canonical-metadata-certification.json"
 
       - name: Upload repair evidence
+        if: steps.gate.outputs.eligible == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: local-staging-canonical-metadata-${{ github.run_id }}
@@ -111,6 +142,7 @@ jobs:
           if-no-files-found: error
 
       - name: Completion summary
+        if: steps.gate.outputs.eligible == 'true'
         run: |
           {
             echo '## Local-staging canonical metadata repair'
@@ -124,3 +156,12 @@ jobs:
             echo '- Rewards/competitions: preserved disabled for imported portfolio records.'
             echo '- Production activation: false; production untouched.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  certify:
+    needs: repair
+    if: needs.repair.outputs.eligible == 'true'
+    uses: ./.github/workflows/aws-staging-certification.yml
+    with:
+      image_tag: ${{ needs.repair.outputs.deployed_sha }}
+      deployment_run_id: ${{ github.event.workflow_run.id }}
+    secrets: inherit
