@@ -104,10 +104,14 @@ jobs:
           "${compose[@]}" restart api
           ready=0
           for _ in $(seq 1 60); do
-            if curl --fail --silent http://127.0.0.1:8081/readyz >/dev/null; then ready=1; break; fi
+            if curl --fail --silent http://127.0.0.1:8095/api/readyz >/dev/null; then ready=1; break; fi
             sleep 2
           done
-          [ "$ready" = 1 ] || { echo 'API did not recover after canonical metadata repair.' >&2; exit 1; }
+          if [ "$ready" != 1 ]; then
+            echo 'API did not recover behind the staging gateway after canonical metadata repair.' >&2
+            "${compose[@]}" ps
+            exit 1
+          fi
           [ "$(cat .deployed-sha)" = "$EXPECTED_SHA" ] || { echo 'Deployed SHA changed during repair.' >&2; exit 1; }
           REMOTE
 
