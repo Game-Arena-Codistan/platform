@@ -41,10 +41,15 @@ if(releaseRows.length!==60)throw new Error(`Expected exactly 60 local-staging re
 
 const statements=['BEGIN;'];
 const repaired=[];
+const skippedNoCanonical=[];
 const multiplayerIds=[];
-for(const release of releaseRows.sort((a,b)=>a.slug.localeCompare(b.slug))){
+const orderedReleases=releaseRows.sort((a,b)=>a.slug.localeCompare(b.slug));
+for(const release of orderedReleases){
   const canonical=canonicalById.get(release.slug);
-  if(!canonical)throw new Error(`Canonical catalogue metadata missing for ${release.slug}`);
+  if(!canonical){
+    skippedNoCanonical.push(release.slug);
+    continue;
+  }
   const genre=firstString(canonical.genre,Array.isArray(canonical.genres)?canonical.genres[0]:undefined,'Arcade');
   const patch={
     title:firstString(canonical.title,release.title,release.slug),
@@ -65,9 +70,12 @@ for(const release of releaseRows.sort((a,b)=>a.slug.localeCompare(b.slug))){
   statements.push(`DO $$ DECLARE affected integer; BEGIN UPDATE ga_runtime_games SET revision=revision+1,record=record || ${jsonExpression(patch)},updated_at=clock_timestamp() WHERE record_key=${slug} AND deleted_at IS NULL AND record->>'sourceType'='portfolio-bundle-local' AND record->>'buildSha256'=${sha}; GET DIAGNOSTICS affected=ROW_COUNT; IF affected<>1 THEN RAISE EXCEPTION 'Canonical metadata repair guard failed for ${release.slug}: affected %',affected; END IF; END $$;`);
   repaired.push({slug:release.slug,buildSha256:release.buildSha256,multiplayer:patch.multiplayer,tier:patch.tier,orientation:patch.orientation,reward:patch.reward});
 }
-statements.push(`DO $$ DECLARE n integer; BEGIN SELECT count(*) INTO n FROM ga_runtime_games WHERE record_key=ANY(ARRAY[${repaired.map(item=>sqlLiteral(item.slug)).join(',')}]) AND deleted_at IS NULL AND record->>'sourceType'='portfolio-bundle-local' AND record->>'status'='live' AND (record->>'rolloutPercentage')::integer=100 AND COALESCE((record->>'rewardsEnabled')::boolean,false)=false AND COALESCE((record->>'competitionsEnabled')::boolean,false)=false; IF n<>60 THEN RAISE EXCEPTION 'Post-repair safety verification expected 60 live guarded records, found %',n; END IF; END $$;`);
+if(!repaired.length)throw new Error('No reviewed canonical local-staging records were found to repair.');
+if(!repaired.some(item=>item.slug==='tank-wars'&&item.multiplayer===true))throw new Error('Tank Wars canonical multiplayer metadata is not present in the repair set.');
+const allSlugs=orderedReleases.map(item=>sqlLiteral(item.slug)).join(',');
+statements.push(`DO $$ DECLARE n integer; BEGIN SELECT count(*) INTO n FROM ga_runtime_games WHERE record_key=ANY(ARRAY[${allSlugs}]) AND deleted_at IS NULL AND record->>'sourceType'='portfolio-bundle-local' AND record->>'status'='live' AND (record->>'rolloutPercentage')::integer=100 AND COALESCE((record->>'rewardsEnabled')::boolean,false)=false AND COALESCE((record->>'competitionsEnabled')::boolean,false)=false; IF n<>60 THEN RAISE EXCEPTION 'Post-repair safety verification expected 60 live guarded records, found %',n; END IF; END $$;`);
 statements.push('COMMIT;');
 
 await writeFile(output,statements.join('\n')+'\n','utf8');
-await writeFile(evidenceOutput,JSON.stringify({schemaVersion:1,decision:'READY_TO_REPAIR',records:repaired.length,multiplayerIds,repaired,productionActivation:false},null,2)+'\n','utf8');
-console.log(JSON.stringify({prepared:repaired.length,multiplayer:multiplayerIds.length,productionActivation:false}));
+await writeFile(evidenceOutput,JSON.stringify({schemaVersion:1,decision:'READY_TO_REPAIR',scannedRecords:60,records:repaired.length,skippedNoCanonical,multiplayerIds,repaired,productionActivation:false},null,2)+'\n','utf8');
+console.log(JSON.stringify({scanned:60,prepared:repaired.length,skippedNoCanonical:skippedNoCanonical.length,multiplayer:multiplayerIds.length,productionActivation:false}));
