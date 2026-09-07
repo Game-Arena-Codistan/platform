@@ -22,7 +22,16 @@ function subscriptionFrom(status){
 
 export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetchImpl=globalThis.fetch,settings:settingsOverride}={}){
   const settings=settingsOverride??loadPaymentServiceSettings({publicOrigin:config.publicOrigin});
-  if(settings.mode!=='external')return async()=>false;
+  if(settings.mode!=='external'){
+    return async function disabledPaymentServiceApp(req,res){
+      const url=new URL(req.url,'http://localhost');const path=url.pathname;const method=req.method??'GET';
+      if(path!=='/v1/billing/plans')return false;
+      const origin=req.headers.origin;const cors=corsHeaders(origin,config.allowedOrigins);
+      if(method==='OPTIONS'&&origin&&config.allowedOrigins.includes(origin))return send(res,204,null,{...cors,'access-control-allow-methods':'GET,OPTIONS','access-control-allow-headers':'content-type,x-request-id','access-control-max-age':'600'});
+      if(method==='GET')return send(res,200,{enabled:false,mode:'disabled',plans:[]},{...cors,'cache-control':'no-store'});
+      return false;
+    };
+  }
   const client=new PaymentServiceClient({...settings,fetchImpl});
 
   function authContext(req){
@@ -71,7 +80,7 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
     const requestId=String(req.headers['x-request-id']||randomUUID()).slice(0,80);const origin=req.headers.origin;const cors=corsHeaders(origin,config.allowedOrigins);const reply=(status,payload,headers={})=>send(res,status,payload,{...cors,'cache-control':'no-store',...headers});
     try{
       if(method==='OPTIONS'&&origin&&config.allowedOrigins.includes(origin)&&path.startsWith('/v1/billing/'))return reply(204,null,{'access-control-allow-methods':'GET,POST,OPTIONS','access-control-allow-headers':'content-type,x-csrf-token,x-request-id','access-control-max-age':'600'});
-      if(method==='GET'&&path==='/v1/billing/plans')return reply(200,await client.plans());
+      if(method==='GET'&&path==='/v1/billing/plans')return reply(200,{enabled:true,mode:'external',plans:await client.plans()});
       if(method==='POST'&&path==='/v1/billing/wallets/link'){
         const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,16384);
         const result=await client.linkWallet(user.id,{msisdn:msisdn(value.msisdn),planCode:value.planCode?planCode(value.planCode):undefined,appReturnUrl:settings.appReturnUrl||undefined});
