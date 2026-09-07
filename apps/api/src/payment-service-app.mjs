@@ -101,14 +101,15 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
         if(!value||typeof value!=='object'||!UUID.test(String(value.eventId||''))||!EVENT_TYPES.has(String(value.type||''))||eventHeader!==value.type||!String(value.userId||'').trim())throw fail('Invalid payment webhook event.',400,'invalid_webhook');
         const user=store.getUser(String(value.userId));if(!user)throw fail('Webhook user is unknown.',404,'user_not_found');
         const transactionId=UUID.test(String(value.data?.paymentId||''))?String(value.data.paymentId):String(value.eventId);
-        const recorded=store.addPaymentEvent({transactionId,providerEventId:String(value.eventId),signatureValid:true,kind:String(value.type),providerStatus:String(value.type),userId:user.id,eventCreatedAt:String(value.createdAt||''),processedAt:new Date(clock()).toISOString(),protectedEvidenceReference:`payment-service:${value.eventId}`});
-        if(recorded.duplicate)return reply(202,{accepted:true,duplicate:true});
+        const recorded=store.addPaymentEvent({transactionId,providerEventId:String(value.eventId),signatureValid:true,kind:String(value.type),providerStatus:String(value.type),userId:user.id,eventCreatedAt:String(value.createdAt||''),processedAt:null,protectedEvidenceReference:`payment-service:${value.eventId}`});
+        if(recorded.duplicate&&recorded.event?.processedAt)return reply(202,{accepted:true,duplicate:true});
         const reconciled=await authoritativeStatus(user.id,`payment_service_webhook:${value.type}`);
+        recorded.event.processedAt=new Date(clock()).toISOString();recorded.event.duplicate=Boolean(recorded.duplicate);store.paymentEvents.set(String(value.eventId),recorded.event);
         if(String(value.type).startsWith('payment.')){
           try{await client.payments(user.id);}catch{store.createReconciliationCase({transactionId,reason:'payment_history_reconciliation_failed',providerStatus:value.type});}
         }
         store.audit.write({actor:'payment-service',action:'payment_service.webhook_processed',targetType:'user',targetId:user.id,requestId,metadata:{eventId:value.eventId,type:value.type,subscriptionStatus:reconciled.status?.status?.subscription_status||null}});
-        return reply(202,{accepted:true,duplicate:false});
+        return reply(202,{accepted:true,duplicate:Boolean(recorded.duplicate)});
       }
       return false;
     }catch(error){problem(res,error,requestId);return true;}
