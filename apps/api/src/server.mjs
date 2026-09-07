@@ -4,6 +4,7 @@ import {createApp} from './app.mjs';
 import {createMvpApp} from './mvp-app.mjs';
 import {createSupplementalApp} from './admin-app.mjs';
 import {createPostgresReportApp} from './postgres-report-app.mjs';
+import {createPaymentServiceApp} from './payment-service-app.mjs';
 import {MemoryStore} from './adapters/memory-store.mjs';
 import {assertNormalizedPostgresRuntime} from './lib/persistence-readiness.mjs';
 import {JazzCashAdapter} from './adapters/jazzcash.mjs';
@@ -49,6 +50,7 @@ const rewardPolicy=new RewardPolicy({config,store});
 const supportDelivery=new SupportDelivery({mode:config.supportMode,endpoint:config.supportEndpoint,secret:config.supportSecret});
 const primary=createApp({config,store,jazzcash,otpDelivery,payments,rewardPolicy});
 const mvp=createMvpApp({config,store,payments,supportDelivery});
+const paymentService=createPaymentServiceApp({config,store});
 const supplemental=createSupplementalApp({config,store});
 const postgresReports=createPostgresReportApp({config,pool:store.pool});
 
@@ -94,6 +96,7 @@ async function dispatch(req,res){
   try{
     if(postgresReports&&await postgresReports(req,res)!==false)return;
     if(await supplemental(req,res)!==false)return;
+    if(await paymentService(req,res)!==false)return;
     if(await mvp(req,res)!==false)return;
     await primary(req,res);
   }catch(error){
@@ -143,7 +146,7 @@ server.maxRequestsPerSocket=1000;
 server.listen(config.port,'0.0.0.0',()=>console.log(JSON.stringify({
   level:'info',message:'Game Arena API listening',port:config.port,mode:config.nodeEnv,
   database:config.databaseUrl?'postgres':'memory',persistenceModel:store.persistenceModel||'memory',
-  reports:postgresReports?'postgresql-indexed':'memory',payments:config.jazzcashMode,otp:config.otpProviderMode,
+  reports:postgresReports?'postgresql-indexed':'memory',payments:config.jazzcashMode,paymentService:process.env.PAYMENT_SERVICE_MODE||'disabled',otp:config.otpProviderMode,
   support:config.supportMode,externalGames:config.allowExternalGames
 })));
 
