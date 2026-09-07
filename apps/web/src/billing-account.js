@@ -1,4 +1,4 @@
-import {cancelBillingSubscription,fetchBillingPayments,fetchBillingStatus,unlinkBillingWallet} from './billing-api.js';
+import {cancelBillingSubscription,fetchBillingPayments,fetchBillingPlans,fetchBillingStatus,unlinkBillingWallet} from './billing-api.js';
 import {escapeHtml,toast} from './ui.js';
 import {getState,update} from './state.js';
 const fmt=value=>value?new Intl.DateTimeFormat('en-PK',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—';
@@ -8,6 +8,8 @@ export async function bindBillingPanel(){
   const root=document.querySelector('#billing-panel');if(!root)return;
   const summary=root.querySelector('#billing-summary');const details=root.querySelector('#billing-details');const history=root.querySelector('#billing-history');
   try{
+    const catalog=await fetchBillingPlans();const enabled=Array.isArray(catalog)?catalog.length>0:Boolean(catalog?.enabled&&Array.isArray(catalog?.plans)&&catalog.plans.length>0);
+    if(!enabled){root.remove();return;}
     const status=await fetchBillingStatus();const wallet=status.wallet||{status:'none'};const sub=(status.subscriptions||[])[0];const state=sub?.status||status.status?.subscription_status||'none';
     if(status.appEntitlement?.tier&&getState().entitlement!==status.appEntitlement.tier){update({entitlement:status.appEntitlement.tier});return;}
     summary.textContent=`Wallet: ${wallet.status}. Subscription: ${state}.`;

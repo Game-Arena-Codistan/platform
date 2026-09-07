@@ -21,9 +21,9 @@ export default defineConfig({
     navigationTimeout:20000
   },
   projects:[
+    ...(adminUrl?[{name:'admin-chromium',grep:/@admin/,use:{...devices['Desktop Chrome'],baseURL:adminUrl}}]:[]),
     {name:'desktop-chromium',grep:/@player/,use:{...devices['Desktop Chrome']}},
     {name:'mobile-chromium',grep:/@critical-mobile/,use:{...devices['Pixel 7']}},
-    {name:'visual-chromium',grep:/@visual/,use:{...devices['Desktop Chrome']}},
-    ...(adminUrl?[{name:'admin-chromium',grep:/@admin/,use:{...devices['Desktop Chrome'],baseURL:adminUrl}}]:[])
+    {name:'visual-chromium',grep:/@visual/,use:{...devices['Desktop Chrome']}}
   ]
 });

@@ -1,80 +1,28 @@
 import {test,expect,request} from '@playwright/test';
 import {signInFromAccount,watchPage} from './helpers.mjs';
 
-function adminAssertions(){
-  try{return JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');}catch{return{};}
-}
-
-async function paymentMode(page){
-  const response=await page.context().request.get('/api/v1/billing/plans');
-  if(response.status()!==200)return'legacy';
-  const payload=await response.json().catch(()=>null);const plans=Array.isArray(payload)?payload:payload?.plans;
-  return Array.isArray(plans)&&plans.length?'external':'legacy';
-}
-
+function adminAssertions(){try{return JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');}catch{return{};}}
+async function paymentMode(page){const response=await page.context().request.get('/api/v1/billing/plans');if(response.status()!==200)return'legacy';const payload=await response.json().catch(()=>null);const plans=Array.isArray(payload)?payload:payload?.plans;return payload?.enabled!==false&&Array.isArray(plans)&&plans.length?'external':'legacy';}
 async function ensurePremiumEntitlement(page){
-  const sessionResponse=await page.context().request.get('/api/v1/session');
-  expect(sessionResponse.status()).toBe(200);
-  const session=await sessionResponse.json();
-  expect(session.authenticated).toBe(true);
-  if((session.entitlement?.tier||session.entitlement)==='premium'&&(!session.entitlement?.status||session.entitlement.status==='active'))return;
-  const adminUrl=String(process.env.STAGING_ADMIN_URL||'').trim();
-  const assertions=adminAssertions();
-  if(!adminUrl||!assertions.admin)throw new Error('BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');
-  const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:assertions.admin});
-  try{
-    const grant=await context.post(`/api/v1/admin/subscriptions/${encodeURIComponent(session.user.id)}/adjust`,{data:{action:'grant',durationDays:30,planId:'manual',reason:'AUTO-QA protected premium staging fixture'}});
-    expect(grant.status(),'audited premium fixture grant should succeed').toBe(200);
-    const payload=await grant.json();
-    expect(payload.entitlement?.tier).toBe('premium');
-    expect(payload.entitlement?.status).toBe('active');
-  }finally{await context.dispose();}
-  await page.reload();
+  const sessionResponse=await page.context().request.get('/api/v1/session');expect(sessionResponse.status()).toBe(200);const session=await sessionResponse.json();expect(session.authenticated).toBe(true);if((session.entitlement?.tier||session.entitlement)==='premium'&&(!session.entitlement?.status||session.entitlement.status==='active'))return;
+  const adminUrl=String(process.env.STAGING_ADMIN_URL||'').trim();const assertions=adminAssertions();if(!adminUrl||!assertions.admin)throw new Error('BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:assertions.admin});try{const grant=await context.post(`/api/v1/admin/subscriptions/${encodeURIComponent(session.user.id)}/adjust`,{data:{action:'grant',durationDays:30,planId:'manual',reason:'AUTO-QA protected premium staging fixture'}});expect(grant.status(),'audited premium fixture grant should succeed').toBe(200);const payload=await grant.json();expect(payload.entitlement?.tier).toBe('premium');expect(payload.entitlement?.status).toBe('active');}finally{await context.dispose();}await page.reload();
 }
 
 test('@player premium page states configured billing and preserves fixed-duration billing semantics fallback',async({page})=>{
-  const assertClean=watchPage(page);await page.goto('/#/premium');const mode=await paymentMode(page);
-  await expect(page.getByRole('heading',{name:/More games/i})).toBeVisible();
-  const plans=page.locator('[data-plan]');await expect(plans.first()).toBeVisible();expect(await plans.count()).toBeGreaterThanOrEqual(2);
-  if(mode==='external'){
-    await expect(page.getByText('JazzCash wallet',{exact:true})).toBeVisible();
-    await expect(page.getByText('Server-authoritative billing',{exact:true})).toBeVisible();
-    await expect(page.getByText(/How does billing work/i)).toBeVisible();
-    await expect(page.getByText(/Game Arena never asks for or stores your MPIN/i)).toBeVisible();
-    const html=await page.content();expect(html).not.toMatch(/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
-  }else{
-    await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();
-    await expect(page.getByText(/Does it auto-renew/i)).toBeVisible();
-    await expect(page.getByText(/^No\. Monthly and yearly access are fixed-duration purchases/i)).toBeVisible();
-    await expect(page.getByText(/JazzCash checkout/i)).toBeVisible();
-    await expect(page.getByText(/Server-confirmed activation/i)).toBeVisible();
-  }
+  const assertClean=watchPage(page);const mode=await paymentMode(page);await page.goto('/#/premium');await expect(page.getByRole('heading',{name:/More games/i})).toBeVisible();const plans=page.locator('[data-plan]');await expect(plans.first()).toBeVisible();expect(await plans.count()).toBeGreaterThanOrEqual(2);
+  if(mode==='external'){await expect(page.getByText('JazzCash wallet',{exact:true})).toBeVisible();await expect(page.getByText('Server-authoritative billing',{exact:true})).toBeVisible();await expect(page.getByText(/How does billing work/i)).toBeVisible();await expect(page.getByText(/Game Arena never asks for or stores your MPIN/i)).toBeVisible();const html=await page.content();expect(html).not.toMatch(/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);}else{await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();await expect(page.getByText(/Does it auto-renew/i)).toBeVisible();await expect(page.getByText(/^No\. Monthly and yearly access are fixed-duration purchases/i)).toBeVisible();await expect(page.getByText(/JazzCash checkout/i)).toBeVisible();await expect(page.getByText(/Server-confirmed activation/i)).toBeVisible();}
   assertClean();
 });
 
 test('@player authenticated Premium action uses configured server boundary and preserves legacy pending server transaction contract',async({page},testInfo)=>{
-  await signInFromAccount(page,testInfo,{label:'membership-checkout'});await page.goto('/#/premium');const mode=await paymentMode(page);const plan=page.locator('[data-plan]').first();await plan.click();
-  if(mode==='external'){
-    await expect(page.getByRole('dialog',{name:/Link JazzCash & activate Game Arena\+/i})).toBeVisible();
-    await expect(page.getByText(/MPIN is entered only on JazzCash's hosted page/i)).toBeVisible();
-    await expect(page.getByLabel('JazzCash mobile number')).toBeVisible();
-    await expect(page.getByText(/Automatic billing consent/i)).toBeVisible();
-    return;
-  }
-  await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();
-  await expect(page.getByText(/never collects your JazzCash PIN or card details/i)).toBeVisible();
-  const responsePromise=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');
-  await page.getByRole('button',{name:/Continue to JazzCash/i}).click();const response=await responsePromise;expect(response.status()).toBe(201);const body=await response.json();expect(body.transactionId).toMatch(/^[a-f0-9-]+$/);expect(body.status).toBe('pending');
-  const pending=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null'));expect(pending?.transactionId).toBe(body.transactionId);await expect(page.locator('#payment-status')).toContainText(/received|redirecting|pending|creating/i);
+  await signInFromAccount(page,testInfo,{label:'membership-checkout'});const mode=await paymentMode(page);await page.goto('/#/premium');const plan=page.locator('[data-plan]').first();await plan.click();
+  if(mode==='external'){await expect(page.getByRole('dialog',{name:/Link JazzCash & activate Game Arena\+/i})).toBeVisible();await expect(page.getByText(/MPIN is entered only on JazzCash's hosted page/i)).toBeVisible();await expect(page.getByLabel('JazzCash mobile number')).toBeVisible();await expect(page.getByText(/Automatic billing consent/i)).toBeVisible();return;}
+  await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();await expect(page.getByText(/never collects your JazzCash PIN or card details/i)).toBeVisible();const responsePromise=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');await page.getByRole('button',{name:/Continue to JazzCash/i}).click();const response=await responsePromise;expect(response.status()).toBe(201);const body=await response.json();expect(body.transactionId).toMatch(/^[a-f0-9-]+$/);expect(body.status).toBe('pending');const pending=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null'));expect(pending?.transactionId).toBe(body.transactionId);await expect(page.locator('#payment-status')).toContainText(/received|redirecting|pending|creating/i);
 });
 
 test('@player browser return/query state cannot self-activate Arena+ without server confirmation',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'return-safety'});const mode=await paymentMode(page);
-  if(mode==='external'){
-    await page.goto('/#/premium?wallet=linked&subscription_status=active&status=paid');
-    await expect(page.getByText(/Game Arena\+ is active on this account/i)).toHaveCount(0,{timeout:3000});
-    const session=await page.context().request.get('/api/v1/session');expect(session.status()).toBe(200);const body=await session.json();expect(body.entitlement?.tier||body.entitlement).not.toBe('premium');return;
-  }
+  if(mode==='external'){await page.goto('/#/premium?wallet=linked&subscription_status=active&status=paid');await expect(page.getByText(/Game Arena\+ is active on this account/i)).toHaveCount(0,{timeout:3000});const session=await page.context().request.get('/api/v1/session');expect(session.status()).toBe(200);const body=await session.json();expect(body.entitlement?.tier||body.entitlement).not.toBe('premium');return;}
   await page.goto('/#/premium');await page.locator('[data-plan]').first().click();const checkoutResponse=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');await page.getByRole('button',{name:/Continue to JazzCash/i}).click();const checkout=await (await checkoutResponse).json();expect(checkout.transactionId).toBeTruthy();await page.goto(`/#/payment-return?transactionId=${encodeURIComponent(checkout.transactionId)}&status=paid`);await expect(page.getByText(/Game Arena\+ is active on this account/i)).toHaveCount(0,{timeout:3000});const status=await page.context().request.get(`/api/v1/payments/${encodeURIComponent(checkout.transactionId)}`);expect(status.status()).toBe(200);expect((await status.json()).status).toBe('pending');
 });
 
