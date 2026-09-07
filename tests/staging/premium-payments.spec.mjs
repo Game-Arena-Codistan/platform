@@ -5,6 +5,13 @@ function adminAssertions(){
   try{return JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');}catch{return{};}
 }
 
+async function paymentMode(page){
+  const response=await page.context().request.get('/api/v1/billing/plans');
+  if(response.status()!==200)return'legacy';
+  const payload=await response.json().catch(()=>null);const plans=Array.isArray(payload)?payload:payload?.plans;
+  return Array.isArray(plans)&&plans.length?'external':'legacy';
+}
+
 async function ensurePremiumEntitlement(page){
   const sessionResponse=await page.context().request.get('/api/v1/session');
   expect(sessionResponse.status()).toBe(200);
@@ -25,75 +32,52 @@ async function ensurePremiumEntitlement(page){
   await page.reload();
 }
 
-test('@player premium page states the approved fixed-duration billing semantics',async({page})=>{
-  const assertClean=watchPage(page);
-  await page.goto('/#/premium');
+test('@player premium page states configured billing and preserves fixed-duration billing semantics fallback',async({page})=>{
+  const assertClean=watchPage(page);await page.goto('/#/premium');const mode=await paymentMode(page);
   await expect(page.getByRole('heading',{name:/More games/i})).toBeVisible();
-  await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();
-  await expect(page.getByText(/Does it auto-renew/i)).toBeVisible();
-  await expect(page.getByText(/^No\. Monthly and yearly access are fixed-duration purchases/i)).toBeVisible();
-  const plans=page.locator('[data-plan]');
-  expect(await plans.count()).toBeGreaterThanOrEqual(2);
-  await expect(page.getByText(/JazzCash checkout/i)).toBeVisible();
-  await expect(page.getByText(/Server-confirmed activation/i)).toBeVisible();
+  const plans=page.locator('[data-plan]');await expect(plans.first()).toBeVisible();expect(await plans.count()).toBeGreaterThanOrEqual(2);
+  if(mode==='external'){
+    await expect(page.getByText('JazzCash wallet',{exact:true})).toBeVisible();
+    await expect(page.getByText('Server-authoritative billing',{exact:true})).toBeVisible();
+    await expect(page.getByText(/How does billing work/i)).toBeVisible();
+    await expect(page.getByText(/Game Arena never asks for or stores your MPIN/i)).toBeVisible();
+    const html=await page.content();expect(html).not.toMatch(/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
+  }else{
+    await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();
+    await expect(page.getByText(/Does it auto-renew/i)).toBeVisible();
+    await expect(page.getByText(/^No\. Monthly and yearly access are fixed-duration purchases/i)).toBeVisible();
+    await expect(page.getByText(/JazzCash checkout/i)).toBeVisible();
+    await expect(page.getByText(/Server-confirmed activation/i)).toBeVisible();
+  }
   assertClean();
 });
 
-test('@player authenticated membership checkout creates one pending server transaction',async({page},testInfo)=>{
-  await signInFromAccount(page,testInfo,{label:'membership-checkout'});
-  await page.goto('/#/premium');
-  const plan=page.locator('[data-plan]').first();
-  await plan.click();
+test('@player authenticated Premium action uses configured server boundary and preserves legacy pending server transaction contract',async({page},testInfo)=>{
+  await signInFromAccount(page,testInfo,{label:'membership-checkout'});await page.goto('/#/premium');const mode=await paymentMode(page);const plan=page.locator('[data-plan]').first();await plan.click();
+  if(mode==='external'){
+    await expect(page.getByRole('dialog',{name:/Link JazzCash & activate Game Arena\+/i})).toBeVisible();
+    await expect(page.getByText(/MPIN is entered only on JazzCash's hosted page/i)).toBeVisible();
+    await expect(page.getByLabel('JazzCash mobile number')).toBeVisible();
+    await expect(page.getByText(/Automatic billing consent/i)).toBeVisible();
+    return;
+  }
   await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();
   await expect(page.getByText(/never collects your JazzCash PIN or card details/i)).toBeVisible();
   const responsePromise=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');
-  await page.getByRole('button',{name:/Continue to JazzCash/i}).click();
-  const response=await responsePromise;
-  expect(response.status()).toBe(201);
-  const body=await response.json();
-  expect(body.transactionId).toMatch(/^[a-f0-9-]+$/);
-  expect(body.status).toBe('pending');
-  const pending=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null'));
-  expect(pending?.transactionId).toBe(body.transactionId);
-  await expect(page.locator('#payment-status')).toContainText(/received|redirecting|pending|creating/i);
+  await page.getByRole('button',{name:/Continue to JazzCash/i}).click();const response=await responsePromise;expect(response.status()).toBe(201);const body=await response.json();expect(body.transactionId).toMatch(/^[a-f0-9-]+$/);expect(body.status).toBe('pending');
+  const pending=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null'));expect(pending?.transactionId).toBe(body.transactionId);await expect(page.locator('#payment-status')).toContainText(/received|redirecting|pending|creating/i);
 });
 
-test('@player a browser payment return cannot self-activate Arena+ without server confirmation',async({page},testInfo)=>{
-  await signInFromAccount(page,testInfo,{label:'return-safety'});
-  await page.goto('/#/premium');
-  await page.locator('[data-plan]').first().click();
-  const checkoutResponse=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');
-  await page.getByRole('button',{name:/Continue to JazzCash/i}).click();
-  const checkout=await (await checkoutResponse).json();
-  expect(checkout.transactionId).toBeTruthy();
-  await page.goto(`/#/payment-return?transactionId=${encodeURIComponent(checkout.transactionId)}&status=paid`);
-  await expect(page.getByText(/Game Arena\+ is active on this account/i)).toHaveCount(0,{timeout:3000});
-  const status=await page.context().request.get(`/api/v1/payments/${encodeURIComponent(checkout.transactionId)}`);
-  expect(status.status()).toBe(200);
-  expect((await status.json()).status).toBe('pending');
+test('@player browser return/query state cannot self-activate Arena+ without server confirmation',async({page},testInfo)=>{
+  await signInFromAccount(page,testInfo,{label:'return-safety'});const mode=await paymentMode(page);
+  if(mode==='external'){
+    await page.goto('/#/premium?wallet=linked&subscription_status=active&status=paid');
+    await expect(page.getByText(/Game Arena\+ is active on this account/i)).toHaveCount(0,{timeout:3000});
+    const session=await page.context().request.get('/api/v1/session');expect(session.status()).toBe(200);const body=await session.json();expect(body.entitlement?.tier||body.entitlement).not.toBe('premium');return;
+  }
+  await page.goto('/#/premium');await page.locator('[data-plan]').first().click();const checkoutResponse=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');await page.getByRole('button',{name:/Continue to JazzCash/i}).click();const checkout=await (await checkoutResponse).json();expect(checkout.transactionId).toBeTruthy();await page.goto(`/#/payment-return?transactionId=${encodeURIComponent(checkout.transactionId)}&status=paid`);await expect(page.getByText(/Game Arena\+ is active on this account/i)).toHaveCount(0,{timeout:3000});const status=await page.context().request.get(`/api/v1/payments/${encodeURIComponent(checkout.transactionId)}`);expect(status.status()).toBe(200);expect((await status.json()).status).toBe('pending');
 });
 
 test('@player protected premium QA account authenticates with delivered OTP, receives audited staging entitlement, authorizes premium play and enforces approved runtime hosting',async({page},testInfo)=>{
-  test.slow();
-  const assertions=adminAssertions();
-  test.skip(!String(process.env.STAGING_ADMIN_URL||'').trim()||!assertions.admin,'BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');
-  await signInFromAccount(page,testInfo,{label:'premium-entitlement',tier:'premium',protectedAccount:true});
-  await ensurePremiumEntitlement(page);
-  await expect(page.getByText(/Game Arena\+ member/i)).toBeVisible();
-  await page.goto('/#/premium');
-  await expect(page.getByText(/Game Arena\+ is active on this account/i)).toBeVisible();
-  await page.goto('/#/library');
-  const premiumCard=page.locator('.game-card').filter({has:page.locator('.badge').filter({hasText:/Arena\+/})}).first();
-  await expect(premiumCard).toBeVisible();
-  const play=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');
-  await premiumCard.getByRole('button',{name:'Play'}).click();
-  expect((await play).status()).toBe(201);
-  await expect(page.locator('.game-stage')).toBeVisible();
-  const frame=page.locator('#game-frame');
-  if(await frame.count()){
-    await expect(frame).toBeVisible();
-  }else{
-    await expect(page.getByText('Game runtime unavailable',{exact:true})).toBeVisible();
-    await expect(page.getByText(/approved hosted build/i)).toBeVisible();
-  }
+  test.slow();const assertions=adminAssertions();test.skip(!String(process.env.STAGING_ADMIN_URL||'').trim()||!assertions.admin,'BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');await signInFromAccount(page,testInfo,{label:'premium-entitlement',tier:'premium',protectedAccount:true});await ensurePremiumEntitlement(page);await expect(page.getByText(/Game Arena\+ member/i)).toBeVisible();await page.goto('/#/premium');await expect(page.getByText(/Game Arena\+ is active on this account/i)).toBeVisible();await page.goto('/#/library');const premiumCard=page.locator('.game-card').filter({has:page.locator('.badge').filter({hasText:/Arena\+/})}).first();await expect(premiumCard).toBeVisible();const play=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');await premiumCard.getByRole('button',{name:'Play'}).click();expect((await play).status()).toBe(201);await expect(page.locator('.game-stage')).toBeVisible();const frame=page.locator('#game-frame');if(await frame.count())await expect(frame).toBeVisible();else{await expect(page.getByText('Game runtime unavailable',{exact:true})).toBeVisible();await expect(page.getByText(/approved hosted build/i)).toBeVisible();}
 });

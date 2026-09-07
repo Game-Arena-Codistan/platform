@@ -7,10 +7,13 @@ const contract=JSON.parse(await readFile(new URL('../../../contracts/api/v1/mock
 const apiSource=await readFile(new URL('../src/api.js',import.meta.url),'utf8');
 const appSource=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
 const uiSource=await readFile(new URL('../src/ui.js',import.meta.url),'utf8');
+const billingApiSource=await readFile(new URL('../src/billing-api.js',import.meta.url),'utf8');
+const premiumSource=await readFile(new URL('../src/views/premium.js',import.meta.url),'utf8');
+const accountSource=await readFile(new URL('../src/views/account.js',import.meta.url),'utf8');
 const librarySource=await readFile(new URL('../src/views/library.js',import.meta.url),'utf8');
 const competeSource=await readFile(new URL('../src/views/compete.js',import.meta.url),'utf8');
 
-test('commercial baseline matches approved plan',()=>{
+test('commercial baseline matches approved legacy fallback plan',()=>{
   assert.equal(plans.find(plan=>plan.id==='monthly').price,299);
   assert.equal(plans.find(plan=>plan.id==='yearly').price,4999);
   assert.equal(plans.some(plan=>plan.recommended),false);
@@ -48,6 +51,20 @@ test('auth and PWA wiring preserve the staging browser contract',()=>{
   assert.doesNotMatch(uiSource,/form\.addEventListener\('submit'/);
   assert.match(appSource,/document\.readyState==='complete'/);
   assert.match(appSource,/registerServiceWorker\(\)/);
+});
+
+test('external billing UI remains a BFF-only trust boundary',()=>{
+  assert.match(billingApiSource,/\/v1\/billing\/plans/);
+  assert.match(billingApiSource,/\/v1\/billing\/wallets\/link/);
+  assert.match(billingApiSource,/\/v1\/billing\/status/);
+  assert.match(premiumSource,/Automatic billing consent/);
+  assert.match(premiumSource,/Game Arena never asks for or stores your MPIN/);
+  assert.match(premiumSource,/createBillingSubscription/);
+  assert.match(premiumSource,/already_linked/);
+  assert.match(accountSource,/renderBillingPanel/);
+  assert.doesNotMatch(`${billingApiSource}\n${premiumSource}\n${accountSource}`,/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
+  assert.doesNotMatch(billingApiSource,/amountMinor\s*:/);
+  assert.doesNotMatch(premiumSource,/pp_PaymentToken|pp_Password|pp_SecureHash/);
 });
 
 test('Vercel preview mocks match contract 1.0.0',()=>{
