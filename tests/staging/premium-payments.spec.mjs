@@ -32,7 +32,7 @@ async function ensurePremiumEntitlement(page){
   await page.reload();
 }
 
-test('@player premium page states the configured billing semantics without exposing provider secrets',async({page})=>{
+test('@player premium page states configured billing and preserves fixed-duration billing semantics fallback',async({page})=>{
   const assertClean=watchPage(page);await page.goto('/#/premium');const mode=await paymentMode(page);
   await expect(page.getByRole('heading',{name:/More games/i})).toBeVisible();
   const plans=page.locator('[data-plan]');await expect(plans.first()).toBeVisible();expect(await plans.count()).toBeGreaterThanOrEqual(2);
@@ -52,7 +52,7 @@ test('@player premium page states the configured billing semantics without expos
   assertClean();
 });
 
-test('@player authenticated Premium action uses the configured server payment boundary',async({page},testInfo)=>{
+test('@player authenticated Premium action uses configured server boundary and preserves legacy pending server transaction contract',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'membership-checkout'});await page.goto('/#/premium');const mode=await paymentMode(page);const plan=page.locator('[data-plan]').first();await plan.click();
   if(mode==='external'){
     await expect(page.getByRole('dialog',{name:/Link JazzCash & activate Game Arena\+/i})).toBeVisible();
