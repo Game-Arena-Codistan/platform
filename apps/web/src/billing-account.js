@@ -1,6 +1,6 @@
 import {cancelBillingSubscription,fetchBillingPayments,fetchBillingStatus,unlinkBillingWallet} from './billing-api.js';
 import {escapeHtml,toast} from './ui.js';
-import {update} from './state.js';
+import {getState,update} from './state.js';
 const fmt=value=>value?new Intl.DateTimeFormat('en-PK',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'—';
 const money=minor=>new Intl.NumberFormat('en-PK',{style:'currency',currency:'PKR',maximumFractionDigits:0}).format(Number(minor||0)/100);
 export function renderBillingPanel(){return `<section class="card card-body" id="billing-panel"><div class="page-head"><div><span class="eyebrow">Billing</span><h2>Game Arena+ subscription</h2><p class="muted" id="billing-summary">Loading JazzCash wallet and subscription status…</p></div></div><div id="billing-details" class="stack"></div><div id="billing-history" class="stack"></div></section>`;}
@@ -9,7 +9,7 @@ export async function bindBillingPanel(){
   const summary=root.querySelector('#billing-summary');const details=root.querySelector('#billing-details');const history=root.querySelector('#billing-history');
   try{
     const status=await fetchBillingStatus();const wallet=status.wallet||{status:'none'};const sub=(status.subscriptions||[])[0];const state=sub?.status||status.status?.subscription_status||'none';
-    if(status.appEntitlement?.tier)update({entitlement:status.appEntitlement.tier});
+    if(status.appEntitlement?.tier&&getState().entitlement!==status.appEntitlement.tier){update({entitlement:status.appEntitlement.tier});return;}
     summary.textContent=`Wallet: ${wallet.status}. Subscription: ${state}.`;
     if(!sub){details.innerHTML=`<p class="muted">No active subscription. <a href="#/premium">Choose a Game Arena+ plan</a>.</p>`;}
     else{
