@@ -1,47 +1,74 @@
-# Security Verification Record
+# Security verification record
 
 Target: OWASP ASVS Level 2, supplemented for payments, game isolation, rewards and administration.
 
-Status values: **Verified** means covered by code/tests/configuration in this repository. **Deploy check** requires the production environment. **Manual check** requires hands-on security testing.
+Status values: **Verified** means covered by code/tests/configuration in this repository. **Deploy check** requires evidence from the deployed environment. **Manual check** requires hands-on testing.
 
 | Area | Status | Evidence |
 |---|---|---|
-| Architecture and trust boundaries | Verified | `docs/THREAT-MODEL.md`; separate shell/API/game origins |
-| Authentication secrets | Verified | Hashed short-lived OTP challenges; no plaintext code field |
+| Architecture/trust boundaries | Verified | `docs/THREAT-MODEL.md`; separate player/API/game/provider boundaries |
+| Authentication secrets | Verified | Hashed short-lived OTP challenges; no plaintext code persistence |
 | Authentication abuse controls | Verified | Identity/IP/device limits, resend delay, attempt cap and tests |
 | Session lifecycle | Verified | Opaque cookies, rotation, device records, revocation and logout-all |
-| CSRF and origin enforcement | Verified | CSRF cookie/header and approved-origin checks |
-| Browser token storage | Verified | Production session token is HttpOnly; repository static check |
-| Access control | Verified | User ownership checks and role-restricted administrative routes |
-| Administrative accountability | Verified | Redacted audit log and dual approval for high-value adjustments |
-| Input/body limits | Verified | Bounded JSON/form parsing and route validation |
-| Output and security headers | Verified | API, shell and game-origin headers/CSP |
-| Game ingestion | Verified | Manifest validation, traversal/symlink/executable/size/remote-code checks |
-| Game isolation | Verified | Separate origin, sandbox without same-origin, permission manifest, kill switch |
-| Game messaging | Verified | Exact origin/window, version, event allow-list, payload size and sensitive-key deny-list |
-| Reward integrity | Verified | Server play sessions, nonce/version/plausibility/rate checks, append-only ledger |
-| Payment integrity | Verified | Hosted checkout signing boundary, signature verification, idempotency, reconciliation and refund states |
-| Entitlement integrity | Verified | Server entitlement source-of-truth and historical transitions |
-| Data export/deletion | Verified | Authenticated export and deletion-request flows |
-| Logging privacy | Verified | Structured redaction and bounded telemetry |
-| Repository secrets/dependencies/static rules | Verified | `scripts/security-check.mjs` and platform assurance workflow |
-| TLS, cookie domain and proxy behavior | Deploy check | Verify after DNS/TLS/reverse-proxy configuration |
-| Production database authorization and encryption | Deploy check | Verify managed database roles, network policy and backup encryption |
-| OTP provider contract and throttling | Deploy check | Requires approved production provider |
-| JazzCash merchant callback and settlement | Deploy check | Requires merchant credentials and provider test account |
-| Penetration test / sandbox escape attempts | Manual check | Execute against deployed staging build |
-| Critical/high findings | No open repository finding | Deployment and manual findings must be zero before launch |
+| CSRF/origin enforcement | Verified | CSRF cookie/header and approved-origin checks |
+| Browser token storage | Verified | Session credential is HttpOnly; repository static checks |
+| Access control | Verified | User ownership and server-enforced Admin role/capability boundaries |
+| Administrative accountability | Verified | Redacted audit behavior and protected sensitive operations |
+| Input/body limits | Verified | Bounded parsers and route validation |
+| Output/security headers | Verified | API, shell and controlled game-origin headers/CSP |
+| Game ingestion | Verified | Manifest/archive/path/file/size/remote-code checks |
+| Game isolation | Verified | Separate origin, iframe sandbox, messaging boundary and kill switch |
+| Reward integrity | Verified | Server play proof/version/nonce/policy checks and idempotent ledger behavior |
+| Payment BFF identity/amount boundary | Verified | Session-derived user, server-authoritative plan code/price, no browser Payment Service secret |
+| Payment webhook integrity | Verified | Raw-body HMAC/event validation, event-id idempotency/retry and authoritative reconciliation tests |
+| Entitlement integrity | Verified | Server/PostgreSQL source of truth; browser return cannot grant Premium |
+| Data export/deletion | Verified | Authenticated account/admin flows and redaction boundaries |
+| Repository secret/dependency checks | Verified | `scripts/security-check.mjs`, Platform assurance and CodeQL |
+| TLS/domain/reverse proxy | Deploy check | Verify current self-managed production target before go-live |
+| Production PostgreSQL authorization/backups | Deploy check | Verify least privilege, backup/restore and network exposure |
+| OTP production provider | Deploy check | Requires approved provider configuration |
+| Real Payment Service/JazzCash staging | Deploy check | Requires #165/#166 provider-backed staging evidence |
+| Live payment provider/finance readiness | Deploy check | #17 when real production charging is launch scope |
+| Penetration/sandbox escape attempts | Manual check | Execute against deployed staging/final candidate |
+| Critical/high findings | Launch gate | Must be zero before production approval |
+
+## Current payment security model
+
+Game Arena+ uses:
+
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
+
+Security rules:
+
+- `PAYMENT_SERVICE_API_KEY` and `PAYMENT_SERVICE_WEBHOOK_SECRET` are server-only;
+- browser-supplied `userId` and amount are not authoritative;
+- plan catalogue/price is obtained through the server-side BFF;
+- browser return/navigation state never grants Premium;
+- webhook retries/duplicates cannot create duplicate entitlement effects;
+- no MPIN, provider secret or raw secret-bearing payload appears in logs/evidence.
+
+Legacy direct JazzCash adapter/config may remain for unrelated compatibility paths. It is not the current Game Arena+ subscription security boundary.
 
 ## Automated negative tests
 
-- Missing CSRF is rejected.
-- Invalid OTP and excessive attempts are rejected.
-- Checkout creation alone does not grant premium.
-- Duplicate payment events and reward completions are idempotent.
-- Unsupported Bridge versions, wildcard destinations, oversized payloads and sensitive telemetry keys are rejected.
-- Untrusted game files, remote scripts, insecure resources and changed immutable versions are rejected.
-- Administrative routes reject missing roles/credentials.
+Representative checks include:
+
+- missing/invalid CSRF or origin is rejected;
+- invalid OTP/excessive attempts are rejected;
+- payment initiation alone does not grant Premium;
+- malformed/unsigned/wrong-event Payment Service webhooks are rejected;
+- duplicate/retried events remain idempotent;
+- browser return cannot self-activate entitlement;
+- unsupported/unsafe game messaging/content is rejected;
+- Admin routes reject missing/invalid role/capability evidence;
+- secret-pattern scanning rejects committed provider/cloud/application credentials.
+
+## Deployment architecture note
+
+The active staging/launch lane is self-managed/local-server Docker Compose. Historical AWS/EKS/S3/OpenTofu assets are optional/reference only and are not security prerequisites for the current launch.
 
 ## Launch rule
 
-Do not declare public readiness until all **Deploy check** and **Manual check** rows have recorded evidence and no unresolved critical/high finding.
+Do not declare production readiness until required **Deploy check** and **Manual check** rows for the chosen launch scope have recorded non-sensitive evidence, human UAT is accepted and no unresolved critical/high finding remains.
+
+Production requires separate explicit owner authorization.
