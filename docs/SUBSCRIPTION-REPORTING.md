@@ -1,21 +1,37 @@
 # Game Arena+ administration and reporting
 
-## Product boundary
+## Current product/payment boundary
 
-Game Arena+ currently uses fixed-duration, single-charge JazzCash purchases in PKR. The published offers remain:
+Game Arena+ Premium subscriptions now integrate through the external Payment Service:
 
-- Monthly: PKR 299 for the existing 31-day duration.
-- Yearly: PKR 4,999 for the existing 366-day duration.
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
 
-JazzCash checkout continues to use `pp_Frequency=SINGLE`. This release does not activate automatic recurring billing. MRR and ARR are therefore returned as `not_applicable`; calendar cash collections must never be relabeled as recurring revenue.
+When external billing is enabled, the Payment Service product catalogue and authoritative subscription/status responses determine the active plan, price/currency and period/trial state. The browser never supplies an authoritative amount.
 
-Report timestamps are stored in UTC and grouped using `Asia/Karachi` boundaries.
+The historical fixed-duration direct JazzCash model remains relevant only to legacy records/compatibility paths. Reporting must not confuse those historical transactions with the current external subscription flow.
+
+Report timestamps are stored in UTC and grouped using `Asia/Karachi` boundaries where the report contract requires local calendar grouping.
+
+## Revenue-metric caution
+
+Do not automatically label consent, a linked wallet or a single activation as recurring revenue.
+
+MRR/ARR or recurring-customer metrics are authoritative only when:
+
+- the Payment Service/provider recurring model is approved for the launch product;
+- real provider-backed staging UAT has passed;
+- renewal/payment events and billing-period snapshots are persisted in a way that supports the metric definition;
+- finance approves the definition.
+
+Until those conditions are met, reports should keep collections, activations, trialing/active periods and completed renewals distinguishable and avoid inventing recurring metrics.
 
 ## Authority model
 
-Only verified provider notifications can complete a payment. Browser returns remain observational. The payment service persists only safe provider references and expected verification values; hosted checkout fields, merchant passwords, secure hashes and raw provider payloads are not stored on the transaction returned by administration APIs.
+Only authoritative backend/provider state may complete a payment/subscription transition or grant Premium. Browser returns remain observational.
 
-Administrators receive server-provided capabilities:
+The Game Arena API stores only the information needed for product state, reporting, reconciliation and audit. Product API keys, webhook secrets, wallet MPINs, raw secret-bearing provider payloads and unrestricted payment-account data must never be exposed through reporting APIs.
+
+Administrators receive server-provided capabilities such as:
 
 - `subscription.read`
 - `subscription.manage_plans`
@@ -24,95 +40,70 @@ Administrators receive server-provided capabilities:
 - `reports.read`
 - `reports.export`
 
-Report export is deliberately separate from report viewing.
+Report export remains separate from report viewing.
 
 ## Report endpoints
 
-All endpoints use the existing `/v1/admin` authentication boundary.
+Administrative/reporting endpoints remain under the server-enforced `/v1/admin` authorization boundary, including plan/subscription ledgers, payment reports, reconciliation, benefit-cost and export routes implemented by the application.
 
-- `GET /v1/admin/capabilities`
-- `GET /v1/admin/plans`
-- `PATCH /v1/admin/plans/:id`
-- `POST /v1/admin/subscriptions/:userId/adjust`
-- `GET /v1/admin/subscriptions/:userId`
-- `GET /v1/admin/reports/subscriptions/summary`
-- `GET /v1/admin/reports/payments`
-- `GET /v1/admin/reports/subscriptions`
-- `GET /v1/admin/reports/recurring-customers`
-- `GET /v1/admin/reports/reconciliation`
-- `GET /v1/admin/reports/benefit-costs`
-- `GET /v1/admin/reports/exports`
-- `GET /v1/admin/reports/exports/:reportType`
+## Filters and pagination
 
-Supported report types are `summary`, `payments`, `subscriptions`, `recurring-customers`, `reconciliation` and `benefit-costs`.
+Preserve bounded date ranges, stable ordering, server pagination and explicit timezone/effective-range metadata. Do not load unrestricted finance/payment history into the browser.
 
-## Filters
+Applicable filters may include:
 
-- `preset`: `today`, `yesterday`, `last7`, `last30`, `currentmonth`, `previousmonth`
-- `from` and `to`: inclusive Pakistan-local calendar dates in `YYYY-MM-DD`
-- `aggregation`: `daily` or `monthly`
-- `planId`
-- `purpose`: `activation` or `extension`
-- `paymentStatus`
-- `subscriptionStatus`
-- `autoRenew`
-- `q`
-- `cursor`
-- `limit`, bounded to 200
-
-Custom report ranges are limited to 366 days. CSV exports are limited to 10,000 rows and instruct operators to narrow the range when the limit is exceeded.
+- date preset/custom range;
+- plan or plan version/code;
+- payment purpose/status;
+- subscription status;
+- wallet/renewal state only when authoritative;
+- customer search under approved capability;
+- cursor/limit.
 
 ## Metric definitions
 
-- Gross collections: completed Game Arena+ membership payments whose paid timestamp is inside the selected range, including payments later refunded.
-- Refunds: authoritative refunded membership amount whose refund timestamp is inside the selected range.
-- Net collections: gross collections minus refunds.
-- Paid activation: a completed membership payment persisted with purpose `activation`.
-- Successful extension: a completed membership payment persisted with purpose `extension`.
-- Recurring customer: a customer with at least one completed extension payment. Auto-renew consent alone does not qualify.
-- Benefit cost: redeemed Game Arena+ top-up discount value minus reversed value. Non-monetary benefits are not assigned invented monetary costs.
+Reports must distinguish at minimum:
 
-Each summary response includes the schema version, exact effective range, timezone, normalized filters and metric explanations.
+- gross completed Game Arena+ collections;
+- authoritative refunds/reversals;
+- net collections;
+- new activation/trial versus completed renewal/extension where provider state proves it;
+- active/trialing/past-due/canceled/expired periods where supported;
+- manual/audited grants versus paid/provider-derived access;
+- member benefit/discount value only where an approved monetary value exists.
+
+A wallet link or auto-pay consent alone is not a completed renewal.
 
 ## Payment and plan snapshots
 
-New membership transactions persist an immutable plan snapshot and payment purpose. Current plan changes cannot rewrite historical payment records. Top-up transactions persist list price, charged price and discount value so the 10% member discount can be reported and reversed correctly.
+Game Arena should retain sufficient immutable plan/payment/subscription snapshots to explain historical entitlement and finance outcomes even if the current Payment Service catalogue changes later.
 
-Hosted checkout fields are returned only to the initiating player request. They are not included in the stored transaction or administration DTO.
+Historical direct-JazzCash/fixed-duration records must remain understandable and must not be silently rewritten into the new subscription model.
 
-## Exports
+## Reconciliation
 
-CSV is generated by the backend using the same formulas and filters as the on-screen report. It is UTF-8 with a byte-order mark and protects spreadsheet formulas by prefixing cells beginning with `=`, `+`, `-`, `@`, tab or carriage return.
+Reconciliation is read-first and server-authoritative. It should surface discrepancies such as:
 
-Each export writes an audit record containing:
+- authoritative provider success without matching Game Arena entitlement;
+- entitlement without authoritative paid/trial state except approved manual grant;
+- amount/currency/plan/status mismatch;
+- duplicate/retried/failed webhook processing;
+- stale pending/initiation state;
+- refund not reflected in entitlement;
+- cancellation/unlink state not reflected correctly.
 
-- acting administrator;
-- report type;
-- safe filters and selected range;
-- row count;
-- schema version;
-- SHA-256 content hash;
-- generation timestamp.
+Any mutation to resolve a case requires the appropriate capability, explicit reason, idempotency and audit evidence.
 
-Exported customer rows are not copied into the audit event.
+## CSV/export safety
 
-## PostgreSQL reporting projection
+Exports must use the same backend filters/formulas as the on-screen report, use bounded ranges/rows, protect against spreadsheet formula injection and record non-sensitive export audit metadata.
 
-Migration `900_game_arena_plus_reporting.sql` creates indexed reporting projections for plan versions, payment attempts/events, subscription periods, reconciliation cases, monetary benefits, export audit and administrator audit events. The current runtime state is projected transactionally during durable commits.
+Never export secrets, raw webhook payloads, MPINs, full provider credentials or unrestricted PII.
 
-The broader removal of the legacy `platform_state` runtime and single-writer restriction remains tracked in #52. This reporting release does not claim that #52 is fully complete.
+## Staging acceptance
 
-## Required staging scenarios
+Before paid production launch, real external Payment Service staging UAT (#165/#166) and human Admin/reporting UAT must confirm that provider subscription/payment state reconciles with Game Arena entitlement and reporting for the exact final staging SHA.
 
-The deterministic report tests cover activation, extension, failed extension, refund, manual grant, member discount, benefit reversal, formula-injection protection, Pakistan-local boundaries and report/export authorization.
+If real charging is part of production launch, #17 remains the provider/finance readiness gate for live settlement/reconciliation/refund/dispute evidence.
 
-Before live Game Arena+ activation, AWS staging must additionally prove:
-
-1. paid, failed and pending provider journeys;
-2. completed and failed extension journeys;
-3. refund and entitlement recomputation;
-4. audited manual grant, extension and revoke;
-5. provider/internal mismatch and duplicate webhook cases;
-6. identical summary and CSV totals for the same filters;
-7. report viewer denial from exports and reconciliation execution;
-8. no checkout credentials, secure hashes, raw webhooks or unrestricted customer data in any admin response.
+Production remains separately authorized.
