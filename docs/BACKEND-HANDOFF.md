@@ -2,201 +2,124 @@
 
 ## Status
 
-This document freezes the integration boundary for the player PWA, the modular-monolith API and the first AWS staging deployment.
+This document describes the current integration boundary for the player PWA, modular-monolith API, PostgreSQL runtime and current self-managed/local-server staging deployment.
 
 - Contract version: `1.0.0`
 - Canonical route manifest: `contracts/api/v1/routes.json`
-- Canonical preview and test examples: `contracts/api/v1/mock-responses.json`
+- Canonical preview/test examples: `contracts/api/v1/mock-responses.json`
 - Drift check: `node scripts/check-api-contract.mjs`
-- Vercel remains `mode: 'mock'`.
-- AWS staging will use `mode: 'live'` after account provisioning.
-- Production activation remains disabled until AWS qualification, game rights/certification, OTP and JazzCash are complete.
+- Vercel remains preview/mock only.
+- Current staging uses the live API through the existing Docker Compose server.
+- Production activation remains separate and explicitly approved.
 
-The contract describes the API already implemented in `apps/api`. It does not authorize public production use.
+AWS provisioning is not part of the current handoff.
 
 ## Environment boundary
 
-| Environment | Frontend | API/data | OTP | JazzCash | Games |
+| Environment | Frontend | API/data | OTP | Premium payments | Games |
 |---|---|---|---|---|---|
-| Vercel preview | PWA preview | deterministic mock contract | mock code `123456` | mock checkout | demo/static preview only |
-| Local Compose | local PWA | memory or local PostgreSQL | mock | mock | local controlled origin |
-| AWS staging | immutable web image | API + RDS PostgreSQL | mock initially | mock initially | private controlled origin |
-| Production | promoted staging SHA | API + RDS PostgreSQL | approved provider | approved hosted flow | certified immutable builds only |
+| Vercel preview | mock PWA preview | deterministic mock contract | mock | disabled/mock | preview only |
+| Local development | local PWA | local API/PostgreSQL | mock/debug | disabled/mock | local controlled origin |
+| Current staging | deployed web image | API + persistent PostgreSQL | staging configuration | external Payment Service when enabled | controlled local staging origin |
+| Production | exact staging-approved artifact | production API/PostgreSQL | approved provider | approved external Payment Service/provider config | approved controlled-origin catalogue |
 
-No AWS, database, OTP, JazzCash, administrator, signing or customer secret belongs in Vercel.
+No database, OTP, Payment Service, administrator, signing or customer secret belongs in browser-visible configuration.
 
 ## Transport and compatibility
 
-- Base path: `/v1`.
-- JSON request and response bodies use `application/json`.
-- Every response may include `x-request-id`.
-- The backend may add optional response fields without a contract version change.
-- Removing or renaming a field, changing a field type, changing an HTTP status or tightening a previously valid request requires a new contract version.
-- Dates use ISO 8601 strings unless the existing API explicitly returns epoch milliseconds.
-- Identifiers are opaque strings. Clients must not infer meaning from UUIDs or prefixes.
-- Catalogue game IDs use lowercase slugs matching `^[a-z0-9-]+$`.
+- Base API path: `/v1`.
+- JSON request/response uses `application/json` unless an endpoint explicitly requires another body type.
+- Responses may include `x-request-id`.
+- Removing/renaming a field, changing a field type/status or tightening a previously valid request requires contract review/versioning.
+- Dates use ISO 8601 unless an existing contract says otherwise.
+- Identifiers are opaque strings.
 
 ## Authentication and CSRF
 
-Player authentication uses an opaque HttpOnly session cookie. The browser cannot read the session cookie.
+Player authentication uses an opaque HttpOnly session cookie.
 
 Authenticated mutations require:
 
 1. the session cookie;
 2. the readable CSRF cookie;
-3. the same CSRF value in `x-csrf-token`;
+3. matching `x-csrf-token`;
 4. an allowed `Origin`.
 
-The frontend sends `credentials: 'include'`. It must treat `401 authentication_required` as signed out and `403 origin_rejected` as a deployment/configuration failure.
+The frontend sends credentials and treats authentication/origin failures as server-authoritative.
 
-Administrator APIs are outside the player contract and continue to use signed identity-proxy assertions with server-enforced roles.
+Administrator APIs use the separate signed identity/role boundary and server-enforced capabilities.
 
-## Idempotency
+## Premium payment boundary
 
-`idempotency-key` is mandatory for:
+Game Arena+ subscriptions use:
 
-- membership checkout;
-- Arena Coin top-up checkout.
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
 
-The same user, operation and idempotency key must return the original transaction rather than creating a second charge.
+Frontend rules:
 
-Play completion is idempotent by `playSessionId`. A repeated verified completion returns the stored reward and balance.
+- never call the Payment Service directly;
+- never send `userId` as payment authority;
+- never send an arbitrary charge amount;
+- use BFF plan data/plan codes;
+- never activate Premium from redirect/query parameters;
+- treat status returned by the Game Arena API as authoritative.
 
-## Error model
+BFF routes are documented in `docs/PAYMENT-SERVICE-INTEGRATION.md`.
 
-All JSON errors use:
+The legacy direct JazzCash adapter remains only for unrelated legacy/non-subscription compatibility. Do not use it for the current Game Arena+ subscription flow when external billing is enabled.
 
-```json
-{
-  "error": {
-    "code": "authentication_required",
-    "message": "Sign in is required.",
-    "details": {}
-  }
-}
-```
+## Payment idempotency and webhook authority
 
-The UI should branch on `error.code`, not English text. The initial stable codes include:
-
-- `invalid_request`
-- `authentication_required`
-- `origin_rejected`
-- `rate_limited`
-- `invalid_otp`
-- `otp_resend_too_soon`
-- `otp_attempts_exceeded`
-- `game_not_found`
-- `premium_required`
-- `free_play_limit_reached`
-- `result_rejected`
-- `transaction_not_found`
-- `offer_not_found`
-- `voucher_not_found`
-- `multiplayer_unavailable`
-- `invalid_room_name`
-- `invalid_room_size`
-- `invalid_support_message`
-- `persistence_unavailable`
-- `internal_error`
-
-Unknown codes must render a safe generic message and retain the request ID for support.
+- wallet/subscription actions must preserve idempotent/retry-safe behavior;
+- the first wallet link must not cause a duplicate subscription create;
+- Payment Service webhooks are HMAC-verified on raw bytes and deduped by `eventId`;
+- authoritative Payment Service status is reconciled before entitlement changes;
+- browser redirects and screenshots are never payment authority.
 
 ## Catalogue and game delivery
 
-The catalogue response is metadata only. It never contains source archives or private rights material.
+The catalogue contains metadata only. Game files are served from the controlled staging origin and current local persistent game-content path.
 
-A game is launchable only when all of these are true:
+A game is launchable only when runtime/catalogue rollout and eligibility permit it and the exact immutable version is available.
 
-- `status` is `active`;
-- `rolloutPercentage` is greater than zero;
-- the user is inside the rollout;
-- the user satisfies free/premium eligibility;
-- an immutable version is present;
-- the controlled-origin URL matches that exact version;
-- the version is not paused or killed.
-
-The four oversized pilot titles remain `paused` with rollout `0` until AWS staging publication and certification complete.
-
-## Payments
-
-The browser return URL is not authoritative. It always lands in a pending state and polls `GET /v1/payments/{transactionId}`.
-
-Only a verified provider notification may move a transaction to `paid` and activate an entitlement or credit coins.
-
-Supported transaction states for the handoff are:
-
-- `pending`
-- `paid`
-- `failed`
-- `cancelled`
-- `refunded`
-- `voided`
-
-Automatic renewal is not part of contract `1.0.0`.
+The current exact-60 portfolio is already published/qualified on local staging. Broader migration work is future scope and is not an AWS dependency for the current launch.
 
 ## Play proof and rewards
 
-The API creates a play session containing:
+The API remains authoritative for play completion, score/reward policy and wallet changes.
 
-- `playSessionId`
-- exact `gameVersion`
-- server-issued `nonce`
-
-Completion must send the same version and nonce plus score and duration. A game may be playable while rewards remain disabled. The server is the only writer to wallet, entitlement and score state.
-
-Completion results are:
-
-- `verified`: accepted and eligible for policy-controlled reward;
-- `review`: recorded but not rewarded automatically;
-- `rejected`: invalid request/proof.
+A game may be playable while rewards/competitions remain disabled. Imported titles retain disabled reward/competition policy unless explicit integrity approval changes it.
 
 ## Frontend implementation rules
 
-The existing PWA adapter is `apps/web/src/api.js`.
-
-- `mode: 'mock'` uses the deterministic values represented in `mock-responses.json`.
-- `mode: 'live'` calls the versioned API and includes credentials.
-- The frontend must not call AWS services, RDS, Secrets Manager, payment providers or OTP providers directly.
-- The frontend must not infer premium activation from a redirect.
-- The frontend must not construct game URLs outside the configured controlled origin.
-- The frontend must tolerate optional fields and empty collections.
+- `mode: 'mock'` is preview/development only.
+- live staging calls the Game Arena API and includes credentials.
+- frontend code must not talk directly to databases, provider secrets or infrastructure APIs.
+- game URLs come from approved controlled-origin catalogue data.
+- Premium status comes from authoritative Game Arena API state.
 
 ## Backend implementation rules
 
-The primary team should preserve the launch architecture:
-
-- one modular-monolith API writer;
-- atomic PostgreSQL commits before mutation acknowledgement;
-- restricted application database role;
-- exact server-side authorization;
-- no shared deployed administrator API keys;
-- payment and reward state transitions inside transactions;
-- immutable game version records;
-- active-version, pause and rollout changes as database state, not artifact mutation.
+- PostgreSQL is the durable runtime source of truth;
+- acknowledge mutations only after required durable/transactional work succeeds;
+- enforce authorization server-side;
+- keep external Payment Service credentials server-only;
+- keep payment/reward state transitions idempotent and auditable;
+- preserve immutable game-version records and rollout/kill-switch controls.
 
 ## Handoff test sequence
 
-Before connecting Vercel to AWS staging:
-
-1. Run `node scripts/check-api-contract.mjs`.
-2. Run the complete repository CI matrix.
-3. Deploy the exact `main` SHA to AWS staging with OTP and JazzCash in mock mode.
-4. Set the PWA staging configuration to `mode: 'live'`, the staging API origin and the controlled game origin.
-5. Execute anonymous catalogue, OTP login, session rotation, logout and account journeys.
-6. Execute mock membership and top-up transactions and verify persistence after API restart.
-7. Execute play start/completion, duplicate completion and invalid-proof cases.
-8. Verify premium gating, wallet, leaderboard, rooms and support.
-9. Verify all four pilot games with rollout `0` before controlled manual activation.
-10. Record evidence under issue #48.
+1. Run contract/security/affected CI checks.
+2. Deploy the exact reviewed SHA through the current release → Compose staging workflow.
+3. Verify exact image/SHA identity and health.
+4. Test anonymous catalogue and account/session journeys.
+5. Test controlled game origin and representative games.
+6. Test Premium gating with external billing disabled unless real staging credentials are installed.
+7. When credentials exist, execute the full real Payment Service UAT under #165.
+8. Test Admin/RBAC, persistence/restart and multiplayer/regression behavior.
+9. Record evidence under #48.
+10. If code changes, deploy/certify the new exact SHA before reusing UAT evidence.
 
 ## Change control
 
-A contract change PR must update:
-
-- `routes.json`;
-- `mock-responses.json`;
-- the frontend adapter when applicable;
-- API implementation/tests when applicable;
-- this handoff document for behavioral changes.
-
-CI rejects missing routes, missing examples, preview secrets and frontend/backend route drift.
+Contract changes must update relevant route/mock/frontend/API/tests/docs together. Production remains untouched until human UAT passes and the owner separately authorizes production.
