@@ -131,3 +131,20 @@ The current exact-60 staging portfolio is already published to the local control
 Production remains a separate explicit owner-authorized action. No AI tool, merge, staging PASS or documentation change may infer production authorization.
 
 If a future AWS/cloud migration is approved, treat it as a new architecture work packet with its own staging/rollback/cost/security evidence rather than reviving historical files automatically.
+
+## AI review protocol
+
+Before proposing or applying a material change, an AI-assisted contributor must:
+
+1. identify the exact current issue/launch-gate context and target SHA/branch;
+2. distinguish current architecture from historical/optional repository assets;
+3. inspect the relevant contract, migration, implementation and tests rather than relying on stale prose;
+4. state external dependencies explicitly and never invent provider hosts, credentials or production authorization;
+5. preserve server authority for payments, entitlements, rewards, scores and Admin permissions;
+6. keep Payment Service secrets server-only and preserve the current Game Arena+ BFF/webhook trust boundary;
+7. use the self-managed/local Docker Compose lane as the current deployment assumption unless an explicit architecture decision says otherwise;
+8. run the affected repository/CI qualification and fix contract-marker drift instead of weakening checks;
+9. attach only non-sensitive evidence to issues/PRs;
+10. stop before production unless explicit owner authorization for the exact approved release is present.
+
+A review that discovers stale repository context should update that context as part of the bounded change when practical.
