@@ -1,65 +1,63 @@
 # Game Arena
 
-Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swipe-based discovery, a curated free and premium catalogue, OTP accounts, fixed-duration JazzCash checkout, Arena Coins, challenges, leaderboards, multiplayer room coordination and tournaments.
+Game Arena is a mobile-first HTML5 gaming platform for Pakistan. It combines swipe-based discovery, a curated free and premium catalogue, OTP accounts, Arena Coins, challenges, leaderboards, multiplayer room coordination, tournaments and Game Arena+ billing through an external Payment Service.
 
-## Product model
+## Current launch architecture
 
-### Free
+The active staging and launch lane is the existing **self-managed/local-server Docker Compose deployment**.
 
-- Selected catalogue
-- Standard rewards and basic leaderboards
-- Optional promotional placements
-- Limits on selected games or features
+- Repository: `Game-Arena-Codistan/platform`
+- Staging: `https://gsmarena-play.codistan.org`
+- Runtime: PostgreSQL + API + player web + private Admin + controlled game origin + gateway
+- Staging Compose file: `infra/docker-compose.staging.yml`
+- Deployment workflow: `.github/workflows/deploy.yml`
+- Release images: `.github/workflows/release.yml`
+- Current launch gate/source of truth: issue #48
 
-### Game Arena+
+AWS/EKS/S3/OpenTofu files remain in the repository as historical/optional infrastructure work. They are **not required for the current local-server staging, UAT or production-approval path**. Do not provision AWS for the current launch unless a new infrastructure decision explicitly reactivates that lane.
 
-- Full catalogue access
-- Ad-free platform experience
-- Premium challenges and tournaments
-- 2× Arena Coins on eligible verified play
-- 10% member top-up discount
-- PKR 299 monthly or PKR 4,999 yearly
+## Game Arena+
 
-Checkout is a single JazzCash charge. Automatic renewal must not be promised unless merchant capability, provider terms, customer disclosure and a separately reviewed implementation are approved.
+Game Arena+ provides the premium product experience, including full-catalogue access and other approved member benefits.
+
+For the current payment architecture, monthly/yearly plan codes and prices are **server-authoritative from the external Payment Service catalogue**. The browser does not send a charge amount and hard-coded UI values are not the source of truth when external billing is enabled.
+
+Current Premium payment boundary:
+
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
+
+The Payment Service product API key and webhook secret remain server-only. Browser return/redirect state never grants Premium access.
+
+See [`docs/PAYMENT-SERVICE-INTEGRATION.md`](docs/PAYMENT-SERVICE-INTEGRATION.md) and [`docs/PAYMENTS.md`](docs/PAYMENTS.md).
 
 ## Repository
 
-The GitHub organization currently contains one application repository: `Game-Arena-Codistan/platform`.
-
 ```text
 apps/web/             Player-facing PWA
-apps/api/             Platform API, migrations and service adapters
+apps/api/             Platform API, migrations and provider/BFF adapters
 apps/admin/           Private operations console
 apps/game-ops/        Game validation, scanning and packaging
-apps/game-origin/     Isolated demo and immutable-artifact gateway
+apps/game-origin/     Controlled immutable game origin
 packages/game-bridge/ Game Bridge v1 SDK and schemas
-examples/             Reference game integration
-infra/                Local Compose, Kubernetes and AWS OpenTofu
+infra/                Active local/Compose deployment plus optional historical cloud assets
 catalogue/            Reviewed game release metadata and digests
 docs/                 Architecture, security, operations and launch runbooks
-.github/workflows/    Quality, previews, content and protected AWS delivery
+.github/workflows/    CI, image publication, staging deployment and certification
 ```
 
 ## Development workflow
 
-The repository is prepared for human and AI-assisted development through durable context, structured work packets and CI-enforced guardrails.
-
 Start with:
 
-- [`AGENTS.md`](AGENTS.md) — repository operating contract for AI tools and contributors.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — branches, validation, security and pull-request workflow.
-- [`docs/AI-NATIVE-DEVELOPMENT.md`](docs/AI-NATIVE-DEVELOPMENT.md) — premium-feature, game-integration and post-launch delivery model.
-- [`docs/ISSUE-GOVERNANCE.md`](docs/ISSUE-GOVERNANCE.md) — issue lifecycle, priorities, closing rules and audit cadence.
-- [`docs/decisions/README.md`](docs/decisions/README.md) — architecture decision criteria and the ADR workflow.
-- [`.github/CODEOWNERS`](.github/CODEOWNERS) — review ownership for product, data, game, infrastructure and governance paths.
+- [`AGENTS.md`](AGENTS.md)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`docs/DEPLOYMENT-HANDOFF.md`](docs/DEPLOYMENT-HANDOFF.md)
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+- [`docs/PAYMENT-SERVICE-INTEGRATION.md`](docs/PAYMENT-SERVICE-INTEGRATION.md)
+- [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md)
+- [`docs/GO-LIVE.md`](docs/GO-LIVE.md)
 
-Use the structured GitHub issue templates for defects, features and game onboarding. Pull requests must use the repository template and identify an immutable validated head SHA.
-
-Validate the durable development context with:
-
-```bash
-node scripts/check-ai-native-readiness.mjs
-```
+Use normal PR/change-control rules and identify the exact validated SHA for every runtime change.
 
 ## Run locally
 
@@ -72,9 +70,7 @@ docker compose up --build
 - API: `http://localhost:8081`
 - Controlled game origin: `http://localhost:8082`
 - Operations console: `http://localhost:8083`
-- Local operations key: `local-admin-key` unless overridden
-- Demo OTP: `123456`
-- JazzCash: mock mode
+- Demo OTP/payment modes are development-only
 
 ## Validate
 
@@ -89,62 +85,41 @@ cd apps/web && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
 cd ../api && npm ci --ignore-scripts --no-audit --no-fund && npm run ci
 cd ../game-ops && npm run ci
 cd ../../packages/game-bridge && npm run ci
-node ../../scripts/security-check.mjs
-node ../../scripts/check-cloud-deployment.mjs
 ```
 
-GitHub Actions additionally run real PostgreSQL durability tests, API load tests, Chromium/Firefox/WebKit journeys, game archive/runtime QA, CodeQL, production container builds, AWS OpenTofu validation and protected deployment-policy checks.
+GitHub Actions also run PostgreSQL durability checks, API/business qualification, browser tests, Admin/RBAC checks, game/runtime QA, security scanning, immutable image publication and deployed staging certification.
 
 ## Architecture boundaries
 
-- Games are untrusted, preflighted before extraction, scanned, versioned and served from a separate origin.
-- Production game binaries are immutable `slug/version` objects in private S3, delivered through CloudFront and the isolated game hostname; they are not committed to platform Git history.
-- Game Bridge messages require the expected source window, origin model and v1 schema.
-- Games request rewards; only the API commits ledger entries, and every completion requires the exact server-issued nonce and game version.
-- Browser payment returns never activate purchases. Authoritative notifications must match the stored merchant, bill reference, amount and currency.
-- Production player authentication uses opaque HttpOnly cookies plus CSRF and origin controls.
-- Production administration uses signed identity-proxy assertions, server-bound roles and a private MFA/SSO access layer. Shared keys are development-only.
-- The launch API is a modular monolith backed by normalized PostgreSQL repositories. Acknowledged mutations wait for commit, restart durability is tested and stale concurrent writers are rejected.
-- Migrations may use the RDS administrator credential; the running API is switched to a restricted application role after deployment.
-- Uncertified external games and valuable competitions are disabled by default in production.
-- Product analytics is off by default and excludes identity, OTP, session and payment fields.
-
-## Next development phase
-
-After staging and production qualification, the repository is designed to support two parallel growth lanes:
-
-1. **Game Arena+ vertical slices** spanning player UX, API contract, normalized data, administration, audit, rollout and rollback.
-2. **Portfolio-scale game onboarding** spanning source/rights, bounded preflight, scanning, Game Bridge, immutable publication, certification and controlled rollout.
-
-New premium features must preserve current fixed-duration single-charge semantics unless recurring billing receives separate provider, product and compliance approval. New games start paused at rollout `0`, with rewards and competitions disabled until the relevant integrity and device evidence is recorded.
+- Games are treated as untrusted content, scanned before publication and served from a controlled origin.
+- Current staging game files are persisted outside the application containers under the local server game-content path and mounted read-only into the game-origin service.
+- Browser sessions use opaque HttpOnly cookies plus CSRF/origin controls.
+- The API/PostgreSQL layer is authoritative for entitlements, wallet/ledger changes, play proof and operational state.
+- The browser never receives external Payment Service credentials and never grants Premium from a redirect.
+- The private Admin surface uses server-enforced signed-role authorization in staging certification.
+- Rewards/competitions stay disabled for imported titles unless their integrity policy is explicitly approved.
 
 ## Delivery
 
-- **Frontend previews:** `.github/workflows/vercel-preview.yml` deploys the PWA in mock mode.
-- **Release images:** `.github/workflows/release.yml` publishes commit-addressed images with provenance and SBOM metadata.
-- **AWS infrastructure:** `.github/workflows/aws-infrastructure.yml` validates, plans and applies the reviewed OpenTofu stack through protected GitHub Environments and OIDC.
-- **AWS staging:** `.github/workflows/aws-staging.yml` deploys immutable images, applies runtime controls and records evidence.
-- **Runtime controls:** `.github/workflows/aws-runtime-controls.yml` installs the least-privilege database role, injects protected admin/support settings, applies WAF/TLS/access logs and verifies workloads.
-- **Game publication:** `.github/workflows/game-content-import.yml` publishes reviewed immutable game versions and opens metadata-only PRs.
-- **AWS production:** `.github/workflows/aws-production.yml` requires the qualified SHA, staging evidence, provider readiness and protected approval.
-- **Rollback:** `.github/workflows/aws-rollback.yml` redeploys a previously healthy immutable SHA without destructive database rollback.
+Active current-lane delivery:
 
-## Readiness
+- `.github/workflows/vercel-preview.yml` — frontend-only mock previews.
+- `.github/workflows/release.yml` — publishes commit-addressed application images.
+- `.github/workflows/deploy.yml` — deploys the exact image SHA to the self-managed staging Compose server and invokes certification.
+- `.github/workflows/aws-staging-certification.yml` — historical filename retained; currently certifies the Compose staging host.
 
-Repository-controlled launch blockers are implemented. The platform is ready for AWS staging provisioning, provider configuration, representative licensed-game import and full qualification.
+Historical AWS infrastructure/deployment workflows may remain for future reuse, but they are not launch prerequisites for the current project scope.
 
-The remaining completion boundary requires external inputs and execution:
+## Current readiness boundary
 
-1. **#17:** live JazzCash merchant credentials, field mapping, settlement/refund/reconciliation evidence.
-2. **#40:** licensed game archives, rights evidence, immutable publication and device/runtime certification.
-3. **#48:** actual AWS account provisioning, OTP/provider values, legal/operator contacts, staging evidence and controlled production rollout.
+The application/runtime is deployed and automated staging certification has reached `READY FOR UAT`. Issue #48 is the authoritative current launch gate.
 
-See:
+Remaining current-launch work is:
 
-- [`docs/DEPLOYMENT-HANDOFF.md`](docs/DEPLOYMENT-HANDOFF.md)
-- [`docs/AWS-DEPLOYMENT.md`](docs/AWS-DEPLOYMENT.md)
-- [`docs/FINAL-GO-LIVE-AUDIT.md`](docs/FINAL-GO-LIVE-AUDIT.md)
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md)
-- [`docs/SECURITY-VERIFICATION.md`](docs/SECURITY-VERIFICATION.md)
-- [`docs/QUALIFICATION.md`](docs/QUALIFICATION.md)
-- [`docs/GO-LIVE.md`](docs/GO-LIVE.md)
+1. real external Payment Service/JazzCash **staging UAT** under #158/#165/#166;
+2. full developer/team **manual UAT**, defect fixes and retesting on the exact final SHA;
+3. demo/evidence handoff as required;
+4. **explicit production authorization** after UAT acceptance;
+5. if real charging is part of launch, provider/finance readiness under #17.
+
+Production is never authorized by a documentation change, merge or automated staging PASS.
