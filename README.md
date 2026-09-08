@@ -51,6 +51,9 @@ Start with:
 
 - [`AGENTS.md`](AGENTS.md)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`docs/AI-NATIVE-DEVELOPMENT.md`](docs/AI-NATIVE-DEVELOPMENT.md)
+- [`docs/ISSUE-GOVERNANCE.md`](docs/ISSUE-GOVERNANCE.md)
+- [`docs/decisions/README.md`](docs/decisions/README.md)
 - [`docs/DEPLOYMENT-HANDOFF.md`](docs/DEPLOYMENT-HANDOFF.md)
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - [`docs/PAYMENT-SERVICE-INTEGRATION.md`](docs/PAYMENT-SERVICE-INTEGRATION.md)
