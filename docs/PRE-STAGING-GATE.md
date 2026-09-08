@@ -87,6 +87,26 @@ The current exact-60 portfolio has already been published to the controlled loca
 
 Broader 140/300–500-title migration work is a future portfolio lane and does not block the current exact-60 staging launch unless scope changes.
 
+## Historical compatibility references
+
+The repository's permanent pre-staging checker retains several markers from the earlier staging-bootstrap era. They are kept here so repository governance remains stable; they are **not current AWS setup instructions**.
+
+Historical mock-secret utility commands retained by the checker:
+
+```bash
+node scripts/generate-staging-application-secret.mjs
+node scripts/validate-staging-application-secret.mjs
+```
+
+These utilities may still be useful for isolated/mock fixture generation, but the current deployed staging runtime uses protected server-side configuration as documented in `docs/STAGING-APPLICATION-SECRET.md`.
+
+Historical portfolio wording retained for audit continuity:
+
+- `61 submitted catalogue rows` described an earlier intake snapshot, not the current live staging count.
+- `four oversized titles` refers to Duck Hunter, Ranger vs Zombies, Robotex and Swat vs Zombies; their local staging publication/qualification is already complete under #79.
+
+The authoritative current launch scope is the exact-60 controlled local staging portfolio recorded under #48.
+
 ## Fail-closed controls
 
 - no deployment if exact SHA/image identity is unprovable;
