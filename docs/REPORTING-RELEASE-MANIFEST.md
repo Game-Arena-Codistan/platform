@@ -1,31 +1,42 @@
 # Game Arena+ reporting release manifest
 
-Candidate branch: `agent/game-arena-plus-reporting`
+## Status
 
-Base commit: `766fb01bfec3a9948970945f2b8206e5855be1ea`
+This file originally described an earlier fixed-duration/direct-JazzCash reporting candidate. That candidate has since been merged, evolved and superseded by the current deployed application/payment architecture.
 
-The authoritative candidate commit is the immutable pull-request head recorded at qualification time.
+Do not use the historical branch/base/SHA or AWS staging instructions as current deployment guidance.
 
-## Included
+## Current reporting boundary
 
-- Safe payment persistence and administration DTOs; hosted JazzCash checkout fields are transient and excluded from stored/admin transaction records.
-- Immutable Game Arena+ plan snapshots and activation-versus-extension classification.
-- Monetary member top-up discount issuance, redemption and reversal records.
-- Authoritative summary, payment, paid-pass, recurring-customer, reconciliation and benefit-cost reports.
-- Pakistan-local report presets and bounded custom ranges using UTC timestamps.
-- Backend UTF-8 CSV exports, formula-injection protection, 10,000-row fail-closed limit and export audit hashes.
-- Separate report-view, report-export, subscription adjustment, plan-management and reconciliation capabilities.
-- Audited manual access grant, extension and revoke operations.
-- Responsive operations-console reporting workspace and URL-backed filters.
-- Indexed PostgreSQL reporting projections and deterministic staging fixtures.
+Current Game Arena+ subscription architecture:
 
-## Explicitly not included
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
 
-- Automatic recurring charging.
-- JazzCash live merchant activation.
-- Tax, accounting, ERP, warehouse or external BI integration.
-- Full replacement of the legacy `platform_state` runtime or removal of its single-writer restriction; this remains #52.
+Reporting/admin must therefore preserve:
 
-## Qualification
+- safe payment/subscription persistence and DTOs;
+- immutable/historical plan/payment/subscription snapshots where required for audit;
+- provider-derived versus manual access origin;
+- initial activation/trial versus completed renewal/period behavior;
+- reconciliation for provider/Game Arena mismatches;
+- safe finance/admin exports with capability separation and audit evidence;
+- no provider secrets, MPINs, OTPs, raw secret-bearing webhook payloads or unrestricted PII.
 
-The exact pull-request head must pass the complete local repository validation suite, clean PostgreSQL migrations, API/report tests, browser tests, container builds and OpenTofu validation before merge. After merge, AWS staging may use mock OTP and mock JazzCash. Live Game Arena+ remains gated by #17, #19 and the remaining #52 work.
+Legacy fixed-duration/direct-JazzCash records may continue to exist historically and must remain distinguishable rather than being silently reinterpreted as external recurring subscriptions.
+
+## Current qualification
+
+Use the exact reviewed PR/main SHA and the active self-managed/local-server staging lane:
+
+1. repository/security/contract checks;
+2. API/PostgreSQL/reporting tests;
+3. immutable image publication;
+4. exact-SHA Docker Compose staging deployment;
+5. automated staging certification;
+6. real Payment Service staging UAT when payment launch scope requires it;
+7. human Admin/reporting UAT;
+8. evidence recorded under #48/#165/#166.
+
+Historical AWS/OpenTofu validation may remain as supplemental repository checks but is not a deployment prerequisite for the current launch.
+
+Production remains gated by human UAT and explicit owner authorization; #17 remains relevant for live provider/finance evidence when real charging is enabled.
