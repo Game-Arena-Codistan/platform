@@ -1,102 +1,142 @@
 # Deployment and recovery
 
-## Selected target
+## Active deployment target
 
-AWS is the only active full-platform deployment target. Use separate AWS accounts or strongly isolated environments for staging and production. Do not reuse databases, buckets, OTP senders, JazzCash credentials, admin credentials, encryption keys or analytics destinations.
+The active Game Arena staging/launch target is the existing **self-managed/local-server Docker Compose environment**.
 
-GitHub Environments hold protected variables, secrets and required reviewers. GitHub OIDC is used instead of stored AWS access keys.
+Do not provision AWS, EKS, S3, RDS, Route 53 or AWS IAM roles for the current launch unless the project owner explicitly changes the infrastructure decision.
 
-## Components
+Current staging URL: `https://gsmarena-play.codistan.org`
 
-- **Web:** immutable container/static files. Runtime `config.js` must remain no-store.
-- **API:** one writer replica backed by private PostgreSQL for the current launch architecture.
-- **Admin:** private operations console. It must not be exposed as a public service.
-- **Game origin:** separate hostname and immutable distribution for scanned game versions.
-- **PostgreSQL:** encrypted private RDS with backup and point-in-time recovery.
-- **Edge:** AWS Load Balancer Controller and ALB route `/api` while preserving a separate game hostname.
-- **Images:** immutable commit-addressed ECR images promoted from the release built from the same SHA.
-- **Evidence:** encrypted S3 deployment records plus GitHub workflow summaries and artifacts.
+Current runtime stack:
 
-## Active workflows
+- `postgres` — persistent PostgreSQL data volume;
+- `migrate` — exact-release migration runner;
+- `api` — Game Arena modular-monolith API/BFF;
+- `web` — player PWA;
+- `admin` — private operations console, bound locally on the server;
+- `game-origin` — controlled game origin with persistent host-mounted game content;
+- `gateway` — public reverse-proxy entry point.
 
-- `.github/workflows/vercel-preview.yml` — frontend-only pull-request previews in mock mode.
-- `.github/workflows/release.yml` — publishes API, web, admin and game-origin images with provenance and SBOM metadata.
-- `.github/workflows/aws-infrastructure.yml` — validates, plans and applies the AWS OpenTofu stack.
-- `.github/workflows/aws-staging.yml` — deploys and verifies an immutable SHA in AWS staging.
-- `.github/workflows/aws-staging-synthetic.yml` — scheduled production-like staging checks.
-- `.github/workflows/aws-production.yml` — promotes an already-qualified staging SHA.
-- `.github/workflows/aws-rollback.yml` — restores a previously healthy immutable SHA.
+The canonical staging definition is `infra/docker-compose.staging.yml`.
 
-The complete bootstrap and variable/secret matrix is in `docs/AWS-DEPLOYMENT.md`.
+## Active release flow
 
-## Local stack
+`reviewed main SHA → Build and publish images → exact-SHA Docker images → deploy.yml → local staging Compose → health/identity checks → automated staging certification → READY FOR UAT → human UAT`
 
-```sh
-cd infra
-docker compose up --build
+Relevant workflows:
+
+- `.github/workflows/vercel-preview.yml` — frontend-only mock preview;
+- `.github/workflows/release.yml` — immutable SHA-addressed image publication;
+- `.github/workflows/deploy.yml` — active staging deployment to the self-managed server;
+- `.github/workflows/aws-staging-certification.yml` — historical filename retained, but currently certifies the Compose staging host.
+
+Issue #48 is the authoritative deployment/UAT/production-approval gate.
+
+## Server layout and persistence
+
+The staging deployment operates from `/opt/codistan/platform`.
+
+Important persistent state:
+
+- PostgreSQL volume — must survive application/container replacement;
+- `/opt/codistan/platform/game-content/games` — immutable controlled game files, mounted read-only into game-origin;
+- protected `infra/.env` or equivalent server-side environment file — never copied from source control;
+- `.deployed-sha` — records the exact deployed application SHA for certification.
+
+Do not delete or recreate persistent database/game-content state as part of a routine application deploy.
+
+## Configuration
+
+The Compose stack reads runtime configuration from the protected server environment. Never commit secret values.
+
+Core staging configuration includes:
+
+- public/allowed origins;
+- PostgreSQL password/connection material;
+- OTP provider mode and provider credentials when applicable;
+- Admin signed-role material;
+- external Payment Service configuration;
+- legacy/top-up JazzCash settings only where an unrelated legacy path still requires them.
+
+For Game Arena+ external billing, see `docs/PAYMENT-SERVICE-INTEGRATION.md`.
+
+Required external-billing server variables are:
+
+```text
+PAYMENT_SERVICE_MODE=external
+PAYMENT_SERVICE_URL=...
+PAYMENT_SERVICE_API_KEY=...
+PAYMENT_SERVICE_WEBHOOK_SECRET=...
+PAYMENT_SERVICE_APP_RETURN_URL=https://gsmarena-play.codistan.org/#/premium
+PAYMENT_SERVICE_TIMEOUT_MS=8000
 ```
 
-- Platform: `http://localhost:8080`
-- Controlled game origin: `http://localhost:8082`
-- Operations console: `http://localhost:8083`
-- Demo OTP: available only because the local stack enables debug OTP
-- JazzCash: mock mode only
+Keep `PAYMENT_SERVICE_MODE=disabled` until the real staging Payment Service values are installed. No Payment Service API key or webhook secret belongs in browser config.
 
-## Staging sequence
+## Staging deployment sequence
 
-1. Merge only after every required check passes.
-2. Wait for **Build and publish images** on `main`.
-3. Run **AWS infrastructure** in plan mode for staging and retain the reviewed plan.
-4. Apply the approved staging plan through the protected environment.
-5. Populate AWS Secrets Manager and SSM configuration without placing values in repository content or issue comments.
-6. Run **AWS staging deployment** for a full 40-character commit SHA.
-7. Verify migrations, rollouts, internal/external health, DNS/TLS, security headers and retained evidence.
-8. Execute `docs/QUALIFICATION.md`, including physical devices, low-bandwidth behavior, accessibility, backup/restore and rollback.
-9. Attach only non-sensitive evidence to issue #48.
+1. Merge only a reviewed/qualified change.
+2. Confirm `Build and publish images` succeeds for the exact main SHA.
+3. Let `deploy.yml` deploy that same SHA to the existing staging server.
+4. Verify Compose resolves application services to the exact SHA tag, never mutable `latest`.
+5. Run migrations through the release migration service.
+6. Verify API, web, Admin and controlled game-origin health.
+7. Verify database/game-content persistence and restart recovery.
+8. Run the complete automated staging certification.
+9. Require `READY FOR UAT` before human UAT starts.
+10. If manual UAT finds a code defect, merge the fix normally and repeat the exact-SHA deployment/certification sequence.
 
-Staging may use mock OTP and mock JazzCash for software validation. Real provider journeys must pass before production approval.
+## Production preparation
 
-## Production sequence
+A staging PASS is not production authorization.
 
-1. Complete game-content, payment-provider, legal/operator, security and manual qualification gates.
-2. Confirm that the exact SHA has a healthy AWS staging evidence marker.
-3. Confirm production secrets, DNS/TLS, backup/PITR, monitoring and named owners.
-4. Run **AWS production promotion** with `PROMOTE`, a qualification record and an approved change/go-live record.
-5. The reusable deployment rejects production unless:
-   - `OTP_PROVIDER_MODE=http`
-   - `JAZZCASH_MODE=hosted`
-   - `ALLOW_DEBUG_OTP=false`
-6. Verify sign-in, catalogue, controlled game origin, payment smoke/reconciliation, entitlement activation, monitoring and rollback readiness.
-7. Start the controlled rollout defined in `docs/GO-LIVE.md`.
+Before any production change:
 
-Production must not use mock or disabled OTP/JazzCash modes. If a production provider is not ready, public launch remains blocked.
+- real Payment Service/JazzCash staging UAT must pass if paid launch is in scope;
+- manual UAT must pass on the exact final SHA;
+- no unresolved critical/high launch defect may remain;
+- production configuration, domain/TLS, database/content backup and rollback target must be verified;
+- the project owner must explicitly authorize production execution.
+
+After approval, production must receive the **same immutable application SHA/artifacts** accepted in staging. Do not rebuild a different release for production.
+
+See `docs/PRODUCTION-CUTOVER.md` and `docs/GO-LIVE.md`.
 
 ## Rollback
 
-### Web, API or admin
+### Application
 
-1. Identify a SHA with a retained healthy deployment marker.
-2. Run **AWS rollback** with the required confirmation and change/incident record.
-3. The workflow verifies the marker, redeploys immutable images, waits for rollouts and records new evidence.
-4. Do not reverse a database migration destructively. Migrations must remain compatible for at least one application rollback window.
+- retain the previous known-good production/staging SHA and image references;
+- restore the prior immutable application artifacts when rollback is required;
+- do not perform destructive database rollback blindly;
+- prefer compatible forward fixes or the documented database restore procedure.
 
-### Game
+### Games
 
-- Pause the catalogue item, set rollout to zero or use the exact-version kill switch.
-- Restore the previous verified active version.
-- Preserve the failed build, manifest, scan report and incident evidence.
+- pause a title, set rollout to zero or activate the exact-version kill switch;
+- restore the previous verified immutable game version;
+- preserve failed-build evidence for diagnosis.
 
 ### Payments
 
-- Stop new checkout creation only through an approved incident change.
-- Continue safe signed callbacks/status/reconciliation where possible.
-- Never grant premium from screenshots or browser-return state.
+- disable new payment initiation through an approved operational change if necessary;
+- continue safe webhook/status reconciliation where possible;
+- never grant Premium from browser return state, screenshots or manual client claims.
 
-## Backup and disaster recovery
+## Backup/recovery minimum
 
-Initial objectives are RPO ≤15 minutes and RTO ≤2 hours, subject to approval and the provisioned AWS plan.
+Before production approval, prove:
 
-- Enable RDS point-in-time recovery and retained snapshots.
-- Version and replicate approved game builds and manifests.
-- Retain image digests, deployment evidence, migration versions and OpenTofu state history.
-- Rehearse an isolated database restore, application rollback and game kill switch before public launch.
+- database backup and restore procedure;
+- persistent game-content backup/recovery procedure;
+- application rollback to a known-good SHA;
+- restart recovery for Compose services;
+- domain/TLS recovery ownership;
+- payment disable/reconciliation procedure.
+
+## Historical AWS assets
+
+`infra/opentofu/aws`, Kubernetes manifests and AWS workflows remain in the repository for historical/reference or a possible future infrastructure lane. They are **not the active deployment instructions**.
+
+`docs/AWS-DEPLOYMENT.md` is intentionally marked historical/optional and must not be used for the current launch without a new approved infrastructure decision.
