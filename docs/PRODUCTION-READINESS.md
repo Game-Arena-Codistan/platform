@@ -1,31 +1,92 @@
 # Production readiness boundary
 
-The repository contains the player PWA, API, PostgreSQL migrations and durable adapter, private operations console, controlled game origin, content scanner/packager, Game Bridge SDK, automated qualification, protected AWS infrastructure/delivery workflows and operating runbooks.
+## Current state
 
-Repository implementation is complete for the launch-candidate scope. A merge or successful workflow is not a claim that external infrastructure, licensed content or a merchant account is live.
+Game Arena is deployed on the existing self-managed/local-server staging environment and automated certification has reached `READY FOR UAT` for the current application/runtime lane.
 
-Only three execution gates remain:
+The current launch path does **not** require AWS/EKS/S3 provisioning.
 
-## 1. Game content deployment and rights — issue #40
+Issue #48 is the authoritative source for the exact staging-qualified SHA, deployment/certification evidence and final launch status.
 
-- Supply original licensed game archives or approved written mirroring permission.
-- Record rights for each game and artwork asset.
-- Import, scan, package and publish immutable versions to the controlled game origin.
-- Certify launch versions on supported devices and exercise pause, rollback and kill-switch controls.
+## Repository/runtime scope already implemented
 
-## 2. AWS deployment and production qualification — issue #48
+- player PWA;
+- API/BFF;
+- PostgreSQL persistence/migrations;
+- private Admin/RBAC console;
+- controlled local game origin and exact-60 staging portfolio;
+- immutable image publication;
+- Docker Compose staging deployment;
+- restart/persistence/identity/browser/Admin/visual automated certification;
+- external Payment Service integration code for Game Arena+.
 
-- Provision reviewed VPC, EKS, private RDS, ECR, ACM, Route 53, encrypted evidence storage and protected GitHub Environments.
-- Install OTP configuration, operator/legal details, contacts, approved notices, monitoring and named owners.
-- Deploy an immutable SHA to AWS staging and complete device, network, accessibility, security, load, backup/restore and rollback evidence.
-- Promote the same qualified SHA through the protected production workflow and controlled rollout.
+## Current remaining gates
 
-## 3. Live JazzCash integration — issue #17
+### 1. Real Payment Service staging UAT — #158/#165/#166
 
-- Install approved merchant credentials and exact hosted-checkout/callback fields.
-- Verify signed paid, pending, failed, cancelled, refund and reconciliation journeys.
-- Keep monthly/yearly access as fixed-duration single purchases unless written provider capability and approved disclosure establish another model.
+If paid Game Arena+ launch is in scope, install the real staging Payment Service configuration privately and prove:
 
-Production requires PostgreSQL, `OTP_PROVIDER_MODE=http`, `JAZZCASH_MODE=hosted` and `ALLOW_DEBUG_OTP=false`. Browser returns never grant premium without a verified backend event.
+- wallet linking;
+- monthly/yearly plan flow;
+- first trial/subscription without duplicate create;
+- authoritative Premium entitlement;
+- account/payment history;
+- cancel/unlink;
+- failed/past-due behavior where supported;
+- webhook signature/idempotency/retry behavior;
+- desktop/mobile;
+- no secret leakage.
 
-See `docs/AWS-DEPLOYMENT.md`, `docs/DEPLOYMENT.md`, `docs/QUALIFICATION.md` and `docs/REPOSITORY-AUDIT.md`.
+Mocks/unit/contract tests do not substitute for real provider staging evidence.
+
+### 2. Human/manual UAT
+
+The developer/team must complete and sign off the exact final staging SHA, including:
+
+- frontend/account/authentication;
+- all 60 deployed games;
+- multiplayer;
+- Premium/payment flows;
+- Admin/RBAC;
+- mobile/browser behavior;
+- persistence/restart;
+- security/regression.
+
+Defects must be fixed, retested and followed by full critical regression. Any code change creates a new final SHA that must be deployed and automated-certified again.
+
+### 3. Explicit production authorization
+
+A staging/UAT PASS is not production authorization.
+
+Production remains untouched until the project owner explicitly authorizes the exact approved staging release.
+
+If real charging is part of production launch, #17 must also contain the relevant live provider/finance evidence for settlement, reconciliation, refunds/disputes, commercial limits and ownership.
+
+## Production preparation requirements
+
+Before explicit approval is requested, confirm:
+
+- exact final SHA and immutable artifacts;
+- staging automated certification and human UAT references;
+- payment UAT reference when applicable;
+- production domain/TLS configuration;
+- production database/content backup and restore plan;
+- previous known-good rollback target;
+- private Admin access/roles;
+- production provider configuration appropriate to launch scope;
+- no unresolved critical/high issue.
+
+## Historical/future infrastructure
+
+AWS/OpenTofu/Kubernetes assets are retained as optional historical architecture only. #141 AWS/S3 source-vault archival is deferred/non-blocking.
+
+Do not create AWS infrastructure for the current launch unless a new explicit architecture decision reactivates that lane.
+
+See:
+
+- `docs/DEPLOYMENT.md`
+- `docs/DEPLOYMENT-HANDOFF.md`
+- `docs/PAYMENT-SERVICE-INTEGRATION.md`
+- `docs/QUALIFICATION.md`
+- `docs/PRODUCTION-CUTOVER.md`
+- `docs/GO-LIVE.md`
