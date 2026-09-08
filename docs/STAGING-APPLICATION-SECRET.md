@@ -1,63 +1,66 @@
-# Staging application secret
+# Staging runtime configuration
 
-The first AWS staging deployment uses mock OTP and mock JazzCash. The repository provides a local generator and validator for the exact application-secret keys consumed by `.github/workflows/aws-deploy.yml`.
+## Current storage boundary
 
-## Generate securely
+The active Game Arena staging environment is the existing self-managed/local-server Docker Compose deployment.
 
-Run this only on an authorized operator workstation:
+Runtime secrets belong in the protected server environment (for example the protected `infra/.env` consumed by the staging Compose deployment). They do **not** belong in Git, issues, chat, screenshots, frontend runtime config or demo videos.
 
-```bash
-node scripts/generate-staging-application-secret.mjs \
-  --output staging-application-secret.generated.json
+AWS Secrets Manager is not required for the current launch.
+
+## Core staging configuration
+
+The API/Compose runtime requires the environment-specific values defined by `infra/docker-compose.staging.yml` and `apps/api/.env.example`, including:
+
+- public and allowed origins;
+- PostgreSQL password/connection material;
+- OTP mode/provider values when enabled;
+- Admin proxy/signing configuration;
+- top-up/voucher settings where used;
+- external Payment Service values when real payment staging UAT begins.
+
+## External Payment Service
+
+Keep external billing disabled until the actual provider values are available:
+
+```text
+PAYMENT_SERVICE_MODE=disabled
 ```
 
-The command:
+For real staging payment UAT, the authorized operator installs these **server-side only**:
 
-- generates a cryptographically random JazzCash mock webhook secret;
-- creates three non-production Arena Coin top-up offers;
-- creates one random staging-only voucher;
-- leaves all live OTP and JazzCash account fields empty;
-- writes the file with owner-only permissions where supported;
-- refuses to overwrite an existing file unless `--force` is supplied.
-
-The generated filename is ignored by Git. Never paste its contents into issues, pull requests, chat, Vercel or repository files.
-
-## Validate
-
-```bash
-node scripts/validate-staging-application-secret.mjs \
-  staging-application-secret.generated.json
+```text
+PAYMENT_SERVICE_MODE=external
+PAYMENT_SERVICE_URL=...
+PAYMENT_SERVICE_API_KEY=...
+PAYMENT_SERVICE_WEBHOOK_SECRET=...
+PAYMENT_SERVICE_APP_RETURN_URL=https://gsmarena-play.codistan.org/#/premium
+PAYMENT_SERVICE_TIMEOUT_MS=8000
 ```
 
-Validation fails if:
+The Payment Service product must also be configured with the approved monthly/yearly plan catalogue and this webhook target:
 
-- a required deployment key is absent;
-- a generated secret is too short;
-- top-up or voucher JSON is malformed;
-- live OTP or JazzCash provider values are present;
-- database or legacy administrator credentials are included.
+`https://gsmarena-play.codistan.org/api/v1/webhooks/payments`
 
-## Store after AWS exists
+Do not place API keys or webhook secrets in browser-visible environment variables.
 
-After OpenTofu has created the staging application secret and the AWS administrator has authenticated to the approved account, update the generated secret value using the ARN or name published under the staging configuration prefix.
+## Legacy/direct JazzCash values
 
-Example operator sequence:
+The repository still contains direct JazzCash configuration for legacy/non-subscription paths and backwards compatibility. Those values are **not the current Game Arena+ subscription integration**.
 
-```bash
-APP_SECRET_ARN="$(aws ssm get-parameter \
-  --name /game-arena/staging/application-secret-arn \
-  --query Parameter.Value \
-  --output text)"
+Do not configure direct JazzCash merchant credentials for the Premium subscription flow when `PAYMENT_SERVICE_MODE=external` is the approved architecture.
 
-aws secretsmanager put-secret-value \
-  --secret-id "$APP_SECRET_ARN" \
-  --secret-string file://staging-application-secret.generated.json
-```
+## Safe operator procedure
 
-Then delete the local generated file through the organization's secure-workstation process.
+1. Back up the current protected staging environment file/configuration.
+2. Add or update only the approved values.
+3. Do not echo secret values into CI logs.
+4. Restart/redeploy the API through the normal staging path.
+5. Verify readiness without printing environment contents.
+6. Run real staging Payment Service UAT.
+7. Record only non-sensitive results, IDs and timestamps.
+8. Rotate/remove temporary sandbox credentials when required by the provider.
 
-## Boundary
+## Production boundary
 
-This file does not contain `DATABASE_URL`; the deployment workflow builds the PostgreSQL URL from the RDS endpoint and the AWS-managed database credential. Administrator mappings and operational controls belong in the separate runtime-controls secret.
-
-Real OTP and JazzCash values are deliberately excluded. They are added only through separately reviewed provider-integration work.
+Staging credentials are not production credentials. Production configuration must be installed separately only after UAT passes and explicit production authorization is given.
