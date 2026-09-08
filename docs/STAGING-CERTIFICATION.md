@@ -23,6 +23,8 @@ The active staging lane is the existing self-managed/local-server Docker Compose
 
 AWS/EKS/S3 provisioning is not part of this current certification lane.
 
+**Compatibility marker:** some permanent repository certification checks still use the historical phrase `EC2 Compose`. In the current operating model, `EC2 Compose` refers only to the existing self-managed/local-server Docker Compose staging host. It does **not** create an AWS provisioning, EKS, S3 or IAM requirement for the current launch.
+
 ## Deployment identity gate
 
 Before business/browser tests, certification must prove the exact release identity for the application services:
@@ -53,6 +55,26 @@ Certification covers:
 - player/mobile/browser journeys;
 - visual baseline checks;
 - performance thresholds and non-sensitive evidence.
+
+## Game Arena coverage
+
+The permanent gate covers the actual Game Arena product rather than generic infrastructure checks:
+
+- player shell, catalogue, search, favourites and account/session flows;
+- controlled game-origin launch behavior;
+- Premium gating and authoritative entitlement behavior;
+- Payment Service BFF/webhook software safety;
+- top-ups/vouchers where configured;
+- play proof, wallet/leaderboards and rewards where enabled;
+- challenges/tournaments where enabled;
+- supported multiplayer room coordination;
+- private Admin/RBAC/reporting regression;
+- mobile/responsive browser behavior;
+- restart/persistence and exact release identity.
+
+The current exact-60 portfolio is deployed to the controlled local staging origin. Automated certification verifies catalogue/origin/runtime safety; manual UAT still checks all 60 titles for actual user-facing load/play/control/layout behavior.
+
+Rewards and competitions remain disabled for imported titles where intended unless explicitly approved.
 
 ## Premium/payment certification
 
@@ -90,11 +112,15 @@ Do not substitute mock/direct JazzCash callback tests for real external Payment 
 
 Admin remains private and must be tested through the server-enforced signed identity/role boundary. Required role/capability coverage must pass without exposing signing material.
 
-## Game certification
+## Visual approval
 
-The current exact-60 portfolio is deployed to the controlled local staging origin. Automated certification verifies catalogue/origin/runtime safety; manual UAT still checks all 60 titles for actual user-facing load/play/control/layout behavior.
+Automated visual captures are part of staging certification and must report whether human review is required. A changed visual baseline must never be silently accepted only to make CI green.
 
-Rewards and competitions remain disabled for imported titles where intended unless explicitly approved.
+For the current launch:
+
+- automated visual regression must pass or explicitly identify review-required captures;
+- manual UAT remains responsible for final UX/content acceptance on representative devices;
+- screenshots/evidence must not contain secrets, tokens, MPINs or unrestricted customer data.
 
 ## Final machine decisions
 
@@ -106,11 +132,13 @@ The automated current-lane gate may emit only evidence-supported states such as:
 
 Payment issue #166 separately uses payment-readiness states and must not call real provider UAT passed without actual provider evidence.
 
-## Human UAT boundary
+## Human UAT and production
 
 Human UAT begins only after automated `READY FOR UAT` for the exact deployed SHA.
 
 If UAT causes any runtime code/configuration change that affects the release candidate, deploy/certify the new exact SHA and attach evidence to that SHA. Do not reuse an older certification marker.
+
+Production remains a separate owner-authorized decision. A documentation merge, automated certification PASS or human UAT PASS does not by itself authorize production deployment.
 
 ## Evidence
 
