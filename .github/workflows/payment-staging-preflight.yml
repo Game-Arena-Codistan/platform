@@ -1,0 +1,147 @@
+name: Payment staging preflight - issue 165
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/payment-staging-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Validate protected staging access
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+
+      - name: Prepare pinned SSH host identity
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/game-arena-staging"
+          chmod 600 "$HOME/.ssh/game-arena-staging"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Check external payment staging configuration without exposing secrets
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/codistan/platform
+          test -f infra/.env
+
+          read_env() {
+            key="$1"
+            value="$(grep -m1 "^${key}=" infra/.env | cut -d= -f2- || true)"
+            value="${value#\"}"; value="${value%\"}"
+            value="${value#\'}"; value="${value%\'}"
+            printf '%s' "$value"
+          }
+
+          required=(
+            PAYMENT_SERVICE_MODE
+            PAYMENT_SERVICE_URL
+            PAYMENT_SERVICE_API_KEY
+            PAYMENT_SERVICE_WEBHOOK_SECRET
+            PAYMENT_SERVICE_APP_RETURN_URL
+          )
+
+          missing=0
+          echo '### Payment staging private-config presence'
+          for key in "${required[@]}"; do
+            value="$(read_env "$key")"
+            if [ -n "$value" ]; then
+              echo "$key: PRESENT"
+            else
+              echo "$key: MISSING"
+              missing=1
+            fi
+          done
+
+          mode="$(read_env PAYMENT_SERVICE_MODE)"
+          if [ "$mode" = external ]; then
+            echo 'PAYMENT_SERVICE_MODE_EXTERNAL: PASS'
+          else
+            echo 'PAYMENT_SERVICE_MODE_EXTERNAL: FAIL'
+            missing=1
+          fi
+
+          expected_return='https://gsmarena-play.codistan.org/#/premium'
+          actual_return="$(read_env PAYMENT_SERVICE_APP_RETURN_URL)"
+          if [ "$actual_return" = "$expected_return" ]; then
+            echo 'PAYMENT_SERVICE_APP_RETURN_URL_MATCH: PASS'
+          else
+            echo 'PAYMENT_SERVICE_APP_RETURN_URL_MATCH: FAIL'
+            missing=1
+          fi
+
+          echo '### Non-sensitive payment/JazzCash env key names present on staging'
+          grep -E '^(PAYMENT_SERVICE|JAZZCASH|PAYMENT_.*UAT|JAZZCASH_.*TEST|JAZZCASH_.*SANDBOX)[A-Z0-9_]*=' infra/.env \
+            | cut -d= -f1 \
+            | sort -u || true
+
+          deployed_sha="$(cat .deployed-sha 2>/dev/null || true)"
+          echo "DEPLOYED_SHA=${deployed_sha:-missing}"
+
+          echo '### Runtime BFF/payment-service connectivity'
+          plans_file="$(mktemp)"
+          plans_code="$(curl -sS --max-time 15 -o "$plans_file" -w '%{http_code}' http://127.0.0.1:8095/api/v1/billing/plans || true)"
+          echo "BILLING_PLANS_HTTP=$plans_code"
+          if [ "$plans_code" = 200 ]; then
+            enabled="$(jq -r '.enabled // false' "$plans_file" 2>/dev/null || echo false)"
+            response_mode="$(jq -r '.mode // "unknown"' "$plans_file" 2>/dev/null || echo unknown)"
+            echo "BILLING_ENABLED=$enabled"
+            echo "BILLING_MODE=$response_mode"
+            echo 'BILLING_PLAN_SUMMARY:'
+            jq -r '.plans[]? | [.code // .planCode // "unknown", .interval // "unknown", (.fullAmountMinor // .full_amount_minor // "unknown" | tostring), (.currency // "PKR")] | @tsv' "$plans_file" 2>/dev/null || true
+            if [ "$enabled" != true ] || [ "$response_mode" != external ]; then
+              missing=1
+            fi
+            monthly="$(jq -r '[.plans[]? | select((.code // .planCode)=="monthly")] | length' "$plans_file" 2>/dev/null || echo 0)"
+            yearly="$(jq -r '[.plans[]? | select((.code // .planCode)=="yearly")] | length' "$plans_file" 2>/dev/null || echo 0)"
+            [ "$monthly" -ge 1 ] || { echo 'MONTHLY_PLAN: MISSING'; missing=1; }
+            [ "$yearly" -ge 1 ] || { echo 'YEARLY_PLAN: MISSING'; missing=1; }
+          else
+            echo 'BILLING_PLANS_CONNECTIVITY: FAIL'
+            cat "$plans_file" 2>/dev/null | jq -c '{error:(.error // .code // "unavailable"),message:(.message // .error.message // "")}' 2>/dev/null || true
+            missing=1
+          fi
+          rm -f "$plans_file"
+
+          echo '### Webhook route reachability and signature enforcement'
+          webhook_file="$(mktemp)"
+          webhook_code="$(curl -sS --max-time 15 -o "$webhook_file" -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -H 'X-Payment-Event: payment.completed' \
+            -X POST http://127.0.0.1:8095/api/v1/webhooks/payments \
+            --data '{"eventId":"00000000-0000-4000-8000-000000000000","type":"payment.completed","userId":"uat-probe","createdAt":"2026-09-08T00:00:00.000Z","data":{}}' || true)"
+          echo "UNSIGNED_WEBHOOK_HTTP=$webhook_code"
+          if [ "$webhook_code" = 401 ]; then
+            echo 'WEBHOOK_SIGNATURE_ENFORCEMENT: PASS'
+          else
+            echo 'WEBHOOK_SIGNATURE_ENFORCEMENT: FAIL'
+            missing=1
+          fi
+          rm -f "$webhook_file"
+
+          if [ "$missing" -ne 0 ]; then
+            echo 'PAYMENT_STAGING_PREFLIGHT=BLOCKED'
+            exit 2
+          fi
+
+          echo 'PAYMENT_STAGING_PREFLIGHT=READY_FOR_REAL_UAT'
+          REMOTE
