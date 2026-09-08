@@ -1,87 +1,135 @@
-# Go-Live Runbook
+# Go-live runbook
+
+## Authority boundary
+
+This runbook does not authorize production by itself.
+
+Production execution begins only after:
+
+- the exact staging SHA is identified and automated-certified;
+- real Payment Service/JazzCash staging UAT passes if paid launch is in scope;
+- full human/manual UAT passes;
+- all critical/high launch defects are closed and retested;
+- production domain/TLS, database/content backups and rollback target are verified;
+- the project owner gives explicit production authorization.
+
+The current launch target is the self-managed/local-server architecture. AWS/EKS/S3 provisioning is not a hard prerequisite.
 
 ## Hard prerequisites
 
-Do not begin public rollout until these are complete:
+- exact approved application SHA and image references;
+- `READY FOR UAT` automated evidence plus human UAT approval for the same final SHA;
+- approved launch game set and controlled-origin behavior;
+- production OTP/provider configuration appropriate to launch scope;
+- approved external Payment Service production configuration if paid launch is enabled;
+- provider/finance ownership for settlement, reconciliation, refunds/disputes if real charging is enabled;
+- private Admin access and role mapping;
+- database backup/restore evidence;
+- persistent game-content backup/recovery evidence;
+- rollback owner and previous known-good production reference;
+- no unresolved critical/high security, payment, entitlement, persistence or game-runtime defect.
 
-- Approved operator identity, support/privacy contacts, privacy notice, terms, reward rules and tournament rules
-- Original licensed game builds or written mirroring permission; launch set individually certified and published to the controlled origin
-- AWS production domain, TLS, RDS, EKS, ECR, monitoring, deployment evidence and backup restore test
-- Approved OTP sender/provider with primary and secondary delivery
-- JazzCash merchant credentials, callback verification, settlement/reconciliation test and written recurring-billing decision
-- Named incident, finance, security, support and launch owners
-- Physical-device, network, accessibility, security and rollback evidence recorded in issue #48
-- Zero unresolved critical/high security, payment, entitlement or ledger findings
+## Payment production boundary
+
+Current Premium architecture:
+
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
+
+The browser never receives provider secrets and a redirect never grants Premium.
+
+Do not re-enable a direct JazzCash Premium checkout simply because legacy provider adapters/settings exist.
+
+If real charging is part of launch, #17 remains the provider/finance evidence gate and #165/#166 must first contain real staging UAT evidence.
 
 ## Release stages
 
-1. **Internal:** staff accounts only; production-like infrastructure and sandbox providers.
-2. **Closed beta:** invited players, 10–20 certified games, no public acquisition.
-3. **Payment beta:** capped group with real JazzCash, finance reconciliation every day.
-4. **Public 5%:** limited acquisition; no new features during observation.
-5. **25% / 50% / 100%:** advance only after the previous stage meets the thresholds below for at least one business day.
+A practical rollout may use:
 
-## Advancement thresholds
+1. internal/staff verification;
+2. closed beta;
+3. payment beta when real charging is enabled;
+4. limited public rollout;
+5. controlled expansion to full traffic.
 
-- API availability and latency within SLO
-- OTP delivery acceptance ≥99%; verification failures consistent with invalid-code behavior
-- Payment paid-to-entitlement activation ≥99% within 2 minutes and no unexplained amount/status mismatch
-- Game start success ≥95% for certified titles; no critical device-specific regression
-- Reward review/rejection rate within the approved baseline and no ledger inconsistency
-- Support contact rate and refund requests within owner-approved limits
-- Error budget burn below the release freeze threshold
+The owner may choose a simpler rollout, but every stage must retain a rollback path and stop criteria.
 
-## Stop / rollback triggers
+## Advancement checks
 
-Stop expansion and consider rollback when any of these occur:
+- player/API availability and latency acceptable;
+- authentication/OTP behavior acceptable;
+- paid-to-entitlement behavior correct if payments are enabled;
+- no unexplained provider/entitlement mismatch;
+- certified game start success acceptable;
+- no reward/ledger inconsistency;
+- support/security signals within approved limits;
+- no critical/high defect opened during the stage.
 
-- Unauthorized premium, coin or tournament outcome
-- Payment callback verification failure or unexplained settlement mismatch
-- Confirmed account/session exposure
-- API error rate >5% for 10 minutes or core journey unavailable >15 minutes
-- OTP delivery outage without working failover
-- A game causes widespread crash, malicious behavior or reward inflation
-- A critical/high security finding
+## Stop/rollback triggers
 
-## Launch-day checklist
+Stop expansion for:
 
-### Before opening
+- unauthorized Premium/coin/reward/tournament state;
+- payment webhook verification failure or unexplained reconciliation mismatch;
+- account/session exposure;
+- widespread API/player/game-origin outage;
+- database durability/migration issue;
+- major provider outage without approved fallback;
+- malicious or unstable game behavior;
+- critical/high security finding;
+- owner/incident lead stop decision.
 
-- Pin commit/image digests and record migration versions
-- Confirm backup/PITR marker and rollback commands
-- Confirm status page and owner communication channel
-- Validate health/readiness, catalogue count, game-origin headers and kill switch
-- Complete one OTP journey per channel/provider
-- Complete JazzCash paid, failed, cancelled and pending journeys
-- Verify reconciliation and premium expiry dates
-- Verify private admin access and audit events
-- Confirm Optional analytics remains off by default
+## Before production cutover
 
-### During rollout
+Record non-sensitive evidence for:
 
-- Monitor SLO, OTP, payments, game starts, rewards, support and security dashboards
-- Reconcile provider transactions at least daily during payment beta
-- Record every launch decision and stage change
-- Pause only the affected game/feature where possible
+- final SHA and image identity;
+- staging certification run/artifact;
+- human UAT approval;
+- payment UAT approval when applicable;
+- production backup/restore point;
+- previous production rollback target;
+- production domain/TLS readiness;
+- provider modes/readiness;
+- named cutover and rollback owners.
 
-### After each stage
+Never put secret values into the record.
 
-- Review metrics and error budget
-- Review payment/reward exceptions and support themes
-- Confirm no open critical/high issue
-- Record go/no-go approval from engineering, finance, operations and owner
+## During cutover
+
+Follow `docs/PRODUCTION-CUTOVER.md`.
+
+At minimum:
+
+- deploy the exact staging-approved artifacts;
+- run required migrations safely;
+- verify health/readiness and private Admin access;
+- perform non-destructive smoke before/after public traffic change;
+- watch logs/health/provider state;
+- retain the old production target during the observation period.
+
+## Immediate smoke
+
+Verify:
+
+- public home/catalogue over HTTPS;
+- API readiness;
+- exact authorized SHA;
+- controlled game origin and representative game asset;
+- private Admin boundary;
+- no unexpected critical/high errors;
+- no unintended payment/reward/customer mutation from smoke.
 
 ## Final go/no-go record
 
-- Release SHA and image digests
-- AWS environment and domains
-- Launch game list and versions
-- Automated CI links
-- Manual qualification evidence
-- Legal/provider approvals
-- SLO dashboard snapshot
-- Known low/medium risks with owners
-- Rollback owner and trigger
-- Final decision, approvers and timestamp
+Capture:
 
-Use issue #48 for AWS deployment, qualification and go-live evidence; #40 for game rights/publication; and #17 for live JazzCash integration.
+- exact release SHA;
+- staging certification reference;
+- manual UAT reference;
+- payment UAT/provider evidence when applicable;
+- launch game scope;
+- known low/medium risks and owners;
+- rollback target/owner;
+- final decision and approver timestamp.
+
+Use issue #48 as the current local-server staging → UAT → production-approval gate. Production remains untouched until explicit approval.
