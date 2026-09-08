@@ -1,167 +1,119 @@
 # Permanent staging certification
 
-Issue #98 is the release-quality control issue. Issues #99, #100 and #101 own the player, Admin/Operations and API/orchestrator implementation tracks.
+## Release sequence
 
-The permanent release sequence is:
+The current release-quality sequence is:
 
-`Code / PR → repository checks → immutable image publication → EC2 Compose staging deployment → deployment identity → automated certification → READY FOR UAT → human UAT → production promotion authorization → explicit cutover → non-destructive production smoke`
+`Code / PR → repository checks → immutable image publication → self-managed Docker Compose staging deployment → deployment identity → automated certification → READY FOR UAT → human UAT → explicit production approval → production cutover/smoke`
 
 A reachable staging URL is never sufficient evidence for UAT.
 
 ## Current staging architecture
 
-The current development/staging lane is the lightweight Docker Compose deployment operated on the staging EC2 host. It is intentionally simpler than the later managed EKS/RDS architecture in `docs/AWS-DEPLOYMENT.md`.
+The active staging lane is the existing self-managed/local-server Docker Compose deployment.
 
-- `apps/web` — player PWA.
-- `apps/api` — modular-monolith API backed by PostgreSQL.
-- `apps/admin` — private operations/reporting console.
-- `apps/game-origin` — isolated controlled game origin.
-- `infra/docker-compose.staging.yml` — exact-SHA EC2 staging stack.
-- `.github/workflows/deploy.yml` — deploys the exact release SHA after immutable image publication and then invokes certification.
-- `.github/workflows/aws-staging-certification.yml` — file name retained for continuity; implementation now certifies the EC2 Compose staging host.
+- `apps/web` — player PWA;
+- `apps/api` — modular-monolith API/BFF backed by PostgreSQL;
+- `apps/admin` — private operations/reporting console;
+- `apps/game-origin` — controlled game origin;
+- `infra/docker-compose.staging.yml` — active staging stack;
+- `.github/workflows/release.yml` — immutable image publication;
+- `.github/workflows/deploy.yml` — exact-SHA staging deployment and certification trigger;
+- `.github/workflows/aws-staging-certification.yml` — historical filename retained; currently certifies the Compose staging host.
 
-The public Vercel project remains a deterministic mock preview and is not staging evidence.
+AWS/EKS/S3 provisioning is not part of this current certification lane.
 
 ## Deployment identity gate
 
-Gate zero runs before transactional tests. For `api`, `web`, `admin` and `game-origin` it proves:
+Before business/browser tests, certification must prove the exact release identity for the application services:
 
-1. the candidate is a full Git SHA reachable from `main`;
-2. a successful `Build and publish images` workflow exists for that SHA;
-3. the deployment workflow synced `infra/docker-compose.staging.yml` and gateway configuration from that same SHA;
-4. the staging server recorded that SHA in `/opt/codistan/platform/.deployed-sha`;
-5. Docker Compose resolves every Game Arena application image to the exact SHA tag, never `latest`;
-6. each expected container is running the exact SHA-tagged image;
-7. the running image's `org.opencontainers.image.revision` label equals the expected SHA;
-8. a registry digest/image ID is captured as non-sensitive evidence.
+1. candidate is a full Git SHA from the approved source branch/history;
+2. immutable image publication succeeded for that SHA;
+3. deployment synchronized the expected staging Compose/gateway files;
+4. server `.deployed-sha` matches the candidate;
+5. Compose resolves application images to the exact SHA tag, never `latest`;
+6. expected containers are running that exact revision;
+7. non-sensitive image identity/digest evidence is captured.
 
-Any mismatch or unprovable identity is `BLOCKED`. Browser/API tests do not certify an unproven release.
+Any unprovable mismatch is `BLOCKED`.
 
-## Staging deployment behavior
+## Runtime gates
 
-`release.yml` publishes immutable GHCR images. `deploy.yml` waits for that successful publication, checks out the same SHA, synchronizes only the reviewed deployment files to `/opt/codistan/platform`, authenticates the server to GHCR with the job-scoped GitHub token, pulls exact-SHA images and runs Compose without using the mutable `latest` tag.
+Certification covers:
 
-The server keeps its protected `infra/.env`; the workflow never copies secrets from source control. Deployment verifies gateway, API, private Admin and game-origin health before certification begins.
+- API/readiness and PostgreSQL-backed business flows;
+- catalogue/game-origin reachability;
+- authentication/session/CSRF behavior;
+- Premium/payment software safety;
+- top-up/voucher behavior where configured;
+- play proof/reward idempotency;
+- multiplayer where supported;
+- restart durability/persistence;
+- private Admin signed-role authorization;
+- player/mobile/browser journeys;
+- visual baseline checks;
+- performance thresholds and non-sensitive evidence.
 
-The current first-shakeout runtime may use mock OTP and mock JazzCash. That allows synthetic QA identities while the PM-provided free/premium test accounts are pending.
+## Premium/payment certification
 
-## Game Arena coverage
+The current Game Arena+ architecture is:
 
-### Player and authentication
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
 
-Desktop and mobile Chromium cover the public shell, home/feed/library routes, OTP negative and positive verification, session persistence/logout, catalogue search/favourites, free game launch, iframe isolation, support, responsive safety, PWA files and the fixed-duration Game Arena+ checkout journey.
+Two distinct evidence levels exist:
 
-Synthetic run-specific identities are used when protected PM accounts are absent. `READY FOR UAT` additionally requires both protected free and premium QA-account checks to pass.
+### Repository/software certification
 
-### Premium and payments
+Automated tests may validate:
 
-Certification tests the fixed-duration single-charge model. It covers checkout creation/idempotency, browser-return safety, top-ups/vouchers when configured, premium authorization and the mock JazzCash callback matrix:
+- BFF route/auth/identity boundaries;
+- server-only Payment Service credentials;
+- plan-code/amount authority rules;
+- wallet/subscription response handling;
+- webhook signature/event validation;
+- idempotency/retry behavior;
+- authoritative entitlement mapping;
+- browser return not granting Premium;
+- disabled/fallback behavior when provider credentials are absent.
 
-- pending remains pending;
-- amount mismatch is rejected;
-- failed cannot silently become paid;
-- void/cancel stays voided;
-- success activates the matching entitlement;
-- duplicate callbacks are idempotent;
-- refund reverses the matching entitlement.
+This can support `READY FOR STAGING UAT` but cannot claim real provider success.
 
-The callback secret is supplied only through the protected staging Environment as `STAGING_JAZZCASH_WEBHOOK_SECRET` and is never written to artifacts. Hosted JazzCash remains `BLOCKED — PAYMENT SANDBOX NOT CONFIGURED` until #17 provides the real sandbox contract and credentials.
+### Real provider staging UAT
 
-### Gameplay, rewards and competitions
+Tracked under #165/#166 and required to advance beyond `READY FOR STAGING UAT` when payments are launch scope.
 
-The suite verifies catalogue/media reachability, controlled game-origin health, free/premium authorization, play proof/replay safety, wallet/leaderboard behavior, challenges/tournaments when enabled, multiplayer room coordination where supported and the controlled game iframe boundary.
+It must prove the actual deployed path for monthly/yearly wallet linking, first subscription/trial, authoritative Premium activation, payment/account history, cancel/unlink, failure/past-due where supported, webhook retry/idempotency, desktop/mobile and secret non-exposure.
 
-### Admin and Operations
+Do not substitute mock/direct JazzCash callback tests for real external Payment Service UAT.
 
-Admin remains private on the staging host and is reached by the certification runner through an SSH local tunnel to `127.0.0.1:8083`.
+## Admin certification
 
-For the initial shakeout, `STAGING_QA_ADMIN_KEY` may exercise the full local staging Admin console. That is useful for reports, plans, payments, subscriptions, users, games, reviews, audit and export regression, but it is **not enough for `READY FOR UAT`**.
+Admin remains private and must be tested through the server-enforced signed identity/role boundary. Required role/capability coverage must pass without exposing signing material.
 
-The final machine gate requires signed staging assertions for `admin`, `operator`, `support`, `security` and `finance`, generated from protected `STAGING_ADMIN_PROXY_SECRET` and `STAGING_ADMIN_IDENTITY_ROLES_JSON`. Missing role coverage is reported as `SIGNED_ADMIN_ROLE_MATRIX_PENDING`.
+## Game certification
 
-### Runtime resilience
+The current exact-60 portfolio is deployed to the controlled local staging origin. Automated certification verifies catalogue/origin/runtime safety; manual UAT still checks all 60 titles for actual user-facing load/play/control/layout behavior.
 
-After the authenticated API journey, certification restarts only the staging API container through Compose and proves acknowledged session/payment state remains durable in PostgreSQL.
+Rewards and competitions remain disabled for imported titles where intended unless explicitly approved.
 
-## Browser evidence safety
+## Final machine decisions
 
-The staging browser config uses:
+The automated current-lane gate may emit only evidence-supported states such as:
 
-- `retries: 0` for release blockers;
-- `trace: off`;
-- `video: off`;
-- screenshots on failure;
-- sanitized Playwright JSON/HTML evidence.
+- `READY FOR UAT` — current application/runtime automated certification passed;
+- `FAILED` — required current-lane test failed;
+- `BLOCKED` — required environment/evidence prerequisite could not be proven.
 
-A critical test that only succeeds after retry is not certified.
+Payment issue #166 separately uses payment-readiness states and must not call real provider UAT passed without actual provider evidence.
 
-## Visual approval
+## Human UAT boundary
 
-`tests/staging/visual-baselines.json` stores SHA-256 fingerprints of human-approved staging screenshots. The first live run intentionally produces `VISUAL_REVIEW_REQUIRED`. A human reviews the captures and updates fingerprints through a normal PR. Baselines are never auto-approved or auto-updated.
+Human UAT begins only after automated `READY FOR UAT` for the exact deployed SHA.
 
-## Protected staging configuration
+If UAT causes any runtime code/configuration change that affects the release candidate, deploy/certify the new exact SHA and attach evidence to that SHA. Do not reuse an older certification marker.
 
-Do not place values from this section in issues, chat, Vercel or source control.
+## Evidence
 
-### GitHub `staging` Environment
+Issue #48 is the authoritative current staging/launch gate. Record only non-sensitive run IDs, artifact IDs/digests, pass/fail counts, exact SHA and UAT references.
 
-Infrastructure/deployment:
-
-- secret `DEPLOY_HOST`
-- secret `DEPLOY_USER`
-- secret `DEPLOY_SSH_KEY`
-- secret `DEPLOY_SSH_KNOWN_HOSTS`
-- variable `STAGING_PLAYER_URL`
-- variable `STAGING_API_URL` (optional when it is `<player>/api`)
-- variable `STAGING_GAME_URL`
-
-Certification/runtime:
-
-- secret `STAGING_JAZZCASH_WEBHOOK_SECRET`
-- secret `STAGING_QA_ADMIN_KEY` for the temporary local-admin shakeout
-- secret `STAGING_ADMIN_PROXY_SECRET` and `STAGING_ADMIN_IDENTITY_ROLES_JSON` for final signed-role certification
-- variable `STAGING_QA_PLAYER_IDENTIFIER` for generic API QA when desired
-- secret `STAGING_QA_VOUCHER_CODE` when voucher regression is required
-
-PM-provided account boundary:
-
-- variable `STAGING_QA_FREE_PLAYER_IDENTIFIER`
-- secret `STAGING_QA_FREE_PLAYER_OTP_CODE` when debug OTP is unavailable
-- variable `STAGING_QA_PREMIUM_PLAYER_IDENTIFIER`
-- secret `STAGING_QA_PREMIUM_PLAYER_OTP_CODE` when debug OTP is unavailable
-
-The test files work without those PM accounts by using synthetic identities in mock OTP mode, but the aggregate gate remains `BLOCKED — PM_QA_ACCOUNTS_PENDING` until both protected account checks pass.
-
-### Staging server `infra/.env`
-
-The deploy workflow preserves this server-side file. At minimum it must contain non-production values for the required Compose inputs such as `POSTGRES_PASSWORD`, `PUBLIC_ORIGIN`, `ALLOWED_ORIGINS`, `GAME_ARENA_GAME_ORIGIN`, `GAME_ARENA_GAME_HOSTS` and `JAZZCASH_WEBHOOK_SECRET`, plus the chosen Admin authentication configuration. Values are never committed.
-
-## Evidence and decisions
-
-Every certification run uploads sanitized GitHub Actions evidence containing the expected SHA, release/deployment/certification run IDs, running-image identity, functional results, browser totals, safe failure summaries, QA correlation ID and visual-review status.
-
-The only final decisions are:
-
-- `READY FOR UAT`
-- `FAILED`
-- `BLOCKED`
-
-Known application/security/business defects are `FAILED`. Missing environment identity, signed Admin role matrix, PM QA accounts, mock-payment secret/provider sandbox or approved visual baseline are `BLOCKED`.
-
-## Human UAT and production
-
-Human UAT starts only after `READY FOR UAT` and focuses on UX, visual quality, copy/content, exploratory device behavior and business acceptance.
-
-`.github/workflows/promote-production.yml` is a manual **authorization gate only**. It requires:
-
-1. the exact full SHA;
-2. a successful `deploy.yml` run for that exact SHA (which includes successful staging certification);
-3. a non-sensitive human UAT approval reference;
-4. explicit `PROMOTE` confirmation;
-5. the protected `production` GitHub Environment boundary.
-
-The authorization workflow deliberately performs no production deployment. Actual cutover remains a later explicit action after the owner approves it and production runtime/provider configuration is ready. The existing production environment must remain available as rollback until the replacement passes production smoke and an observation period.
-
-## Permanent feature rule
-
-A feature is not complete with implementation alone. The affected work must add or update unit/API tests plus deployed browser, negative/error, authorization, Admin, payment, mobile and game-runtime certification where those concerns apply. A defect found in QA or UAT becomes a permanent regression test before the fix is considered complete.
+Production remains untouched until human UAT is accepted and explicit production authorization is separately provided.
