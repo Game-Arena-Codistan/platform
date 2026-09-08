@@ -1,110 +1,133 @@
 # Deployment and integration handoff
 
-**Prepared:** 2026-07-31  
-**Target:** AWS staging, followed by qualified production promotion
+## Current target
 
-## Repository-controlled work
+The active Game Arena handoff target is the existing **self-managed/local-server Docker Compose staging environment**, not AWS.
 
-The repository contains the controls required to provision staging, deploy an immutable release, integrate licensed game artifacts and external providers, qualify the environment and promote the same release to production.
+- Repository: `https://github.com/Game-Arena-Codistan/platform`
+- Staging: `https://gsmarena-play.codistan.org`
+- Active deployment workflow: `.github/workflows/deploy.yml`
+- Active staging stack: `infra/docker-compose.staging.yml`
+- Current release source of truth: issue #48
 
-Completed implementation includes:
+Do not create AWS accounts, IAM roles, S3 buckets, EKS clusters or AWS staging environments for the current launch. Historical AWS/OpenTofu/Kubernetes files may remain in the repository for future reference only.
 
-- server-bound administrator identities and roles with a signed identity-proxy boundary;
-- development-only local administrator keys and production provider guards;
-- acknowledgement-safe, transactionally committed single-writer PostgreSQL persistence with restart and stale-writer tests;
-- a least-privilege long-running database role bootstrapped after migrations;
-- verified RDS TLS using the AWS trust bundle;
-- JazzCash idempotency ownership, expected merchant/bill/amount/currency validation, authoritative notification handling and refund recomputation;
-- exact play nonce and game-version proof, with uncertified competitions disabled by default;
-- deployment-specific CSP, approved game hosts, immutable game URLs and release-scoped service-worker caches;
-- pre-extraction ZIP type, path, collision, encryption, size and compression-ratio checks;
-- immutable per-game S3/CloudFront publication outside platform Git history;
-- WAF managed rules, per-IP rate protection, ALB TLS policy and access logging;
-- EKS/RDS/container observability, alarms and encrypted alert delivery;
-- separate bootstrap/deploy and namespace-scoped runtime roles;
-- operated support delivery and account-retention/legal-hold processing;
-- locked Node dependency trees and Dependabot;
-- CodeQL security-extended analysis with retained SARIF evidence when GitHub Code Security upload is unavailable;
-- Chromium, Firefox and WebKit automation plus a stateful deployed-staging synthetic journey.
+## What is already complete
 
-## Required protected environment values
+The current staging platform has already been built, deployed and automated-certified for UAT, including:
 
-Create protected GitHub Environments named `staging` and `production` with required reviewers.
+- player frontend and account flows;
+- modular-monolith API backed by PostgreSQL;
+- private Admin/RBAC surface;
+- controlled game origin and exact-60 portfolio;
+- persistent database and game-content storage;
+- restart recovery;
+- SSL/domain/gateway operation;
+- multiplayer regression coverage;
+- automated browser/API/Admin/visual certification;
+- external Payment Service integration code and server-side BFF/webhook boundary.
 
-Each environment requires the existing AWS deployment and infrastructure values documented in `docs/AWS-DEPLOYMENT.md`, plus:
+If code changes during takeover, use the normal PR/CI/release path and recertify the exact new SHA. Do not rely on evidence from an older deployed SHA after changing runtime code.
 
-- `AWS_RUNTIME_ROLE_ARN`: namespace-scoped runtime-control role;
-- `AWS_GAME_PUBLISH_ROLE_ARN`: role allowed to publish immutable game objects and read the game-artifact SSM parameters;
-- `AWS_STAGING_ENABLED=true` for automatic staging deployment and scheduled journeys;
-- fixed runner/egress CIDRs for the production EKS API;
-- an operated alert address in production OpenTofu variables.
+## Immediate developer priorities
 
-## Secrets Manager values to populate
+1. Review issue #48 and this handoff before changing anything.
+2. Confirm the current staging site and core flows still behave normally.
+3. Configure the **real staging external Payment Service** once the provider values are supplied privately.
+4. Run real payment staging UAT under #165/#166.
+5. Complete full manual UAT across player/API/Admin/60 games/multiplayer/mobile/security/persistence.
+6. Fix any defects through normal PRs and rerun automated certification.
+7. Record the final exact SHA, UAT result and demo/evidence.
+8. Stop at `READY FOR PRODUCTION APPROVAL` until the project owner explicitly authorizes production.
 
-### Application/provider secret
+## Payment architecture
 
-Populate the existing application secret with approved OTP and JazzCash values. Production deployment already rejects disabled/mock provider modes.
+The current Game Arena+ subscription path is:
 
-### Runtime-controls secret
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
 
-OpenTofu creates the secret and initial random signing material. Before production promotion, populate:
+Game Arena must not expose the Payment Service product API key or webhook secret to the browser.
 
-```json
-{
-  "admin_proxy_secret": "generated-or-rotated-signing-material",
-  "admin_identity_roles_json": "{\"admin@example.com\":[\"admin\",\"operator\"],\"finance@example.com\":[\"finance\"]}",
-  "support_delivery_endpoint": "https://support-provider.example/events",
-  "support_delivery_secret": "provider-signing-material",
-  "legal_hold_user_ids": ""
-}
+Required runtime values on the **API/server only**:
+
+```text
+PAYMENT_SERVICE_MODE=external
+PAYMENT_SERVICE_URL=...
+PAYMENT_SERVICE_API_KEY=...
+PAYMENT_SERVICE_WEBHOOK_SECRET=...
+PAYMENT_SERVICE_APP_RETURN_URL=https://gsmarena-play.codistan.org/#/premium
+PAYMENT_SERVICE_TIMEOUT_MS=8000
 ```
 
-The production provider guard requires a non-empty identity mapping and HTTPS support endpoint.
+The Payment Service product catalogue is authoritative for monthly/yearly plan codes and prices. The browser must never submit an arbitrary amount.
 
-## Staging sequence
+Expected webhook target:
 
-1. Approve the AWS account, Mumbai region unless changed, Route 53 zone and staging hostnames.
-2. Bootstrap the protected GitHub OIDC roles and encrypted OpenTofu state.
-3. Apply the reviewed staging OpenTofu plan.
-4. Populate staging runtime/provider secrets; mock OTP and mock JazzCash are permitted.
-5. Enable `AWS_STAGING_ENABLED` and deploy the selected immutable SHA.
-6. The runtime-control workflow creates the restricted database role, patches the API credential, applies WAF/TLS/access logs and configures the game artifact origin.
-7. Run the staging synthetic journey and browser matrix.
-8. Publish a small representative licensed game set through `Import and publish game content`.
-9. Complete provider, device, accessibility, security, load, restore and rollback qualification.
+`https://gsmarena-play.codistan.org/api/v1/webhooks/payments`
 
-## Game handoff
+Do not paste secrets into GitHub issues, chat, screenshots or the demo video.
 
-Do not commit the downloaded game ZIP or expanded runtime trees directly to the platform repository.
+See `docs/PAYMENT-SERVICE-INTEGRATION.md`.
 
-For each title, record:
+## Real payment staging UAT
 
-- source/build tool and reproducible build command;
-- entry HTML file and required assets;
-- external network/storage/permission requirements;
-- orientation, device tier and input modes;
-- rights reference and approved free/premium classification;
-- Bridge compatibility and game-specific score/duration rules.
+Prove at minimum:
 
-The protected import workflow preflights the archive, packages an immutable `slug/version`, uploads it to the environment artifact bucket and opens a metadata-only review PR.
+- sign in;
+- monthly plan selection;
+- MSISDN + consent;
+- wallet linking on the provider-hosted/JazzCash flow;
+- first trial/subscription recognized without duplicate subscription creation;
+- authoritative Premium entitlement activation;
+- payment/account history;
+- cancel behavior;
+- unlink behavior;
+- failed/past-due behavior where staging supports it;
+- duplicate/retried webhook idempotency;
+- yearly plan;
+- desktop/mobile;
+- no secret leakage.
 
-## Production no-go conditions
+Record a short stakeholder demo only after the real staging flow is working. Do not record MPINs, keys, tokens or protected configuration.
 
-Do not promote while any of these remains true:
+## Manual platform UAT
 
-- licensed launch games and rights evidence are incomplete;
-- real OTP delivery/failover is unverified;
-- JazzCash sandbox/live settlement, refund and reconciliation evidence is incomplete;
-- production administrator identities, support delivery or named alert ownership are absent;
-- critical/high security findings remain open;
-- backup/PITR, rollback, payment disable and game kill-switch rehearsals have not passed;
-- physical-device, accessibility and adverse-network evidence is incomplete;
-- the exact staging-qualified SHA is not the production promotion target.
+The developer/team must also verify:
 
-## External completion boundary
+- OTP/login/logout/session behavior;
+- navigation, catalogue, favourites and account;
+- all 60 deployed games;
+- game loading, orientation, audio, pause/resume and exit where supported;
+- multiplayer create/rejoin;
+- free/premium gating;
+- Admin role boundaries and affected reports/operations;
+- mobile/responsive supported browsers;
+- PostgreSQL persistence;
+- game-content persistence;
+- container/service restart recovery;
+- SSL/domain/gateway;
+- security/regression behavior.
 
-The remaining work requires external accounts, credentials, source archives, approvals or physical testing. It is tracked in:
+Use the UAT handover/checklist and link every material defect to its retest evidence.
 
-- #17 — live JazzCash merchant integration and evidence;
-- #40 — licensed game source handoff, publication and certification;
-- #48 — actual AWS provisioning, environment qualification and controlled production rollout.
+## Production boundary
+
+This handoff does **not** authorize production.
+
+Production can be considered only after:
+
+- real payment staging UAT passes if paid charging is required at launch;
+- full human/manual UAT passes;
+- all critical/high defects are closed and retested;
+- the exact final staging SHA is recertified;
+- the project owner gives explicit production authorization.
+
+Then follow `docs/PRODUCTION-CUTOVER.md` and `docs/GO-LIVE.md` using the exact staging-approved application artifacts.
+
+## Non-blocking historical work
+
+- #141 AWS/S3 source-vault archival is deferred/not planned for the current local-server launch.
+- #79 is complete for the local staging oversized-game scope.
+- AWS/EKS/S3 provisioning is not a current launch dependency.
+
+The only active launch blockers should be payment UAT, human UAT and explicit production approval, plus #17 provider/finance evidence if real production charging is in scope.
