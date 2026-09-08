@@ -1,108 +1,119 @@
 # Pre-staging deployment gate
 
-Repository-controlled infrastructure preparation is complete when this document is present on `main` and `node scripts/check-pre-staging.mjs` passes. Manual AWS backend deployment is additionally blocked until `node scripts/check-postgres-staging-readiness.mjs` passes.
+## Current purpose
+
+This document defines the pre-staging gate for the **active self-managed/local-server Docker Compose lane**.
+
+AWS/EKS/S3 provisioning is not a prerequisite for the current staging environment.
 
 ## Release boundary
 
-Deploy one full commit SHA from `main`. Do not merge unreviewed Node, NGINX or GitHub Actions major-version Dependabot pull requests into the first staging baseline. Evaluate those changes after the baseline has been deployed and qualified.
-
-## Mandatory PostgreSQL boundary
-
-The first manual AWS backend deployment must use normalized transactional PostgreSQL repositories as the runtime source of truth.
+Deploy one exact full commit SHA from `main` through the normal release/deployment path. Do not deploy arbitrary branch heads or mutable `latest` images.
 
 Before deployment:
 
+- required PR/CI checks must pass;
+- database migrations must be reviewed and backwards-compatible for the rollback window;
+- secrets must remain server-side and outside Git;
+- persistent PostgreSQL and game-content paths must not be destroyed by the deploy;
+- the target SHA must be the same SHA used by immutable image publication.
+
+## PostgreSQL boundary
+
+The staging API uses PostgreSQL as the durable runtime source of truth. Migration and restart/concurrency tests must remain green.
+
+Run applicable repository checks before staging:
+
 ```bash
+node scripts/check-pre-staging.mjs
 node scripts/check-postgres-staging-readiness.mjs
+node scripts/security-check.mjs
 ```
 
-The check fails while the backend contains any of these legacy patterns:
+Do not waive persistence or transactional checks to obtain a green deployment.
 
-- the `platform_state` JSON document;
-- whole-platform encode/restore persistence;
-- a whole-state advisory lock;
-- a single-writer API restriction.
+## Active staging configuration
 
-Issue #52 must be completed with normalized tables/repositories, commit-before-acknowledgement behavior, database constraints, safe concurrent API writers, migration/reset instructions and PostgreSQL durability/concurrency tests. Do not waive this gate merely to obtain a successful staging deployment.
+The protected runtime configuration belongs on the self-managed server, not in repository content.
 
-## GitHub organization prerequisite
+Core values include:
 
-GitHub Actions must be able to allocate hosted runners. Restore the organization Actions allowance before attempting infrastructure validation, image publication or deployment.
+- `PUBLIC_ORIGIN`
+- `ALLOWED_ORIGINS`
+- `POSTGRES_PASSWORD` / database connection material
+- OTP provider configuration
+- Admin signed-role configuration
+- Payment Service configuration
+- top-up/voucher/provider values only when those features require them
 
-## Protected `staging` environment
+External Premium billing remains disabled until the real staging Payment Service values are available.
 
-Configure these environment variables:
+When enabling it, configure only on the API/server:
 
-- `AWS_ACCOUNT_ID`: twelve-digit AWS account ID
-- `AWS_REGION`: normally `ap-south-1`
-- `AWS_CONFIG_PREFIX`: normally `/game-arena/staging`
-- `AWS_TF_STATE_BUCKET`: encrypted OpenTofu state bucket
-- `AWS_TF_STATE_KMS_KEY_ID`: optional customer-managed KMS key ID for state
-- `AWS_STAGING_ENABLED`: keep `false` until infrastructure and runtime secrets exist; set `true` only for an approved deployment
-- `OTP_PROVIDER_MODE`: `mock` for the initial staging deployment
-- `JAZZCASH_MODE`: `mock` for the initial staging deployment
-- `ALLOW_DEBUG_OTP`: `true` only for the isolated initial staging deployment
-
-Configure these environment secrets:
-
-- `AWS_INFRA_ROLE_ARN`: infrastructure plan/apply OIDC role
-- `AWS_DEPLOY_ROLE_ARN`: deployment/bootstrap OIDC role
-- `AWS_RUNTIME_ROLE_ARN`: namespace-scoped runtime-controls OIDC role
-- `AWS_GAME_PUBLISH_ROLE_ARN`: immutable game artifact publication role
-- `AWS_TFVARS_JSON_B64`: base64-encoded JSON equivalent of the reviewed staging tfvars
-
-The decoded tfvars must contain the same `expected_aws_account_id` as `AWS_ACCOUNT_ID`, an explicit `kubernetes_version`, `operations_alert_email`, `monthly_budget_usd` and a separate `github_runtime_role_arn`.
-
-## Application secret contract
-
-Generate the initial mock-provider secret locally:
-
-```bash
-node scripts/generate-staging-application-secret.mjs \
-  --output staging-application-secret.generated.json
-node scripts/validate-staging-application-secret.mjs \
-  staging-application-secret.generated.json
+```text
+PAYMENT_SERVICE_MODE=external
+PAYMENT_SERVICE_URL=...
+PAYMENT_SERVICE_API_KEY=...
+PAYMENT_SERVICE_WEBHOOK_SECRET=...
+PAYMENT_SERVICE_APP_RETURN_URL=https://gsmarena-play.codistan.org/#/premium
+PAYMENT_SERVICE_TIMEOUT_MS=8000
 ```
 
-Follow `docs/STAGING-APPLICATION-SECRET.md` to place the validated file into AWS Secrets Manager after the account and infrastructure exist. Never commit the generated file.
+Expected webhook target:
 
-The secret contains the non-production OTP/JazzCash and product configuration consumed by `aws-deploy.yml`, including a generated mock webhook secret, top-up offers and a staging voucher. It deliberately excludes database credentials, live provider credentials and `ADMIN_API_KEYS`.
+`https://gsmarena-play.codistan.org/api/v1/webhooks/payments`
 
-Administrator identity mappings, the administrator proxy secret, support delivery settings and legal holds live in the separate runtime-controls secret created by OpenTofu and applied by `aws-runtime-controls.yml`.
+Never commit or paste secret values.
+
+## Controlled staging sequence
+
+1. Run the complete repository/PR qualification for the candidate.
+2. Merge only reviewed changes.
+3. Require `Build and publish images` to succeed for the exact `main` SHA.
+4. Let `.github/workflows/deploy.yml` deploy that same SHA to the existing Compose staging server.
+5. Verify `/opt/codistan/platform/.deployed-sha` and exact image identity.
+6. Run migrations and health/readiness checks.
+7. Verify PostgreSQL and game-content persistence.
+8. Verify gateway/domain/SSL and private Admin access.
+9. Run the automated staging certification.
+10. Require `READY FOR UAT` before manual UAT.
+11. Complete real Payment Service staging UAT when provider inputs exist.
+12. Complete full developer/team manual UAT.
+13. Fix defects through normal PRs, deploy the new exact SHA and recertify.
 
 ## Game portfolio boundary
 
-Use `docs/GAME-PORTFOLIO-STATUS.md` for the authoritative count definitions:
+The current exact-60 portfolio has already been published to the controlled local staging origin. Imported portfolio rewards/competitions remain disabled where intended and `productionActivation:false` is preserved.
 
-- 61 submitted catalogue rows;
-- 44 QA-passed external catalogue entries;
-- Arena Dash plus those entries gives 45 current preview cards;
-- four oversized titles are the initial controlled-origin publication pilots, not the total catalogue.
+Broader 140/300–500-title migration work is a future portfolio lane and does not block the current exact-60 staging launch unless scope changes.
 
-## Controlled sequence
+## Historical compatibility references
 
-1. Complete issue #52 and pass the PostgreSQL readiness check.
-2. Restore GitHub Actions runner access and run the complete repository CI matrix.
-3. Generate and validate the staging application secret locally.
-4. Publish images for the exact reviewed `main` SHA.
-5. Run AWS infrastructure `validate`.
-6. Run AWS infrastructure `plan` for `staging` and review account, Region, DNS, IAM, EKS, RDS, budget and deletion behavior.
-7. Run AWS infrastructure `apply` with the protected environment and `APPLY` confirmation.
-8. Store the validated application secret and populate the separate runtime-controls secret without exposing values in GitHub or Vercel.
-9. Run the manual AWS staging backend deployment for the exact SHA.
-10. Run runtime controls and connect the staging frontend in live mode.
-11. Run staging synthetic journeys and deployed Playwright tests.
-12. Publish and qualify the four oversized pilots one at a time while rollout remains `0` until approved.
-13. Confirm SNS subscription, budget notifications, WAF, logs, alarms, PostgreSQL migration evidence and rollback records.
+The repository's permanent pre-staging checker retains several markers from the earlier staging-bootstrap era. They are kept here so repository governance remains stable; they are **not current AWS setup instructions**.
+
+Historical mock-secret utility commands retained by the checker:
+
+```bash
+node scripts/generate-staging-application-secret.mjs
+node scripts/validate-staging-application-secret.mjs
+```
+
+These utilities may still be useful for isolated/mock fixture generation, but the current deployed staging runtime uses protected server-side configuration as documented in `docs/STAGING-APPLICATION-SECRET.md`.
+
+Historical portfolio wording retained for audit continuity:
+
+- `61 submitted catalogue rows` described an earlier intake snapshot, not the current live staging count.
+- `four oversized titles` refers to Duck Hunter, Ranger vs Zombies, Robotex and Swat vs Zombies; their local staging publication/qualification is already complete under #79.
+
+The authoritative current launch scope is the exact-60 controlled local staging portfolio recorded under #48.
 
 ## Fail-closed controls
 
-- Critical third-party Actions are pinned to reviewed immutable commit SHAs.
-- OpenTofu `1.12.5` and provider versions are exact.
-- Infrastructure runs generate Linux AMD64 provider-lock evidence and initialize with `-lockfile=readonly`.
-- AWS authentication is constrained with `allowed-account-ids` and independently verified with STS.
-- OpenTofu verifies the authenticated account against `expected_aws_account_id`.
-- Every deployed environment requires an explicit EKS version, operated alert destination, namespace-scoped runtime role and monthly budget.
-- Production rejects public EKS API access from `0.0.0.0/0`.
-- The repository gate rejects reintroduction of deployed shared administrator keys.
-- The PostgreSQL gate rejects the legacy JSON state blob and single-writer runtime.
+- no deployment if exact SHA/image identity is unprovable;
+- no secret values in source control or evidence;
+- no Premium grant from browser return state;
+- no destructive database/game-content action in routine deploy;
+- no production action from staging automation;
+- no production approval without human UAT and explicit owner authorization.
+
+Issue #48 is the current source of truth for staging and launch readiness.

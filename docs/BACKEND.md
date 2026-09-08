@@ -1,47 +1,61 @@
 # Backend architecture
 
-The platform API is a dependency-light Node.js service with explicit modules for catalogue administration, OTP delivery, sessions/devices, JazzCash transactions, premium entitlements, rewards, competitions, operations, audit and metrics.
+The platform API is a dependency-light Node.js modular monolith with explicit modules for catalogue/game operations, OTP delivery, sessions/devices, Premium billing/BFF integration, entitlements, rewards, competitions, operations, audit and reporting.
 
 ## Runtime stores
 
-- Tests and isolated development use `MemoryStore`.
-- Production requires `DATABASE_URL` and uses `PostgresStore`.
-- The current PostgreSQL adapter persists the synchronous service repository as an atomic versioned JSONB snapshot while the normalized migrations define the reporting and future transactional target.
-- To prevent lost updates, the current production deployment intentionally runs **one API writer replica** with advisory locking and revision checks. Do not horizontally scale API writers until the repository is migrated fully to normalized transactional tables or another concurrency-safe store.
+- Tests and isolated development may use deterministic in-memory fixtures where appropriate.
+- Deployed staging uses PostgreSQL as the durable runtime source of truth.
+- Migrations and repository tests cover the normalized operational/reporting data model and commit-safe persistence behavior.
+- Staging certification includes restart durability and database-backed business journeys.
 
-This boundary is explicit in Kubernetes (`replicas: 1`, `Recreate`) and deployment documentation.
+Do not introduce a new persistence model or destructive migration solely for deployment convenience.
 
 ## Data model
 
-Migrations cover users/identities, OTP challenges, sessions/devices, games/versions/reports, transactions/events/reconciliation, entitlements, play sessions/scores, Arena Coin ledger, challenges, tournaments, adjustments, audit events and durable operational state.
+The PostgreSQL model covers users/identities, OTP/session/device state, games/versions, payment/subscription/event state, entitlements, ledgers, play sessions/scores, competitions, reconciliation/reporting and audit/operational records.
 
-Run migrations with:
-
-```bash
-cd apps/api
-DATABASE_URL=postgres://... npm run migrate
-```
+Run migrations with the repository migration command against the target environment only after reviewing the migration and backup/rollback boundary.
 
 ## Provider boundaries
 
-- OTP delivery supports primary/secondary HTTP providers, circuit behavior and mock/disabled modes.
-- JazzCash supports mock, disabled and hosted-checkout modes. Request fields are signed and provider events are verified/idempotent.
-- Production credentials are environment/secret-manager values, never repository content.
+### OTP
+
+OTP delivery is server-side and may use configured provider adapters or staging mocks where explicitly allowed.
+
+### Game Arena+ payments
+
+Current Premium subscription architecture is:
+
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
+
+The backend:
+
+- derives `userId` from the authenticated session;
+- keeps the Payment Service API key/webhook secret server-only;
+- requests plan/catalogue/status data through the server-side client;
+- verifies signed Payment Service webhooks on raw bytes;
+- deduplicates/retries provider events safely;
+- reconciles authoritative provider status before entitlement changes.
+
+Legacy direct JazzCash adapters/settings may remain for unrelated non-subscription compatibility. They are not the current Game Arena+ subscription boundary.
 
 ## Trust rules
 
-- The browser never grants premium or changes coins.
-- HTML5 games request rewards; server play sessions, version/nonce/plausibility/rate checks decide them.
-- Coin changes are append-only and idempotent; high-value support adjustments require a second administrator.
-- OTP codes are hashed, single-use, short-lived and limited by identity, IP and device.
-- Browser sessions use opaque HttpOnly cookies, rotation, CSRF and approved-origin checks.
-- Payment returns are untrusted; verified provider events drive the transaction and entitlement state machines.
-- Administrative mutations are role-restricted and audited.
+- The browser never grants Premium or changes coins.
+- Browser redirects are not payment authority.
+- HTML5 games request rewards; server play/session/version/nonce/policy checks decide state changes.
+- OTP codes are short-lived/rate-limited and session security remains server-enforced.
+- Browser sessions use opaque HttpOnly cookies, CSRF and allowed-origin checks.
+- Administrative mutations are capability/role-restricted and audited.
+- Provider secrets never belong in browser-visible config.
 
-## Scaling path
+## Deployment boundary
 
-1. Keep API writes on one replica for the initial controlled launch.
-2. Move high-volume entities from the snapshot repository to normalized PostgreSQL repositories with transactions and row-level concurrency.
-3. Add an outbox/worker for provider delivery, callbacks, reconciliation and analytics aggregation.
-4. Add Redis only for measured shared rate-limit/cache needs.
-5. Scale stateless API replicas after concurrency and failure tests prove correctness.
+The active staging backend runs in the self-managed/local-server Docker Compose stack defined by `infra/docker-compose.staging.yml` and deployed by `.github/workflows/deploy.yml`.
+
+AWS/EKS/RDS-specific runtime instructions are historical/optional and are not required for the current launch.
+
+## Scaling rule
+
+Scale only after measuring the actual runtime bottleneck and proving database/provider/idempotency behavior under the intended concurrency. Do not introduce microservices, queues, Redis or cloud-managed infrastructure merely because historical architecture documents mention them.

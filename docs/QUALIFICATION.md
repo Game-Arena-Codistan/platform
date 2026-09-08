@@ -1,59 +1,120 @@
-# Release Qualification Matrix
+# Release qualification matrix
+
+## Current qualification target
+
+The active deployed qualification target is the self-managed/local-server Docker Compose staging environment recorded under issue #48.
+
+AWS/Kubernetes/OpenTofu checks may remain in CI as supplemental repository validation, but they are not a launch prerequisite for the current staging/UAT path.
 
 ## Automated gates
 
 | Area | Gate |
 |---|---|
-| Frontend | Syntax, commercial baseline, catalogue references, shell-size budget, static HTTP smoke and container build |
-| API | Syntax, route tests, OTP/session/CSRF, trusted-proxy abuse controls, payment idempotency, entitlement activation, rewards, account lifecycle and admin authorization |
-| Games | Catalogue counts, manifest validation, static scanner, immutable packaging, Bridge schemas, origin container and scheduled entry-point probes |
-| Security | Repository credential patterns, dependency pinning, unfinished markers, wildcard messaging, browser auth storage, unsafe sandbox flags and production container builds |
-| Infrastructure | Docker Compose rendering, Kubernetes manifests, migration runner, AWS OpenTofu validation and production-delivery policy checks |
-| Performance | Dependency-free API load profile with error-rate and p95 thresholds; report retained as a CI artifact |
+| Frontend | syntax/build, shell/runtime checks, catalogue references and browser journeys |
+| API | route tests, OTP/session/CSRF, payment/BFF/webhook behavior, entitlement, rewards, account lifecycle and Admin authorization |
+| PostgreSQL | migrations, durability, restart/concurrency and commit-safe behavior |
+| Games | catalogue/manifest validation, scanner, immutable packaging, controlled-origin and runtime checks |
+| Security | credential patterns, dependency/action pinning, browser auth/storage, sandbox/origin controls and secret-leak checks |
+| Deployment identity | exact SHA, exact image tags/revisions, Compose services and `.deployed-sha` |
+| Performance | API/business performance thresholds and retained non-sensitive evidence |
+| Browser/Admin | player/mobile/Admin/RBAC/visual regression on deployed staging |
 
-All automated checks must pass on the release commit. External game-host probes remain informational until approved builds are published to the controlled origin; controlled-origin builds must pass strict probes.
+All mandatory current-lane checks must pass for the exact deployed SHA before the machine gate emits `READY FOR UAT`.
 
 ## Supported test matrix
 
-### Browsers and devices
+### Browsers/devices
 
-- Android Chrome: current and previous major on low-memory Android 9/10 and a current Android device
-- Samsung Internet: current supported release
-- iOS Safari: current and previous major on one older supported iPhone and one current iPhone
-- Desktop Chrome, Edge, Firefox and Safari current major
-- Installed PWA launch, update, offline shell and resume behavior
+Automated staging covers the repository-supported browser matrix. Human UAT should additionally cover representative current Android/iPhone/desktop devices and any business-critical browser not fully automated.
 
-### Network profiles
+Verify:
 
-- Wi-Fi / broadband baseline
-- Fast 4G
-- Slow 4G: 1.6 Mbps down, 750 Kbps up, 150 ms RTT
-- Slow 3G: 400 Kbps down, 400 Kbps up, 400 ms RTT
-- 2% packet loss and intermittent offline/online transitions
-- Background for 30 seconds and 5 minutes, then resume
+- responsive layout;
+- PWA launch/update behavior;
+- orientation where games require it;
+- background/resume;
+- keyboard/accessibility basics;
+- touch controls and viewport safety.
 
-### Critical journeys
+### Network behavior
 
-1. Guest feed, search, category and game details
-2. Free game launch, rotation, background/resume, exit and retry
-3. OTP request, invalid code, resend, successful sign-in and logout-all
-4. Premium game gate, plan selection, JazzCash handoff, cancel, failed, pending and paid return
-5. Entitlement persistence across refresh and second device
-6. Arena Coin credit, duplicate completion, suspicious result review and challenge claim
-7. Tournament entry, leaderboard order and disqualification review
-8. Game pause, kill switch and version rollback
-9. Account export and deletion request
-10. Keyboard, TalkBack, VoiceOver, zoom, reduced motion and visible focus
+Where practical, test:
+
+- broadband/Wi-Fi;
+- normal mobile data;
+- slow/interrupted network;
+- temporary offline/online recovery;
+- background/resume.
+
+## Critical player journeys
+
+1. Guest feed/search/catalogue/game details.
+2. OTP request/invalid/resend/success/session/logout.
+3. Free game launch/exit/retry.
+4. Premium gate and plan catalogue.
+5. Real external Payment Service wallet/subscription flow when provider staging is configured.
+6. Premium entitlement persistence after authoritative status/webhook reconciliation.
+7. Account subscription/payment history, cancel and unlink.
+8. Arena Coin/reward idempotency where enabled.
+9. Multiplayer create/rejoin where supported.
+10. Game pause/rollout/kill-switch/rollback controls.
+11. Account/support/Admin affected journeys.
+
+## Payment qualification
+
+Current Premium payment architecture:
+
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
+
+Repository mocks/contract tests may prove software behavior, but **real provider-backed staging UAT is required** before payment status can advance beyond `READY FOR STAGING UAT`.
+
+Real payment UAT must cover:
+
+- monthly/yearly plan catalogue;
+- wallet link;
+- first subscription/trial without duplicate create;
+- entitlement activation;
+- account/payment history;
+- cancel/unlink;
+- failed/past-due behavior where supported;
+- duplicate/retry webhook behavior;
+- desktop/mobile;
+- secret/token/MPIN non-exposure.
+
+Tracked under #158/#165/#166.
+
+## Game qualification
+
+The current exact-60 local staging portfolio is already controlled-origin deployed. Manual UAT should still verify all 60 titles for basic load/play/controls/layout/exit behavior.
+
+Rewards and competitions remain disabled for imported titles where intended unless an approved integrity policy explicitly enables them.
 
 ## Acceptance thresholds
 
-- No unresolved critical/high security or data-integrity issue
-- No blocker in sign-in, payment, entitlement, free play or premium play
-- LCP ≤2.5 s, INP ≤200 ms and CLS ≤0.1 at p75 for the shell on supported production traffic
-- API p95 ≤500 ms for the launch-profile synthetic test; error rate ≤1%
-- No game silently grants coins; all accepted rewards trace to a play session and ledger entry
-- Every launch game passes representative device/runtime QA and licensing approval
+Do not advance if any of the following remains unresolved:
+
+- critical/high security or data-integrity issue;
+- sign-in/authentication blocker;
+- API/database durability blocker;
+- controlled game-origin/catalogue blocker;
+- material Premium/payment/entitlement inconsistency;
+- duplicate payment/reward side effect;
+- Admin authorization leakage;
+- critical browser/mobile journey failure;
+- exact deployed SHA/image identity cannot be proven.
 
 ## Evidence record
 
-For each device/network row record date, tester, build SHA, OS/browser, network profile, journey, result, screenshots/video where permitted, defect links and retest result. AWS staging, manual qualification, security, provider, backup/restore and go-live evidence are consolidated in GitHub issue #48. Game-build certification and publication are tracked in #40; live JazzCash merchant verification is tracked in #17.
+For each manual test record:
+
+- date/tester;
+- exact build SHA;
+- device/browser;
+- journey/result;
+- screenshots/video where safe;
+- defect link;
+- retest result.
+
+Do not capture secrets, MPINs, API keys, tokens or private customer data.
+
+Issue #48 consolidates current staging certification and human UAT evidence. #165/#166 own real payment staging UAT/certification. #17 remains relevant only for live provider/finance readiness when real charging is required for production.

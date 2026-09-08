@@ -1,43 +1,57 @@
 # Game Arena+ staging reporting fixtures
 
-Use only non-production identities and mock JazzCash for this fixture set. Report boundaries use `Asia/Karachi`; fixture timestamps should be stored as UTC.
+## Current payment-model note
+
+The current Premium architecture uses the external Payment Service, not direct player-facing JazzCash checkout.
+
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
+
+Use deterministic/mock fixtures for repository tests and real Payment Service sandbox/staging state for provider UAT. Do not use production identities or real-money production transactions for staging fixtures.
+
+Report boundaries use `Asia/Karachi`; persisted timestamps remain UTC.
 
 ## Required fixture matrix
 
 | Fixture | Expected reporting behavior |
 |---|---|
-| Successful monthly activation | One completed payment, one paid activation, one active paid period, PKR 299 gross |
-| Failed monthly activation | One failed attempt, no collections, no paid period |
-| Pending yearly activation | One pending attempt, no collections, no paid period |
-| Successful monthly extension | One completed extension; customer qualifies as recurring after the first completed extension |
-| Failed yearly extension | One failed extension and renewal-rate denominator entry |
-| Audited manual grant | Active period with `manual_grant` origin; excluded from paid activations and collections |
-| Audited manual extension | Extended period with manual origin; excluded from successful paid extensions |
-| Audited revoke | Cancelled history plus current free entitlement |
-| Refund | Gross remains tied to paid timestamp, refund appears at refund timestamp, net reflects both for a range containing both |
-| Member top-up discount | List price, charged price and redeemed discount value recorded |
-| Refunded discounted top-up | Discount benefit is reversed and net benefit cost becomes zero |
-| Duplicate provider event | No duplicate collections or entitlement period |
-| Provider/internal mismatch | Open reconciliation case with safe statuses and references |
-| Paid payment without entitlement | Derived reconciliation exception |
-| Entitlement without paid payment | Derived exception unless the period is an audited manual grant |
-| Stale pending payment | Reconciliation exception after the approved 24-hour threshold |
+| Trialing monthly subscription | Trial/subscription state visible; no invented completed collection unless provider state includes one |
+| Successful monthly paid period | One authoritative completed payment/paid period and matching entitlement |
+| Failed monthly payment | Failed attempt/state, no invented new paid access |
+| Pending/initiated yearly flow | Pending state, no invented completed collection |
+| Successful renewal/next paid period | Completed renewal/period recorded distinctly from initial activation |
+| Failed/past-due renewal | Failure/past-due state represented without inventing paid access; preserve already-paid period only where authoritative |
+| Cancellation | Future renewal stopped; already-paid access retained through authoritative paid-period end |
+| Wallet unlink | Future debit link removed; entitlement follows authoritative paid-period state |
+| Audited manual grant | Manual origin remains distinct from provider-paid/trial access and excluded from collections |
+| Audited manual revoke/adjustment | History/audit reflects the operation without rewriting provider events |
+| Refund/reversal | Provider refund/reversal reconciles with payment/entitlement reporting according to authoritative state |
+| Member top-up discount | List price, charged price and benefit value recorded for the legacy/top-up product path where applicable |
+| Duplicate Payment Service event | No duplicate collection/subscription/entitlement effect |
+| Retry after incomplete webhook reconciliation | Event can complete safely without duplicate effects |
+| Provider/Game Arena mismatch | Reconciliation case/attention state with safe references |
+| Paid/provider-active without entitlement | Reconciliation exception |
+| Entitlement without authoritative provider/manual source | Reconciliation exception |
+| Stale pending/initiation state | Reconciliation/attention state after approved threshold |
 
 ## Acceptance script
 
 For one selected Pakistan-local date range:
 
-1. Capture the summary JSON and each ledger page.
-2. Export summary, payments, subscriptions, recurring customers, reconciliation and benefit costs.
-3. Verify summary gross, refund and net values are reproducible from the payment export.
-4. Verify daily/monthly buckets reconcile with summary totals.
-5. Verify the recurring-customer count includes only customers with a completed paid extension.
-6. Verify auto-renew remains a separate zero/disabled segment in single-charge mode.
-7. Verify MRR and ARR return `not_applicable`, never monthly cash.
-8. Verify manual grants and extensions are visible but excluded from paid metrics.
-9. Verify support can view reports but cannot export or execute reconciliation.
-10. Verify finance can export and each export creates an audit event with row count, schema version and content hash.
-11. Verify no API or CSV contains hosted checkout fields, merchant credentials, secure hashes, raw provider payloads, OTPs or unrestricted customer identity.
-12. Verify ranges over 366 days and exports over 10,000 rows fail with narrowing instructions.
+1. Capture summary/ledger results for the supported report set.
+2. Verify provider-derived payment/subscription state reconciles to Game Arena entitlement for identical filters.
+3. Verify initial activation/trial, paid periods and completed renewals are distinguishable.
+4. Verify failed/past-due/canceled/unlinked states follow authoritative entitlement rules.
+5. Verify manual grants/adjustments remain separate from provider collections.
+6. Verify duplicate/retried webhook events do not duplicate collections or entitlement periods.
+7. Verify report viewers/exporters/reconciliation operators remain capability-separated.
+8. Verify CSV/export formulas and totals match backend report definitions.
+9. Verify no API/export contains Payment Service API keys, webhook secrets, wallet MPINs, raw secret-bearing payloads, OTPs, session tokens or unrestricted identity.
+10. Verify bounded ranges/page/export limits continue to fail closed.
 
-Attach only non-sensitive summaries and content hashes to #48. Never attach credentials, raw provider payloads or customer data.
+## Recurring metric rule
+
+Do not assume MRR/ARR or a recurring-customer definition merely because external subscriptions support wallet consent/renewal semantics. Those metrics become authoritative only when provider behavior, persisted renewal evidence and finance definitions are approved.
+
+Until then, keep collections, initial activations/trials and completed renewals/periods explicit rather than relabeling them.
+
+Attach only non-sensitive summaries/content hashes/references to #48/#165/#166. Never attach provider credentials, raw secret-bearing payloads or customer data.

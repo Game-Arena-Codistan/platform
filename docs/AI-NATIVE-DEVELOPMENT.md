@@ -2,70 +2,77 @@
 
 ## Purpose
 
-This document defines how Game Arena uses AI-assisted development after staging and production qualification. The goal is faster delivery without weakening contracts, security, evidence or operational ownership.
+This document defines how Game Arena uses AI-assisted development without weakening contracts, security, evidence or operational ownership.
 
 AI-native does not mean autonomous production changes. It means the repository contains enough structured context, tests, templates and guardrails for humans and AI tools to produce small, reviewable and reversible changes.
 
 ## Operating principles
 
-1. **Repository context is authoritative.** Contracts, migrations, tests, `AGENTS.md` and runbooks travel with the code.
+1. **Repository context is authoritative.** Contracts, migrations, tests, `AGENTS.md` and current runbooks travel with the code.
 2. **Work is issue-shaped.** Every material change has a bounded outcome, non-goals, acceptance criteria and rollout boundary.
 3. **Changes are evidence-shaped.** A pull request includes an immutable SHA and the tests, migrations, rollback and observability relevant to that SHA.
 4. **High-risk effects remain server-authoritative.** Payments, entitlements, rewards, scores and administrator permissions cannot be delegated to browser state or game code.
-5. **Deployment remains human-approved.** AWS apply, provider activation, game publication and production rollout stay behind protected environments.
-6. **Architecture changes are explicit.** The modular monolith, normalized PostgreSQL and controlled game-origin model remain the default until an approved decision replaces a boundary.
+5. **Deployment remains human-approved.** Provider activation, production rollout and any future infrastructure migration stay behind explicit review/approval.
+6. **Architecture changes are explicit.** The modular monolith, PostgreSQL, controlled game-origin and active local Docker Compose deployment remain the defaults until an approved decision replaces a boundary.
+7. **Historical infrastructure is not current intent.** AWS/OpenTofu/Kubernetes files may remain in the repository, but an agent must not infer that AWS provisioning is required for the current launch.
 
 ## Context layers
 
 A development agent should load context in this order:
 
 1. `AGENTS.md` and any closer directory-specific instruction file.
-2. The owning issue and linked launch gate.
+2. The owning issue and linked launch gate; #48 is the current deployment/UAT source of truth.
 3. Versioned API, Game Bridge or catalogue schemas.
 4. Relevant migrations, services and tests.
-5. Architecture, security, operations and qualification documents.
+5. Current architecture, payment, security, operations and qualification documents.
 6. Recent pull requests that changed the same domain.
 
-The agent should identify stale context rather than copying it into new work. A change that exposes drift should update the stale issue or document when practical.
+The agent should identify stale context rather than copying it into new work.
 
 ## Standard work packet
 
-Every feature, fix or game integration should be expressible as a work packet with:
+Every feature, fix or game integration should identify:
 
-- user or operator outcome;
-- scope and explicit non-goals;
-- affected applications and domain owner;
-- API/schema and database impact;
-- authorization and privacy impact;
-- idempotency and concurrency behavior;
-- failure, pause, rollback and kill-switch behavior;
-- observability and success criteria;
-- tests and deployment evidence;
-- external dependency or decision.
-
-The issue and pull-request templates capture these fields so an AI tool can plan from structured input instead of inferring critical requirements.
+- user/operator outcome;
+- scope and non-goals;
+- affected apps/domain owner;
+- API/schema/database impact;
+- authorization/privacy impact;
+- idempotency/concurrency behavior;
+- failure, rollback and kill-switch behavior;
+- observability/success criteria;
+- tests/deployment evidence;
+- external dependency/decision.
 
 ## Product-domain map
 
 ### Player experience
 
-Owns discovery, library, account, wallet presentation, challenges, tournaments, rooms, accessibility and installed-PWA behavior. It consumes server-authoritative state and deterministic mock contracts.
+Owns discovery, library, account, wallet presentation, challenges, tournaments, rooms, accessibility and PWA behavior. It consumes server-authoritative state.
 
 ### Identity and account
 
-Owns OTP delivery, session rotation, device/session controls, account export/deletion and identity linking. Production sessions use secure cookies, CSRF and origin controls.
+Owns OTP delivery, sessions/devices, account export/deletion and identity linking. Deployed sessions use secure cookies, CSRF and origin controls.
 
 ### Game Arena+
 
-Owns plan versions, paid periods, entitlement lifecycle, member benefits, premium gating, administration and reporting. Current launch semantics are fixed-duration single-charge access.
+Owns plan presentation, subscription/entitlement lifecycle, member benefits, premium gating, administration and reporting.
+
+When external billing is enabled, the Payment Service plan catalogue is authoritative for plan codes/prices and subscription state is reconciled server-side.
 
 ### Payments and wallet
 
-Owns payment attempts/events, reconciliation, refunds, top-ups, vouchers, Arena Coin ledger and benefit reversals. Provider callbacks and ledger effects are idempotent and auditable.
+Current Premium subscription boundary:
+
+`Browser → Game Arena API/BFF → external Payment Service → JazzCash → Payment Service webhook → Game Arena API/PostgreSQL → entitlement`
+
+The browser never receives the product API key/webhook secret, never supplies authoritative `userId` or amount, and never grants Premium from a redirect.
+
+Legacy direct JazzCash code may remain for unrelated non-subscription compatibility; do not use it as the current Premium integration model.
 
 ### Gameplay and competition
 
-Owns play-session proof, score validation, rewards, leaderboards, challenges, tournaments and multiplayer coordination. Game code requests effects; the API decides and commits them.
+Owns play-session proof, score validation, rewards, leaderboards, challenges, tournaments and multiplayer coordination. Game code requests effects; the API decides/commits them.
 
 ### Game portfolio
 
@@ -73,102 +80,71 @@ Owns rights metadata, source classification, archive preflight, scanner findings
 
 ### Operations and delivery
 
-Owns admin capabilities, support, observability, WAF, budgets, backups, deployment evidence, runtime controls and incident response.
+Owns Admin capabilities, support, observability, backups, deployment evidence, runtime controls and incident response. Current delivery uses the self-managed/local Docker Compose lane.
 
 ## Premium-feature development lane
 
-Premium development should proceed in small vertical slices. A slice includes the player experience, API contract, database state, administration, audit trail and rollback behavior required for one outcome.
+Premium development should proceed in small vertical slices spanning player UX, BFF/API contract, PostgreSQL state, administration, audit and rollback.
 
-Candidate post-launch areas include:
+Any proposal that changes pricing, billing, entitlement, reward value, competition fairness or customer disclosure requires explicit product/finance/security/operations review.
 
-- premium catalogue collections and personalized discovery;
-- premium challenge seasons and reward policies;
-- tournament passes and eligibility rules;
-- family or household access research without enabling billing semantics prematurely;
-- loyalty streaks and member missions;
-- benefit experimentation with explicit cost and reversal ledgers;
-- member support and account recovery improvements;
-- retention and engagement reporting that does not misstate recurring revenue.
-
-Each proposal must state whether it changes price, billing, entitlement, reward value, competition fairness or customer disclosure. Those dimensions require explicit product, finance, security and operations review.
+Payment-specific changes must preserve the external Payment Service trust boundary unless a separately approved architecture decision replaces it.
 
 ## Game-integration lane
 
-Game growth follows a portfolio pipeline rather than ad hoc catalogue edits:
+Game growth follows a portfolio pipeline:
 
-1. **Discover:** create a stable slug, source checksum and runtime classification.
-2. **Authorize:** record non-sensitive rights references and allowed modification/hosting/distribution.
-3. **Preflight:** inspect archive size, entries, paths, encryption, compression and blocked files before extraction.
-4. **Review:** scan files, dependencies, network calls, storage, permissions and trackers.
-5. **Normalize:** produce a canonical HTML5 build and manifest.
-6. **Bridge:** integrate and test lifecycle, readiness, pause, exit, score and reward requests.
-7. **Publish:** create an immutable `slug/version` controlled-origin artifact.
-8. **Certify:** test gameplay, devices, orientation, network profiles, integrity and accessibility.
-9. **Roll out:** start paused at rollout `0`, then use evidence-backed staged rollout.
-10. **Operate:** retain per-version pause, kill switch, rollback and incident ownership.
+1. Discover stable slug/source checksum/runtime classification.
+2. Authorize rights/hosting/modification references.
+3. Preflight archive safety before extraction.
+4. Review files/dependencies/network/storage/permissions.
+5. Normalize the approved HTML5 build and manifest.
+6. Integrate/test Game Bridge where required.
+7. Publish immutable `slug/version` controlled-origin content.
+8. Certify gameplay/device/orientation/network/integrity behavior.
+9. Roll out with pause/percentage/kill-switch controls.
+10. Operate with retained version rollback and incident ownership.
 
-Static titles stay off Kubernetes. A title that needs authoritative realtime/server behavior enters a separately reviewed runtime lane.
+The current exact-60 staging portfolio is already published to the local controlled origin. Broader portfolio expansion is separate future work and must not be mistaken for a current launch blocker.
 
-## Release train after production
+## Release train
 
-### Development
+### Development / PR
 
 - issue-linked branch;
-- deterministic local and CI checks;
+- deterministic local/CI checks;
 - mock provider behavior where external systems are not required;
-- contract and migration review.
+- contract/migration/security review;
+- no secret values in source control.
 
 ### Staging
 
-- exact reviewed SHA;
-- real AWS/RDS and controlled-origin paths;
-- provider sandbox where approved;
-- browser/device, security, performance and rollback evidence.
+- immutable image publication for the exact reviewed SHA;
+- deployment through the active self-managed Compose lane;
+- exact release identity checks;
+- automated staging certification;
+- human/manual UAT after `READY FOR UAT`;
+- real Payment Service staging UAT when payment launch scope requires it.
 
-### Production candidate
+### Production
 
-- exact staging-qualified SHA;
-- launch-gate approval;
-- provider, rights and operational readiness;
-- rollout owner and rollback owner.
+Production remains a separate explicit owner-authorized action. No AI tool, merge, staging PASS or documentation change may infer production authorization.
 
-### Production rollout
-
-- internal and beta exposure;
-- percentage stages appropriate to risk;
-- metrics and alarms evaluated at every stage;
-- immediate pause/rollback path.
+If a future AWS/cloud migration is approved, treat it as a new architecture work packet with its own staging/rollback/cost/security evidence rather than reviving historical files automatically.
 
 ## AI review protocol
 
-AI-generated changes receive the same review as human-written changes. Reviewers should verify:
+Before proposing or applying a material change, an AI-assisted contributor must:
 
-- the change matches the issue rather than merely the prompt;
-- architecture boundaries are preserved;
-- generated code does not duplicate an existing service or contract;
-- authorization is enforced server-side;
-- database and idempotency behavior is tested;
-- logs and errors do not expose sensitive values;
-- the rollout statement does not overclaim environment readiness;
-- documentation and issue state match the merged result.
+1. identify the exact current issue/launch-gate context and target SHA/branch;
+2. distinguish current architecture from historical/optional repository assets;
+3. inspect the relevant contract, migration, implementation and tests rather than relying on stale prose;
+4. state external dependencies explicitly and never invent provider hosts, credentials or production authorization;
+5. preserve server authority for payments, entitlements, rewards, scores and Admin permissions;
+6. keep Payment Service secrets server-only and preserve the current Game Arena+ BFF/webhook trust boundary;
+7. use the self-managed/local Docker Compose lane as the current deployment assumption unless an explicit architecture decision says otherwise;
+8. run the affected repository/CI qualification and fix contract-marker drift instead of weakening checks;
+9. attach only non-sensitive evidence to issues/PRs;
+10. stop before production unless explicit owner authorization for the exact approved release is present.
 
-Large generated diffs should be split by coherent outcome. Generated refactors that are not required for the outcome should be removed or proposed separately.
-
-## Repository automation
-
-`node scripts/check-ai-native-readiness.mjs` verifies the durable context files and templates required for this model. Platform Assurance runs it on pull requests and `main`.
-
-The check is intentionally structural. Functional correctness remains covered by application, PostgreSQL, Compose, browser, security, game-runtime and deployment qualification.
-
-## Governance and audit cadence
-
-- Review open issues and launch-gate dependencies after every material staging or production milestone.
-- Review documentation links and baselines monthly.
-- Review provider, security, browser and runtime assumptions before every production release.
-- Review game-portfolio rights and certification state before every catalogue rollout.
-- Archive completed implementation issues; keep external evidence in the owning launch gate.
-- Create a new architecture decision when a core boundary changes.
-
-## Success criteria
-
-The repository is AI-native development ready when a new contributor or agent can identify the correct domain, authoritative contract, validation path, rollout boundary and owning issue without relying on private chat history.
+A review that discovers stale repository context should update that context as part of the bounded change when practical.
