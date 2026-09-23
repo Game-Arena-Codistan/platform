@@ -229,13 +229,13 @@ Use handover §9 scenarios. Track pass/fail here:
 | Scenario | P/F | Evidence | Notes |
 |---|---|---|---|
 | Player/Home | P | Browser `#/home` loads; hero + nav OK | 2026-09-23 |
-| Catalogue | P / note | `#/library` loads; search/genres/Play vs Unlock visible | Library placeholder still “Search 43 games” vs API 64 — `UAT-LIB-COUNT-43` |
+| Catalogue | P | `#/library` loads live API catalogue (count matches `readyz`) | Fixed `UAT-LIB-COUNT-43` in source — needs deploy |
 | Authentication | P | Signed-in with Demo OTP `123456` on mobile `03001122334` → Player / Free member | Live SHA `3b2aa719…`; UI shows Demo OTP hint |
 | Account | P | `#/account` Player, Free member, **1 active session**, Sign out / Sign out other devices | Export/delete controls present (not destructive-tested) |
 | Free game launch | P | `#/play/arena-dash` → connected shell (Score/Time HUD, Start/Finish); **Exit game** clean close | Secure isolated player; iframe Start not clicked via a11y |
 | Premium gate (free user) | P | Free user; Tank Wars **Unlock** → `#/premium` Monthly/Yearly | Payment CTA not exercised (payments deferred) |
 | Multiplayer (Tank Wars) | P | Create room `UAT Tank Lobby` (Tank Wars 1/2); Join → Joined; leave Compete → re-Join → Joined | Real-time gameplay server connect not fully exercised |
-| Rewards / wallet | P / note | `#/rewards` **0 coins**, challenges, Refresh wallet, top-up offers | While signed in, copy still says “Sign in to load wallet activity” — UX defect note |
+| Rewards / wallet | P | `#/rewards` signed-in empty wallet copy is activity-aware | Fixed `UAT-REWARDS-ACTIVITY-COPY` in source — needs deploy |
 | Competition hub | P | Leaderboards / Multiplayer / Tournaments; authenticated Create/Join OK | See multiplayer row |
 | Support request | P | `#/support` submit → **Request GA-B7FE31BC received.** | Topic Account or sign-in; delivery mode disabled on staging |
 | Payment plans | SKIP | Client deferred | `GET /api/v1/billing/plans` → `enabled:false, mode:disabled` (expected) |
@@ -275,8 +275,8 @@ Controlled 60 metadata: rewardsEnabled=0, competitionsEnabled=0 (as expected for
 |---|---|---|---|---|---|
 | UAT-AUTH-OTP-500 | `6fa6ef8…` | Code + staging config | `4dac8b2` (+ cert harden `3b2aa71`) | ✅ Live Demo OTP login PASS | ✅ Closed on staging 2026-09-23 |
 | UAT-GAMES-EXT-522 | `6fa6ef8…` / `3b2aa719…` | Catalogue / config | `b3031b3` — web remap + staging `ALLOW_EXTERNAL_GAMES` default false | ✅ Live: public catalogue **61**, external live **0**; dead IDs absent; controlled `touch-ball`/`quick-dice`/`math-game-for-kids` live | ✅ Closed on staging 2026-09-23 (deploy [35855565314](https://github.com/Game-Arena-Codistan/platform/actions/runs/35855565314); cert blocked only on `VISUAL_REVIEW_REQUIRED`) |
-| UAT-LIB-COUNT-43 | `6fa6ef8…` / `3b2aa719…` | Frontend / catalogue filter | — | ⬜ | ⬜ Library search placeholder “43 games” vs API 64 |
-| UAT-REWARDS-ACTIVITY-COPY | `3b2aa719…` | Frontend UX | — | ⬜ | ⬜ Signed-in `#/rewards` still shows “Sign in to load wallet activity” |
+| UAT-LIB-COUNT-43 | `6fa6ef8…` / `b3031b3…` | Frontend | Local: live `/v1/catalog/games` hydration via `catalogue-runtime.js` | ⬜ Needs deploy | ⬜ Prepared |
+| UAT-REWARDS-ACTIVITY-COPY | `3b2aa719…` / `b3031b3…` | Frontend UX | Local: guest vs signed-in wallet empty copy | ⬜ Needs deploy | ⬜ Prepared |
 
 ### Phase 8 — Completion pack & status
 

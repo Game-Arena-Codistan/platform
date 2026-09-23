@@ -42,8 +42,25 @@ test('MVP surfaces have launch-safe data contracts',()=>{
   assert.ok(mockTopups.length>=3);
   assert.match(librarySource,/game\.tier==='free'&&Boolean\(game\.downloadUrl\)/);
   assert.match(librarySource,/!game\?\.downloadUrl\|\|game\.tier!=='free'/);
-  assert.match(competeSource,/games\.filter\(item=>item\.multiplayer\)/);
+  assert.match(competeSource,/getGames\(\)\.filter\(item=>item\.multiplayer\)|games\.filter\(item=>item\.multiplayer\)/);
+  assert.match(competeSource,/item\.multiplayer/);
   assert.doesNotMatch(competeSource,/item\.multiplayer\|\|item\.internalDemo/);
+});
+
+test('live catalogue runtime and rewards wallet empty copy are wired for staging UX',async()=>{
+  const rewardsSource=await readFile(new URL('../src/views/rewards.js',import.meta.url),'utf8');
+  const runtimeSource=await readFile(new URL('../src/catalogue-runtime.js',import.meta.url),'utf8');
+  assert.match(appSource,/ensureCatalogue\(\)/);
+  assert.match(librarySource,/getGames\(\)/);
+  assert.match(librarySource,/Search \$\{games\.length\} games/);
+  assert.match(apiSource,/fetchCatalogue/);
+  assert.match(apiSource,/\/v1\/catalog\/games/);
+  assert.match(runtimeSource,/export async function ensureCatalogue/);
+  assert.match(rewardsSource,/export function walletEmptyCopy/);
+  assert.match(rewardsSource,/Sign in to load wallet activity/);
+  assert.match(rewardsSource,/Loading wallet activity/);
+  assert.match(rewardsSource,/No wallet activity yet/);
+  assert.match(rewardsSource,/walletEmptyCopy\(state\)/);
 });
 
 test('auth and PWA wiring preserve the staging browser contract',()=>{
