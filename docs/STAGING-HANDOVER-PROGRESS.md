@@ -4,7 +4,7 @@
 **Audit baseline:** 7 September 2026 (handover doc)  
 **Client writeup received:** 23 September 2026  
 **Progress owner:** _TBD_  
-**Last updated:** 2026-09-23 (signed-in non-payment UAT pass on live SHA `3b2aa719…`; payments still deferred)
+**Last updated:** 2026-09-23 (live SHA `b3031b3…`; UAT-GAMES-EXT-522 closed; payments still deferred)
 
 ---
 
@@ -260,7 +260,7 @@ Use handover §9 scenarios. Track pass/fail here:
 | Range | Complete | Defect refs |
 |---|---|---|
 | Controlled-origin entrypoints (60/60 HEAD 200) | ✅ asset reachability | Full interactive play matrix still pending (needs OTP + manual play) |
-| External URL leftovers (3) | ✅ remapped in web + staging gate | Was `UAT-GAMES-EXT-522`; pending staging redeploy verify |
+| External URL leftovers (3) | ✅ closed on live `b3031b3` | Public API no longer lists the 3 dead external IDs |
 | Games 1–20 interactive play | ⬜ | Auth unblocked; Arena Dash shell smoke only — full interactive matrix still pending |
 | Games 21–40 interactive play | ⬜ | |
 | Games 41–60 interactive play | ⬜ | |
@@ -274,7 +274,7 @@ Controlled 60 metadata: rewardsEnabled=0, competitionsEnabled=0 (as expected for
 | Defect ID | SHA found | Classification | PR / new SHA | Retest | Closed |
 |---|---|---|---|---|---|
 | UAT-AUTH-OTP-500 | `6fa6ef8…` | Code + staging config | `4dac8b2` (+ cert harden `3b2aa71`) | ✅ Live Demo OTP login PASS | ✅ Closed on staging 2026-09-23 |
-| UAT-GAMES-EXT-522 | `6fa6ef8…` / `3b2aa719…` | Catalogue / config | Local: web remap `touchball`/`quickdice`/`mathgame-for-kids` → controlled `/games/<slug>/1.0.0/…`; staging `ALLOW_EXTERNAL_GAMES` default `false` | ⬜ Needs deploy | ⬜ Prepared — redeploy + confirm API no longer lists the 3 external IDs live |
+| UAT-GAMES-EXT-522 | `6fa6ef8…` / `3b2aa719…` | Catalogue / config | `b3031b3` — web remap + staging `ALLOW_EXTERNAL_GAMES` default false | ✅ Live: public catalogue **61**, external live **0**; dead IDs absent; controlled `touch-ball`/`quick-dice`/`math-game-for-kids` live | ✅ Closed on staging 2026-09-23 (deploy [35855565314](https://github.com/Game-Arena-Codistan/platform/actions/runs/35855565314); cert blocked only on `VISUAL_REVIEW_REQUIRED`) |
 | UAT-LIB-COUNT-43 | `6fa6ef8…` / `3b2aa719…` | Frontend / catalogue filter | — | ⬜ | ⬜ Library search placeholder “43 games” vs API 64 |
 | UAT-REWARDS-ACTIVITY-COPY | `3b2aa719…` | Frontend UX | — | ⬜ | ⬜ Signed-in `#/rewards` still shows “Sign in to load wallet activity” |
 
@@ -367,7 +367,7 @@ Use **exactly one**:
 | `READY FOR STAKEHOLDER REVIEW` | Demo/evidence ready for review |
 | `READY FOR PRODUCTION APPROVAL` | Highest allowed by this handover |
 
-**Current working status:** `STAGING UAT IN PROGRESS` (live SHA `3b2aa719…`; signed-in non-payment smoke PASS; payments still deferred locally)
+**Current working status:** `STAGING UAT IN PROGRESS` (live SHA `b3031b3…`; UAT-GAMES-EXT-522 closed; cert visual review open; payments still deferred locally)
 
 > **SHA note (2026-09-23):** Live staging `releaseSha` is `6fa6ef8ca6a8945a6aa7d577f39c61fe266d92f9`, **not** the handover SHA `94503823601f31a2776ecf7ed568591493241bf9`. Treat `6fa6ef8…` as the current UAT baseline unless DevOps reverts or documents otherwise.
 
@@ -402,4 +402,5 @@ Use **exactly one**:
 | 2026-09-23 | Pushed `3b2aa71` support cert harden + redeploy. Staging run [35850393377](https://github.com/Game-Arena-Codistan/platform/actions/runs/35850393377) SUCCESS → **READY FOR UAT**. Support lane PASS (`GA-6FEE5C8C`). Live SHA `3b2aa719…`. | Payments still deferred | Continue non-payment manual UAT with Demo OTP `123456` |
 | 2026-09-23 | Signed-in non-payment UAT (Chrome): Demo OTP login PASS; Arena Dash launch+exit PASS; Tank Wars create/rejoin PASS (`UAT Tank Lobby`); Account 1 session PASS; support ticket **GA-B7FE31BC** PASS; premium Unlock→plans PASS (no payment). | Admin private; persistence needs host; 3×522 externals; library 43 vs 64; rewards activity copy while signed in; full 60-game interactive matrix; Firefox/WebKit; payments deferred | Fix catalogue/UX defects; Admin + restart access; interactive 60-game matrix; resume payments when unblocked |
 | 2026-09-23 | Started `UAT-GAMES-EXT-522` fix: remapped web catalogue duplicates to controlled-origin `touch-ball`, `quick-dice`, `math-game-for-kids`; staging Compose default `ALLOW_EXTERNAL_GAMES=false` so leftover `version=external` rows pause at API boot. | Not live until commit/deploy; host `.env` must not force `ALLOW_EXTERNAL_GAMES=true`; library still mostly legacy external URLs (broader sync still open) | Commit → deploy → verify API catalogue excludes the 3 dead IDs; send client ask for Admin + restart access |
+| 2026-09-23 | Pushed `b3031b3` to main. Images [35855489024](https://github.com/Game-Arena-Codistan/platform/actions/runs/35855489024) SUCCESS. Staging deploy SUCCESS; cert run [35855565314](https://github.com/Game-Arena-Codistan/platform/actions/runs/35855565314) **BLOCKED** only on `VISUAL_REVIEW_REQUIRED` (browser 35/38, 0 failures). Live SHA `b3031b3…`; `readyz.catalogue=61`; dead external IDs absent. | Visual baseline review still open; broader web catalogue still mostly legacy external URLs; payments deferred | Close visual review if needed; continue library/rewards UX defects; Admin + restart access; resume payments when credentials ready |
 | | | | |
