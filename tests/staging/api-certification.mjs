@@ -17,7 +17,7 @@ let failed=false;
 function record(name,status,details={}){results.push({name,status,...details});if(status==='BLOCKED')blocked=true;if(status==='FAIL')failed=true;}
 function cookieHeader(){return[...cookies].map(([name,value])=>`${name}=${value}`).join('; ');}
 function rememberCookies(headers){const values=typeof headers.getSetCookie==='function'?headers.getSetCookie():[headers.get('set-cookie')].filter(Boolean);for(const raw of values){const first=raw.split(';',1)[0];const at=first.indexOf('=');if(at>0)cookies.set(first.slice(0,at),first.slice(at+1));}}
-async function call(path,{method='GET',body,headers={},auth=false,redirect='follow'}={}){
+async function call(path,{method='GET',body,headers={},auth=false,redirect='follow',retries=0}={}){
   const requestHeaders={'accept':'application/json',...headers};
   if(body!==undefined)requestHeaders['content-type']='application/json';
   if(auth&&cookies.size)requestHeaders.cookie=cookieHeader();
@@ -25,11 +25,22 @@ async function call(path,{method='GET',body,headers={},auth=false,redirect='foll
     requestHeaders.origin=playerUrl;
     requestHeaders['x-csrf-token']=csrf;
   }
-  const response=await fetch(`${apiBase}${path}`,{method,headers:requestHeaders,body:body===undefined?undefined:JSON.stringify(body),redirect});
-  rememberCookies(response.headers);
-  let data=null;const type=response.headers.get('content-type')||'';
-  if(type.includes('json'))data=await response.json().catch(()=>null);
-  return{response,data};
+  let lastError;
+  for(let attempt=0;attempt<=retries;attempt++){
+    try{
+      const response=await fetch(`${apiBase}${path}`,{method,headers:requestHeaders,body:body===undefined?undefined:JSON.stringify(body),redirect,signal:AbortSignal.timeout(20000)});
+      rememberCookies(response.headers);
+      let data=null;const type=response.headers.get('content-type')||'';
+      if(type.includes('json'))data=await response.json().catch(()=>null);
+      return{response,data};
+    }catch(error){
+      lastError=error;
+      const transient=/fetch failed|network|ECONNRESET|ETIMEDOUT|AbortError|timeout/i.test(String(error?.message||error?.cause||error));
+      if(!transient||attempt===retries)throw error;
+      await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
+    }
+  }
+  throw lastError;
 }
 function expectStatus(actual,allowed,message){if(!allowed.includes(actual))throw new Error(`${message}; expected ${allowed.join('/')}, got ${actual}`);}
 async function lane(name,fn){try{const details=await fn();record(name,'PASS',details||{});}catch(error){const status=error?.blocked?'BLOCKED':'FAIL';record(name,status,{error:String(error.message||error).slice(0,300)});}}
@@ -144,7 +155,20 @@ await lane('multiplayer-room-coordination',async()=>{
 });
 
 await lane('support',async()=>{
-  const support=await call('/v1/support/tickets',{method:'POST',auth:true,body:{topic:'Other',message:`Automated staging certification ${correlation}. API support journey verification.`,reference:correlation}});
+  // Retry transient runner↔staging network failures; 503 remains an intentional BLOCKED gate.
+  let support;
+  let lastError;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      support=await call('/v1/support/tickets',{method:'POST',auth:true,retries:2,body:{topic:'Other',message:`Automated staging certification ${correlation}. API support journey verification.`,reference:`${correlation}-${attempt}`}});
+      lastError=null;
+      break;
+    }catch(error){
+      lastError=error;
+      await new Promise(resolve=>setTimeout(resolve,1500*(attempt+1)));
+    }
+  }
+  if(lastError)throw lastError;
   if(support.response.status===503)block('support delivery is not configured/reachable in staging.');
   expectStatus(support.response.status,[201],'support ticket creation failed');
   if(!support.data?.ticket?.id)throw new Error('support ticket did not return a reference.');
