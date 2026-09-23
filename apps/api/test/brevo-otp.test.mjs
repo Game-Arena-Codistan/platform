@@ -73,3 +73,12 @@ test('synthetic QA OTP routing avoids external delivery but real QA identities f
   assert.equal(protectedResult.provider,'external');
   assert.deepEqual(externalCalls,['game.arena+qa-free@codistan.org']);
 });
+
+test('debug mock fallback accepts delivery when Brevo SMS is unavailable',async()=>{
+  const {MockOtpProvider}=await import('../src/adapters/otp-delivery.mjs');
+  const brevo=new BrevoOtpProvider({apiKey:'test-api-key',senderEmail:'qa@example.com',fetchImpl:async()=>{throw Object.assign(new Error('unreachable'),{code:'delivery_unavailable'});}});
+  const router=new OtpDeliveryRouter({providers:[brevo,new MockOtpProvider('mock-debug')]});
+  const result=await router.send({identity:{type:'phone',value:'+923001234567'},code:'123456'});
+  assert.equal(result.provider,'mock-debug');
+  assert.equal(result.debugCode,'123456');
+});

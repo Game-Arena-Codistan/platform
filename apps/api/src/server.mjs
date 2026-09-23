@@ -32,17 +32,21 @@ if(!config.allowExternalGames){
 }
 
 const syntheticQaProviders=config.allowDebugOtp?[new SyntheticQaOtpProvider({enabled:true})]:[];
+// When ALLOW_DEBUG_OTP is enabled (staging/local QA), keep a mock delivery fallback so
+// Demo OTP 123456 still works if Brevo/HTTP SMS/email is missing or rejects.
+const debugMockFallback=config.allowDebugOtp?[new MockOtpProvider('mock-debug')]:[];
 const providers=config.otpProviderMode==='mock'
   ?[new MockOtpProvider()]
   :config.otpProviderMode==='brevo'
-    ?[...syntheticQaProviders,new BrevoOtpProvider({apiKey:config.brevoApiKey,senderEmail:config.brevoSenderEmail,senderName:config.brevoSenderName,smsSender:config.brevoSmsSender})]
+    ?[...syntheticQaProviders,new BrevoOtpProvider({apiKey:config.brevoApiKey,senderEmail:config.brevoSenderEmail,senderName:config.brevoSenderName,smsSender:config.brevoSmsSender}),...debugMockFallback]
     :config.otpProviderMode==='http'
       ?[
         ...syntheticQaProviders,
         new HttpOtpProvider({name:config.otpPrimaryName,endpoint:config.otpPrimaryEndpoint,apiKey:config.otpPrimaryApiKey}),
-        new HttpOtpProvider({name:config.otpSecondaryName,endpoint:config.otpSecondaryEndpoint,apiKey:config.otpSecondaryApiKey})
+        new HttpOtpProvider({name:config.otpSecondaryName,endpoint:config.otpSecondaryEndpoint,apiKey:config.otpSecondaryApiKey}),
+        ...debugMockFallback
       ]
-      :[new DisabledOtpProvider()];
+      :[...debugMockFallback.length?debugMockFallback:[new DisabledOtpProvider()]];
 const otpDelivery=new OtpDeliveryRouter({providers,audit:store.audit,metrics:store.metrics});
 const jazzcash=new JazzCashAdapter(config);
 const payments=new PaymentService({store,provider:jazzcash});
