@@ -62,7 +62,9 @@ services:
       TOPUP_OFFERS_JSON: ${TOPUP_OFFERS_JSON:-}
       VOUCHER_CODES_JSON: ${VOUCHER_CODES_JSON:-}
       COMPETITIONS_ENABLED: ${COMPETITIONS_ENABLED:-true}
-      ALLOW_EXTERNAL_GAMES: ${ALLOW_EXTERNAL_GAMES:-true}
+      # Staging catalogue is controlled-origin only. Keep false so leftover
+      # games.codistan.org rows (version=external) are paused at API boot.
+      ALLOW_EXTERNAL_GAMES: ${ALLOW_EXTERNAL_GAMES:-false}
     depends_on: {migrate: {condition: service_completed_successfully}}
     restart: unless-stopped
 

@@ -1,10 +1,10 @@
 # Game Arena Staging Handover — Requirements & Progress
 
-**Baseline status:** `STAGING DEPLOYED — UAT PENDING`  
+**Baseline status:** `STAGING UAT IN PROGRESS`  
 **Audit baseline:** 7 September 2026 (handover doc)  
 **Client writeup received:** 23 September 2026  
 **Progress owner:** _TBD_  
-**Last updated:** 2026-09-23 (payments deferred by client — non-payment UAT in progress)
+**Last updated:** 2026-09-23 (signed-in non-payment UAT pass on live SHA `3b2aa719…`; payments still deferred)
 
 ---
 
@@ -109,11 +109,11 @@ Short non-sensitive video showing:
 
 | Area | Scope | Status |
 |---|---|---|
-| Frontend / player | Home, catalogue, auth, account, free/premium gate, rewards, competition, support | ⬜ |
-| Backend / API | Readiness, billing routes, entitlement, webhooks, persistence | ⬜ |
-| Admin | Roles, reports, exports, no privilege leakage | ⬜ |
-| All 60 games | Load, controls, audio, orientation, exit, eligibility, mobile | ⬜ |
-| Multiplayer | Tank Wars create + rejoin | ⬜ |
+| Frontend / player | Home, catalogue, auth, account, free/premium gate, rewards, competition, support | ✅ Signed-in smoke PASS (Chrome); library count + wallet-activity copy notes remain |
+| Backend / API | Readiness, billing routes, entitlement, webhooks, persistence | 🟡 Cert READY FOR UAT; payments/persistence still open |
+| Admin | Roles, reports, exports, no privilege leakage | ⬜ Blocked — private Admin |
+| All 60 games | Load, controls, audio, orientation, exit, eligibility, mobile | ⬜ Asset reachability done; interactive matrix pending |
+| Multiplayer | Tank Wars create + rejoin | ✅ Create `UAT Tank Lobby` + rejoin PASS |
 | Mobile / browsers | Mobile width, Chrome + Firefox, WebKit-equivalent | ⬜ |
 | Security | No secret leakage in network/bundle/logs | ⬜ |
 | Persistence / restart | Acknowledged state survives API restart | ⬜ |
@@ -229,15 +229,15 @@ Use handover §9 scenarios. Track pass/fail here:
 | Scenario | P/F | Evidence | Notes |
 |---|---|---|---|
 | Player/Home | P | Browser `#/home` loads; hero + nav OK | 2026-09-23 |
-| Catalogue | P / note | `#/library` loads; search/genres/Play vs Unlock visible | Library placeholder says “Search 43 games” while API returns 64 — investigate filter/count |
-| Authentication | F | OTP Send shows “Unexpected server error” | UI still advertises Demo OTP `123456` while `readyz` reports `otp:brevo` — auth blocker for signed-in UAT |
-| Account | P (guest) | `#/account` Guest player, preferences, membership copy | Full sessions/export needs successful login |
-| Free game launch | BLOCKED | Play on free title opens Sign in | Cannot complete without working OTP |
-| Premium gate (free user) | P (partial) | Arena+ titles show Unlock; `#/premium` shows Monthly/Yearly | Full gate-after-login deferred with payments/auth |
-| Multiplayer (Tank Wars) | BLOCKED | Compete → Multiplayer UI lists rooms; Create room → Sign in | Need working OTP to create/rejoin |
-| Rewards / wallet | P (guest) | `#/rewards` shows coins/challenges; wallet activity asks sign-in | Authenticated wallet pending OTP |
-| Competition hub | P (guest) | Leaderboards / Multiplayer / Tournaments tabs render | Authenticated actions pending |
-| Support request | ⬜ | | Not exercised yet |
+| Catalogue | P / note | `#/library` loads; search/genres/Play vs Unlock visible | Library placeholder still “Search 43 games” vs API 64 — `UAT-LIB-COUNT-43` |
+| Authentication | P | Signed-in with Demo OTP `123456` on mobile `03001122334` → Player / Free member | Live SHA `3b2aa719…`; UI shows Demo OTP hint |
+| Account | P | `#/account` Player, Free member, **1 active session**, Sign out / Sign out other devices | Export/delete controls present (not destructive-tested) |
+| Free game launch | P | `#/play/arena-dash` → connected shell (Score/Time HUD, Start/Finish); **Exit game** clean close | Secure isolated player; iframe Start not clicked via a11y |
+| Premium gate (free user) | P | Free user; Tank Wars **Unlock** → `#/premium` Monthly/Yearly | Payment CTA not exercised (payments deferred) |
+| Multiplayer (Tank Wars) | P | Create room `UAT Tank Lobby` (Tank Wars 1/2); Join → Joined; leave Compete → re-Join → Joined | Real-time gameplay server connect not fully exercised |
+| Rewards / wallet | P / note | `#/rewards` **0 coins**, challenges, Refresh wallet, top-up offers | While signed in, copy still says “Sign in to load wallet activity” — UX defect note |
+| Competition hub | P | Leaderboards / Multiplayer / Tournaments; authenticated Create/Join OK | See multiplayer row |
+| Support request | P | `#/support` submit → **Request GA-B7FE31BC received.** | Topic Account or sign-in; delivery mode disabled on staging |
 | Payment plans | SKIP | Client deferred | `GET /api/v1/billing/plans` → `enabled:false, mode:disabled` (expected) |
 | Wallet linking | SKIP | Client deferred | |
 | First subscription | SKIP | Client deferred | |
@@ -249,10 +249,10 @@ Use handover §9 scenarios. Track pass/fail here:
 | Webhook security | SKIP | Client deferred | |
 | Admin login/roles | BLOCKED | Admin is private loopback / signed-role | Needs DevOps tunnel + signed identity access |
 | Admin reports/exports | BLOCKED | Same as above | |
-| Privacy/security | P (partial) | `/config.js` has no apiKey/webhook/secret; browser config keys safe | Auth/session secret checks need login |
+| Privacy/security | P (partial) | `/config.js` has no apiKey/webhook/secret; browser config keys safe; signed-in session present | Bundle/network deep scan still open |
 | Persistence/restart | BLOCKED | Requires staging host SSH/Compose restart | Ask DevOps for restart proof or access |
-| Mobile | P (partial) | Emulated 390×844 library/nav usable | Full play tests need OTP |
-| Desktop Chrome + Firefox | P (partial) | Chromium automation desktop paths OK | Firefox not yet run |
+| Mobile | P (partial) | Emulated 390×844 library/nav usable; signed-in flows exercised on desktop Chrome | Dedicated mobile play pass still open |
+| Desktop Chrome + Firefox | P (partial) | Chromium signed-in UAT PASS | Firefox not yet run |
 | WebKit / iPhone equivalent | ⬜ | | Pending |
 
 #### 60-game matrix
@@ -260,8 +260,8 @@ Use handover §9 scenarios. Track pass/fail here:
 | Range | Complete | Defect refs |
 |---|---|---|
 | Controlled-origin entrypoints (60/60 HEAD 200) | ✅ asset reachability | Full interactive play matrix still pending (needs OTP + manual play) |
-| External URL leftovers (3) | ❌ | UAT-GAMES-EXT-522 |
-| Games 1–20 interactive play | ⬜ | Blocked on auth for in-shell launch |
+| External URL leftovers (3) | ✅ remapped in web + staging gate | Was `UAT-GAMES-EXT-522`; pending staging redeploy verify |
+| Games 1–20 interactive play | ⬜ | Auth unblocked; Arena Dash shell smoke only — full interactive matrix still pending |
 | Games 21–40 interactive play | ⬜ | |
 | Games 41–60 interactive play | ⬜ | |
 
@@ -273,9 +273,10 @@ Controlled 60 metadata: rewardsEnabled=0, competitionsEnabled=0 (as expected for
 
 | Defect ID | SHA found | Classification | PR / new SHA | Retest | Closed |
 |---|---|---|---|---|---|
-| UAT-AUTH-OTP-500 | `6fa6ef8…` | Code + staging config | Local Demo OTP fix prepared (needs PR/deploy) | ⬜ | ⬜ Fixed locally: `ALLOW_DEBUG_OTP` → code `123456` + mock delivery fallback. Live staging still broken until redeploy. |
-| UAT-GAMES-EXT-522 | `6fa6ef8…` | Catalogue / data | — | ⬜ | ⬜ 3 external `games.codistan.org` URLs return 522; remove or remap to controlled origin |
-| UAT-LIB-COUNT-43 | `6fa6ef8…` | Frontend / catalogue filter | — | ⬜ | ⬜ Library search placeholder “43 games” vs API 64 |
+| UAT-AUTH-OTP-500 | `6fa6ef8…` | Code + staging config | `4dac8b2` (+ cert harden `3b2aa71`) | ✅ Live Demo OTP login PASS | ✅ Closed on staging 2026-09-23 |
+| UAT-GAMES-EXT-522 | `6fa6ef8…` / `3b2aa719…` | Catalogue / config | Local: web remap `touchball`/`quickdice`/`mathgame-for-kids` → controlled `/games/<slug>/1.0.0/…`; staging `ALLOW_EXTERNAL_GAMES` default `false` | ⬜ Needs deploy | ⬜ Prepared — redeploy + confirm API no longer lists the 3 external IDs live |
+| UAT-LIB-COUNT-43 | `6fa6ef8…` / `3b2aa719…` | Frontend / catalogue filter | — | ⬜ | ⬜ Library search placeholder “43 games” vs API 64 |
+| UAT-REWARDS-ACTIVITY-COPY | `3b2aa719…` | Frontend UX | — | ⬜ | ⬜ Signed-in `#/rewards` still shows “Sign in to load wallet activity” |
 
 ### Phase 8 — Completion pack & status
 
@@ -366,7 +367,7 @@ Use **exactly one**:
 | `READY FOR STAKEHOLDER REVIEW` | Demo/evidence ready for review |
 | `READY FOR PRODUCTION APPROVAL` | Highest allowed by this handover |
 
-**Current working status:** `STAGING UAT IN PROGRESS` (baseline SHA `6fa6ef8…` client-confirmed; Demo OTP code fix pending deploy; payments still deferred locally)
+**Current working status:** `STAGING UAT IN PROGRESS` (live SHA `3b2aa719…`; signed-in non-payment smoke PASS; payments still deferred locally)
 
 > **SHA note (2026-09-23):** Live staging `releaseSha` is `6fa6ef8ca6a8945a6aa7d577f39c61fe266d92f9`, **not** the handover SHA `94503823601f31a2776ecf7ed568591493241bf9`. Treat `6fa6ef8…` as the current UAT baseline unless DevOps reverts or documents otherwise.
 
@@ -397,4 +398,8 @@ Use **exactly one**:
 | 2026-09-23 | Client deferred payments + payment demo. Started non-payment UAT | OTP Send fails (Unexpected server error); Admin private; persistence needs host access; 3 external game URLs 522 | Fix/get working staging OTP; remove/remap 3 dead external catalogue URLs; obtain Admin + restart access for remaining UAT |
 | 2026-09-23 | Client confirmed staging SHA `6fa6ef8…` + cert run 34270960584; do not roll back. Code change: Demo OTP `123456` + mock delivery fallback when `ALLOW_DEBUG_OTP=true` | Live staging still on old OTP behavior until this SHA is deployed | Commit/PR → deploy new SHA → retest login with Demo OTP → resume non-payment UAT. Payments still skipped locally. |
 | 2026-09-23 | Local OTP E2E passed on API `:18081` with `OTP_PROVIDER_MODE=brevo` + empty Brevo keys + `ALLOW_DEBUG_OTP=true`: request 202/`debugCode=123456`, verify 200, session authenticated, wrong OTP 400, email path OK | Staging still needs deploy of this fix | Commit/PR/redeploy when ready |
+| 2026-09-23 | Pushed `4dac8b2` to main (no PR). Images `35847980314` SUCCESS. Staging deploy SUCCESS for SHA `4dac8b22…`. Live OTP E2E PASS (`debugCode=123456`). Cert run FAILED only on unrelated `support` lane (`fetch failed`); OTP lane PASS; browser 35/38. | Automated cert not `READY FOR UAT` due to support fetch; payments still deferred | Resume non-payment UAT with Demo OTP; investigate support cert flake separately |
+| 2026-09-23 | Pushed `3b2aa71` support cert harden + redeploy. Staging run [35850393377](https://github.com/Game-Arena-Codistan/platform/actions/runs/35850393377) SUCCESS → **READY FOR UAT**. Support lane PASS (`GA-6FEE5C8C`). Live SHA `3b2aa719…`. | Payments still deferred | Continue non-payment manual UAT with Demo OTP `123456` |
+| 2026-09-23 | Signed-in non-payment UAT (Chrome): Demo OTP login PASS; Arena Dash launch+exit PASS; Tank Wars create/rejoin PASS (`UAT Tank Lobby`); Account 1 session PASS; support ticket **GA-B7FE31BC** PASS; premium Unlock→plans PASS (no payment). | Admin private; persistence needs host; 3×522 externals; library 43 vs 64; rewards activity copy while signed in; full 60-game interactive matrix; Firefox/WebKit; payments deferred | Fix catalogue/UX defects; Admin + restart access; interactive 60-game matrix; resume payments when unblocked |
+| 2026-09-23 | Started `UAT-GAMES-EXT-522` fix: remapped web catalogue duplicates to controlled-origin `touch-ball`, `quick-dice`, `math-game-for-kids`; staging Compose default `ALLOW_EXTERNAL_GAMES=false` so leftover `version=external` rows pause at API boot. | Not live until commit/deploy; host `.env` must not force `ALLOW_EXTERNAL_GAMES=true`; library still mostly legacy external URLs (broader sync still open) | Commit → deploy → verify API catalogue excludes the 3 dead IDs; send client ask for Admin + restart access |
 | | | | |
