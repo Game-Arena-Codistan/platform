@@ -8,12 +8,14 @@ for(const file of required)await access(join(root,file));
 const html=await readFile(join(root,'index.html'),'utf8');
 const css=await readFile(join(root,'styles/tokens.css'),'utf8')+await readFile(join(root,'styles/app.css'),'utf8')+await readFile(join(root,'styles/responsive.css'),'utf8');
 const vercel=await readFile(join(root,'vercel.json'),'utf8');
+const nginx=await readFile(join(root,'deploy/nginx.conf'),'utf8');
 const demo=await readFile(join(root,'demo-games/arena-dash/index.html'),'utf8');
 const runtime=await readFile(join(root,'deploy/40-game-arena-config.sh'),'utf8');
 const data=await readFile(join(root,'src/data.js'),'utf8');
 if(!html.includes('Content-Security-Policy')||!html.includes('viewport-fit=cover')||!html.includes('role="status"'))throw new Error('Security or accessibility shell requirements missing.');
 if(!css.includes('prefers-reduced-motion'))throw new Error('Reduced-motion support missing.');
 if(!vercel.includes('npm run build')||!vercel.includes('"outputDirectory":"dist"'))throw new Error('Vercel must build the bundled dist directory.');
+if(!nginx.includes('location ^~ /demo-games/')||!nginx.includes('X-Frame-Options SAMEORIGIN')||!nginx.includes("frame-ancestors 'self'"))throw new Error('Internal demo games must allow only same-origin framing.');
 if(!demo.includes("source:'game-arena-game'")||!demo.includes("'reward-request'"))throw new Error('Playable preview must implement Game Bridge ready and reward events.');
 for(const marker of ['https://*','http://localhost:*','http://127.0.0.1:*','[ "$RELEASE" = dev ]','HTTP game origin is allowed only for the local dev release']){
   if(!runtime.includes(marker))throw new Error(`Runtime origin guard missing: ${marker}`);
