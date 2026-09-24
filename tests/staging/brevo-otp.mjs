@@ -61,7 +61,7 @@ while(Date.now()<deadline){
   delayMs=Math.min(8000,Math.round(delayMs*1.5));
 }
 const elapsedMs=Date.now()-startedAt;
-process.stderr.write(state+';elapsedMs='+elapsedMs+';polls='+polls+(lastHttp?';lastHttp='+lastHttp:''));
+process.stderr.write('BREVO_OTP_NOT_DELIVERED;state='+state+';elapsedMs='+elapsedMs+';polls='+polls+(lastHttp?';lastHttp='+lastHttp:''));
 process.exit(3);
 `;
 
@@ -81,7 +81,7 @@ function runSsh(args,input,{timeout=210000,maxBuffer=4096}={}){
       const out=Buffer.concat(stdout).toString('utf8');
       if(code===0){resolve(out);return;}
       const err=Buffer.concat(stderr).toString('utf8');
-      const marker=err.match(/BREVO_OTP_[A-Z0-9_]+/)?.[0]||`BREVO_OTP_SSH_EXIT_${code}`;
+      const marker=err.match(/state=(BREVO_OTP_[A-Z0-9_]+)/)?.[1]||err.match(/BREVO_OTP_[A-Z0-9_]+/)?.[0]||`BREVO_OTP_SSH_EXIT_${code}`;
       const diagnostics=err.match(/elapsedMs=\d+;polls=\d+(?:;lastHttp=\d+)?/)?.[0]||'';
       reject(new Error(diagnostics?`${marker} ${diagnostics}`:marker));
     });
