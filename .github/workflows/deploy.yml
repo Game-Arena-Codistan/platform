@@ -133,7 +133,20 @@ jobs:
           done <<<"$app_images"
           test "$(wc -l <<<"$app_images" | tr -d ' ')" -ge 5
 
-          "${compose[@]}" pull
+          # Pull only immutable application images for this release. PostgreSQL
+          # and gateway base images are unchanged infrastructure dependencies and are
+          # already present on the existing staging host; pulling them on every app
+          # release made deployments depend unnecessarily on Docker Hub availability.
+          pulled=false
+          for attempt in 1 2 3; do
+            if "${compose[@]}" pull api web admin game-origin; then
+              pulled=true
+              break
+            fi
+            echo "Application image pull attempt $attempt failed; retrying..." >&2
+            sleep $((attempt * 5))
+          done
+          [ "$pulled" = true ] || { echo 'Application image pull failed after 3 attempts.' >&2; exit 1; }
           "${compose[@]}" up -d --remove-orphans
 
           # The gateway configuration is bind-mounted. Updating the file does not
