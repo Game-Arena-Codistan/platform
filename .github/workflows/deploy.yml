@@ -66,6 +66,24 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
+      - name: Reclaim safe staging Docker disk when needed
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          usage="$(df -Pk / | awk 'NR==2 {gsub("%","",$5); print $5}')"
+          echo "root_disk_usage_before=${usage}%"
+          docker system df || true
+          if [ "$usage" -ge 90 ]; then
+            docker container prune -f || true
+            docker image prune -af --filter "until=24h" || true
+            docker builder prune -af --filter "until=24h" || true
+            docker network prune -f || true
+          fi
+          usage_after="$(df -Pk / | awk 'NR==2 {gsub("%","",$5); print $5}')"
+          echo "root_disk_usage_after=${usage_after}%"
+          [ "$usage_after" -lt 98 ] || { echo 'Staging host remains critically full after safe Docker cleanup.' >&2; exit 1; }
+          REMOTE
       - name: Sync exact deployment configuration
         run: |
           set -euo pipefail
