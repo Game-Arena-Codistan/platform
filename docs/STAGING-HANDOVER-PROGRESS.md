@@ -112,7 +112,7 @@ Short non-sensitive video showing:
 | Frontend / player | Home, catalogue, auth, account, free/premium gate, rewards, competition, support | ✅ Signed-in smoke PASS (Chrome); library count + wallet-activity copy notes remain |
 | Backend / API | Readiness, billing routes, entitlement, webhooks, persistence | 🟡 Cert READY FOR UAT; payments/persistence still open |
 | Admin | Roles, reports, exports, no privilege leakage | ⬜ Blocked — private Admin |
-| All 60 games | Load, controls, audio, orientation, exit, eligibility, mobile | ⬜ Asset reachability done; interactive matrix pending |
+| All 60 games | Load, controls, audio, orientation, exit, eligibility, mobile | ✅ Interactive launch+exit on live `34f17d8…`: free **34/35** PASS (Arena Dash `UAT-DEMO-GAMEURL`); premium Unlock **26/26** → `#/premium`; API probe 61/61 |
 | Multiplayer | Tank Wars create + rejoin | ✅ Create `UAT Tank Lobby` + rejoin PASS |
 | Mobile / browsers | Mobile width, Chrome + Firefox, WebKit-equivalent | ⬜ |
 | Security | No secret leakage in network/bundle/logs | ⬜ |
@@ -229,7 +229,7 @@ Use handover §9 scenarios. Track pass/fail here:
 | Scenario | P/F | Evidence | Notes |
 |---|---|---|---|
 | Player/Home | P | Browser `#/home` loads; hero + nav OK | 2026-09-23 |
-| Catalogue | P | `#/library` loads live API catalogue (count matches `readyz`) | Fixed `UAT-LIB-COUNT-43` in source — needs deploy |
+| Catalogue | P | `#/library` Search **61 games** on live `34f17d8…` | Live hydrate closed `UAT-LIB-COUNT-43` |
 | Authentication | P | Signed-in with Demo OTP `123456` on mobile `03001122334` → Player / Free member | Live SHA `3b2aa719…`; UI shows Demo OTP hint |
 | Account | P | `#/account` Player, Free member, **1 active session**, Sign out / Sign out other devices | Export/delete controls present (not destructive-tested) |
 | Free game launch | P | `#/play/arena-dash` → connected shell (Score/Time HUD, Start/Finish); **Exit game** clean close | Secure isolated player; iframe Start not clicked via a11y |
@@ -259,13 +259,16 @@ Use handover §9 scenarios. Track pass/fail here:
 
 | Range | Complete | Defect refs |
 |---|---|---|
-| Controlled-origin entrypoints (60/60 HEAD 200) | ✅ asset reachability | Full interactive play matrix still pending (needs OTP + manual play) |
+| Controlled-origin entrypoints (60/60 HEAD 200) | ✅ asset reachability | Plus live catalogue demo `arena-dash` HEAD 200 |
 | External URL leftovers (3) | ✅ closed on live `b3031b3` | Public API no longer lists the 3 dead external IDs |
-| Games 1–20 interactive play | ⬜ | Auth unblocked; Arena Dash shell smoke only — full interactive matrix still pending |
-| Games 21–40 interactive play | ⬜ | |
-| Games 41–60 interactive play | ⬜ | |
+| API startPlay / premium gate probe | ✅ 61/61 | `docs/_uat_matrix_probe.json` — free startPlay 201; premium gate (no startPlay) |
+| Interactive free launch+exit (35) | ✅ 34/35 | Live SHA `34f17d8…`; evidence `docs/_uat_interactive_matrix.json` |
+| Interactive premium Unlock (26) | ✅ 26/26 | Unlock → `#/premium` for all premium catalogue rows |
+| Games 1–20 / 21–40 / 41–60 interactive | ✅ covered above | Deep in-game controls/audio/orientation still optional spot-check; matrix entry/exit done |
 
-**Asset reachability (2026-09-23):** exact-60 controlled `/games/<slug>/<version>/...` all HTTP 200. Demo `arena-dash` 200. Three catalogue rows still point at dead external host `games.codistan.org` and return **HTTP 522**: `mathgame-for-kids`, `quickdice`, `touchball` (near-duplicates of healthy controlled titles `math-game-for-kids`, `quick-dice`, `touch-ball`).
+**Interactive pass (2026-09-23, Chrome, signed-in, SHA `34f17d8…`):** library hydrated to **61** games after cache-bust (immutable module cache had briefly blanked `#app`). Free Play → secure player iframe (entrypoint HEAD 200) → Exit: **34/35**. Fail: **Arena Dash** — `gameUrl()` emptied because live `version=demo` is not a path segment under `/demo-games/…` (`UAT-DEMO-GAMEURL`; local web fix prepared). Premium Unlock: **26/26** → Arena+ plans.
+
+**Asset reachability (2026-09-23):** exact-60 controlled `/games/<slug>/<version>/...` all HTTP 200. Demo `arena-dash` 200. Dead external 522 IDs removed from live catalogue (`b3031b3`).
 
 Controlled 60 metadata: rewardsEnabled=0, competitionsEnabled=0 (as expected for imported portfolio).
 
@@ -275,8 +278,9 @@ Controlled 60 metadata: rewardsEnabled=0, competitionsEnabled=0 (as expected for
 |---|---|---|---|---|---|
 | UAT-AUTH-OTP-500 | `6fa6ef8…` | Code + staging config | `4dac8b2` (+ cert harden `3b2aa71`) | ✅ Live Demo OTP login PASS | ✅ Closed on staging 2026-09-23 |
 | UAT-GAMES-EXT-522 | `6fa6ef8…` / `3b2aa719…` | Catalogue / config | `b3031b3` — web remap + staging `ALLOW_EXTERNAL_GAMES` default false | ✅ Live: public catalogue **61**, external live **0**; dead IDs absent; controlled `touch-ball`/`quick-dice`/`math-game-for-kids` live | ✅ Closed on staging 2026-09-23 (deploy [35855565314](https://github.com/Game-Arena-Codistan/platform/actions/runs/35855565314); cert blocked only on `VISUAL_REVIEW_REQUIRED`) |
-| UAT-LIB-COUNT-43 | `6fa6ef8…` / `b3031b3…` | Frontend | Local: live `/v1/catalog/games` hydration via `catalogue-runtime.js` | ⬜ Needs deploy | ⬜ Prepared |
-| UAT-REWARDS-ACTIVITY-COPY | `3b2aa719…` / `b3031b3…` | Frontend UX | Local: guest vs signed-in wallet empty copy | ⬜ Needs deploy | ⬜ Prepared |
+| UAT-LIB-COUNT-43 | `6fa6ef8…` / `b3031b3…` | Frontend | `34f17d8` — live `/v1/catalog/games` hydration | ✅ Library shows Search 61 games | ✅ Closed on staging 2026-09-23 |
+| UAT-REWARDS-ACTIVITY-COPY | `3b2aa719…` / `b3031b3…` | Frontend UX | `34f17d8` — guest vs signed-in wallet empty copy | ✅ Deployed with live catalogue | ✅ Closed on staging 2026-09-23 |
+| UAT-DEMO-GAMEURL | `34f17d8…` | Frontend | Local: `gameUrl` skips version-segment gate for `internalDemo` / `version=demo` / `/demo-games/` | ⬜ Needs deploy | ⬜ Prepared |
 
 ### Phase 8 — Completion pack & status
 
@@ -284,7 +288,7 @@ Controlled 60 metadata: rewardsEnabled=0, competitionsEnabled=0 (as expected for
 |---|---|---|
 | 8.1 | Exact final SHA + runtime identity | ⬜ |
 | 8.2 | Release / deploy / certification run IDs | ⬜ |
-| 8.3 | UAT checklist + 60-game matrix complete | ⬜ |
+| 8.3 | UAT checklist + 60-game matrix complete | 🟡 interactive entry/exit done; Arena Dash fix pending deploy; deep controls/audio optional |
 | 8.4 | Demo video shared | ⬜ |
 | 8.5 | Bugs found/fixed list | ⬜ |
 | 8.6 | External blockers (if any) listed | ⬜ |
@@ -324,7 +328,7 @@ Controlled 60 metadata: rewardsEnabled=0, competitionsEnabled=0 (as expected for
 - [ ] Player frontend
 - [ ] Backend/API
 - [ ] Admin
-- [ ] 60-game matrix
+- [x] 60-game matrix (interactive launch+exit; Arena Dash defect open)
 - [ ] Mobile/desktop/WebKit-equivalent
 - [ ] Security boundaries
 - [ ] No unresolved critical/high
@@ -367,7 +371,7 @@ Use **exactly one**:
 | `READY FOR STAKEHOLDER REVIEW` | Demo/evidence ready for review |
 | `READY FOR PRODUCTION APPROVAL` | Highest allowed by this handover |
 
-**Current working status:** `STAGING UAT IN PROGRESS` (live SHA `b3031b3…`; UAT-GAMES-EXT-522 closed; cert visual review open; payments still deferred locally)
+**Current working status:** `STAGING UAT IN PROGRESS` (live SHA `34f17d8…`; interactive 60-game matrix 34/35 free + 26/26 premium; `UAT-DEMO-GAMEURL` fix local; cert visual review open; payments still deferred locally)
 
 > **SHA note (2026-09-23):** Live staging `releaseSha` is `6fa6ef8ca6a8945a6aa7d577f39c61fe266d92f9`, **not** the handover SHA `94503823601f31a2776ecf7ed568591493241bf9`. Treat `6fa6ef8…` as the current UAT baseline unless DevOps reverts or documents otherwise.
 
@@ -403,4 +407,6 @@ Use **exactly one**:
 | 2026-09-23 | Signed-in non-payment UAT (Chrome): Demo OTP login PASS; Arena Dash launch+exit PASS; Tank Wars create/rejoin PASS (`UAT Tank Lobby`); Account 1 session PASS; support ticket **GA-B7FE31BC** PASS; premium Unlock→plans PASS (no payment). | Admin private; persistence needs host; 3×522 externals; library 43 vs 64; rewards activity copy while signed in; full 60-game interactive matrix; Firefox/WebKit; payments deferred | Fix catalogue/UX defects; Admin + restart access; interactive 60-game matrix; resume payments when unblocked |
 | 2026-09-23 | Started `UAT-GAMES-EXT-522` fix: remapped web catalogue duplicates to controlled-origin `touch-ball`, `quick-dice`, `math-game-for-kids`; staging Compose default `ALLOW_EXTERNAL_GAMES=false` so leftover `version=external` rows pause at API boot. | Not live until commit/deploy; host `.env` must not force `ALLOW_EXTERNAL_GAMES=true`; library still mostly legacy external URLs (broader sync still open) | Commit → deploy → verify API catalogue excludes the 3 dead IDs; send client ask for Admin + restart access |
 | 2026-09-23 | Pushed `b3031b3` to main. Images [35855489024](https://github.com/Game-Arena-Codistan/platform/actions/runs/35855489024) SUCCESS. Staging deploy SUCCESS; cert run [35855565314](https://github.com/Game-Arena-Codistan/platform/actions/runs/35855565314) **BLOCKED** only on `VISUAL_REVIEW_REQUIRED` (browser 35/38, 0 failures). Live SHA `b3031b3…`; `readyz.catalogue=61`; dead external IDs absent. | Visual baseline review still open; broader web catalogue still mostly legacy external URLs; payments deferred | Close visual review if needed; continue library/rewards UX defects; Admin + restart access; resume payments when credentials ready |
+| 2026-09-23 | Pushed `34f17d8` live-catalogue + rewards UX. Staging library Search **61**. 60-game interactive: free **34/35** launch+exit; premium Unlock **26/26**; API probe 61/61. Arena Dash blocked by `gameUrl` demo-path gate (`UAT-DEMO-GAMEURL` fix local). | Visual review; Admin+restart; Firefox/WebKit; payments deferred; Arena Dash needs deploy | Commit/deploy Arena Dash `gameUrl` fix; client Admin ask; visual cert; resume payments when ready |
+| 2026-09-23 | Staging run [35858525515](https://github.com/Game-Arena-Codistan/platform/actions/runs/35858525515) for `34f17d8…`: **deploy SUCCESS**; certify **FAILED**/BLOCKED — browser 32/38 with 3× `#game-frame` missing on free-game launch (Arena Dash / `UAT-DEMO-GAMEURL`) + `VISUAL_REVIEW_REQUIRED` (2). | Same Arena Dash gate; visual baselines | Deploy `gameUrl` demo-path fix to clear launch certs; visual review separately |
 | | | | |

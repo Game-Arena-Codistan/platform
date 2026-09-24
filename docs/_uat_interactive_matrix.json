@@ -1,0 +1,68 @@
+{
+  "base": "https://gsmarena-play.codistan.org",
+  "releaseSha": "34f17d8a9f0f792d796e740bca191cec225f757d",
+  "generatedAt": "2026-09-23T12:25:00.000Z",
+  "method": "signed-in Chrome interactive: library Play/Unlock → modal iframe HEAD + Exit; premium → #/premium",
+  "catalogueTotal": 61,
+  "free": {
+    "total": 35,
+    "pass": 34,
+    "fail": 1,
+    "note": "Arena Dash blocked: live version=demo + /demo-games/ path rejected by gameUrl version gate (local fix prepared)"
+  },
+  "premium": {
+    "total": 26,
+    "unlockSpotCheck": 26,
+    "pass": 26,
+    "fail": 0
+  },
+  "failures": [
+    {
+      "id": "arena-dash",
+      "title": "Arena Dash",
+      "tier": "free",
+      "launch": "unavailable",
+      "exit": "ok",
+      "note": "gameUrl() returned empty — version path gate vs /demo-games/arena-dash/index.html (version demo)",
+      "defect": "UAT-DEMO-GAMEURL"
+    }
+  ],
+  "freeResults": [
+    {"id": "arena-dash", "title": "Arena Dash", "launch": "unavailable", "exit": "ok"},
+    {"id": "brick-out", "title": "Brick Out", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "crazy-runner", "title": "Crazy Runner", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "duck-hunter", "title": "Duck Hunter", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "duck-shooter", "title": "Duck Shooter", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "easter-memory", "title": "Easter Memory", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "fishing-frenzy", "title": "Fishing Frenzy", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "flappy-ball", "title": "Flappy Ball", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "flappy-bounce", "title": "Flappy Bounce", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "fruit-slasher", "title": "Fruit Slasher", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "fruit-snake", "title": "Fruit Snake", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "girl-dress-up", "title": "Girl Dress Up", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "gold-miner", "title": "Gold Miner", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "great-air-battles", "title": "Great Air Battles", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "halloween-bubble-shooter", "title": "Halloween Bubble Shooter", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "halloween-memory", "title": "Halloween Memory", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "jelly-match-3", "title": "Jelly Match 3", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "kids-true-color", "title": "Kids True Color", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "math-game-for-kids", "title": "Math Game For Kids", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "memory-game", "title": "Memory Game", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "mummy-candies", "title": "Mummy Candies", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "ninja-run", "title": "Ninja Run", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "ninja-run-new", "title": "Ninja Run New", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "plumber", "title": "Plumber", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "quick-dice", "title": "Quick Dice", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "smiles", "title": "Smiles", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "speed-racer", "title": "Speed Racer", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "stick-monkey", "title": "Stick Monkey", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "super-cowboy-run", "title": "Super Cowboy Run", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "super-pongoal", "title": "Super PonGoal", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "tank-defender", "title": "Tank Defender", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "touch-ball", "title": "Touch Ball", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "traffic", "title": "Traffic", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "viking-escape", "title": "Viking Escape", "launch": "ok", "iframe": 200, "exit": "ok"},
+    {"id": "zombie-uprising", "title": "Zombie Uprising", "launch": "ok", "iframe": 200, "exit": "ok"}
+  ],
+  "premiumUnlockAll": "26/26 → #/premium"
+}
