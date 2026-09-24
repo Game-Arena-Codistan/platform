@@ -34,7 +34,7 @@ export function watchPage(page){
   };
 }
 
-const retriableProtectedOtpMarkers=new Set(['BREVO_OTP_NOT_VISIBLE','BREVO_OTP_DELIVERY_PENDING','BREVO_OTP_CONTENT_PENDING','BREVO_OTP_PROVIDER_RETRYABLE','BREVO_OTP_NOT_DELIVERED']);
+const retriableProtectedOtpMarkers=new Set(['BREVO_OTP_NOT_VISIBLE','BREVO_OTP_DELIVERY_PENDING','BREVO_OTP_CONTENT_PENDING','BREVO_OTP_PROVIDER_RETRYABLE','BREVO_OTP_CODE_NOT_FOUND','BREVO_OTP_NOT_DELIVERED']);
 function otpMarker(error){return String(error?.message||'').match(/BREVO_OTP_[A-Z0-9_]+/)?.[0]||'';}
 
 async function resolveOtp({identity,otpResponse,tier,protectedAccount,requestedAt,waitMs=180000}){
