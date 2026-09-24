@@ -50,7 +50,10 @@ while(Date.now()<deadline){
       if(!delivered){state='BREVO_OTP_DELIVERY_PENDING';continue;}
       state='BREVO_OTP_CODE_NOT_FOUND';
       const readableBody=String(content.body||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
-      const match=readableBody.match(/verification code(?: is)?\s+(\d{6})/i);
+      const match=
+        readableBody.match(/verification code(?: is|:)?\s*(\d{6})/i)||
+        readableBody.match(/Game Arena.{0,160}?(\d{6})/i)||
+        readableBody.match(/\b(\d{6})\b/);
       if(match){process.stdout.write(match[1]);process.exit(0);}
     }
     if(!matchedThisPoll&&state==='BREVO_OTP_NOT_VISIBLE')state='BREVO_OTP_NOT_VISIBLE';
