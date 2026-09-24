@@ -34,7 +34,10 @@ export function watchPage(page){
   };
 }
 
-async function resolveOtp({identity,otpResponse,tier,protectedAccount,requestedAt}){
+const retriableProtectedOtpMarkers=new Set(['BREVO_OTP_NOT_VISIBLE','BREVO_OTP_DELIVERY_PENDING','BREVO_OTP_CONTENT_PENDING','BREVO_OTP_PROVIDER_RETRYABLE','BREVO_OTP_NOT_DELIVERED']);
+function otpMarker(error){return String(error?.message||'').match(/BREVO_OTP_[A-Z0-9_]+/)?.[0]||'';}
+
+async function resolveOtp({identity,otpResponse,tier,protectedAccount,requestedAt,waitMs=180000}){
   if(!otpResponse.challengeId)throw new Error(`BLOCKED: ${tier} staging QA OTP request did not return a challenge.`);
   if(!protectedAccount){
     const code=String(otpResponse.debugCode||genericOtp||'');
@@ -52,7 +55,17 @@ async function resolveOtp({identity,otpResponse,tier,protectedAccount,requestedA
     if(!/^\d{6}$/.test(code))throw new Error(`BLOCKED: ${tier} protected staging QA debug OTP is unavailable.`);
     return code;
   }
-  return fetchDeliveredBrevoOtp(identity,{notBefore:requestedAt});
+  return fetchDeliveredBrevoOtp(identity,{notBefore:requestedAt,waitMs});
+}
+
+async function requestOtpFromOpenModal(page,identity){
+  await page.locator('#identifier').fill(identity);
+  const requestedAt=Date.now();
+  const responsePromise=page.waitForResponse(response=>response.url().includes('/v1/auth/otp')&&response.request().method()==='POST');
+  await page.getByRole('button',{name:'Send OTP'}).click();
+  const response=await responsePromise;
+  const payload=await response.json().catch(()=>({}));
+  return{response,payload,requestedAt};
 }
 
 export async function signInFromAccount(page,testInfo,{label='player',invalidFirst=false,tier='free',protectedAccount=false}={}){
@@ -64,14 +77,21 @@ export async function signInFromAccount(page,testInfo,{label='player',invalidFir
   await signIn.click();
   await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
   const identity=protectedAccount?protectedQaIdentifier(tier):qaIdentifier(testInfo,label);
-  await page.locator('#identifier').fill(identity);
-  const requestedAt=Date.now();
-  const otpResponsePromise=page.waitForResponse(response=>response.url().includes('/v1/auth/otp')&&response.request().method()==='POST');
-  await page.getByRole('button',{name:'Send OTP'}).click();
-  const otpResponse=await otpResponsePromise;
-  const otp=await otpResponse.json();
-  if(otpResponse.status()!==202)throw new Error(`BLOCKED: ${tier} staging QA OTP request was not accepted.`);
-  const code=await resolveOtp({identity,otpResponse:otp,tier,protectedAccount,requestedAt});
+  let request=await requestOtpFromOpenModal(page,identity);
+  if(request.response.status()!==202)throw new Error(`BLOCKED: ${tier} staging QA OTP request was not accepted (HTTP ${request.response.status()}).`);
+  let code;
+  try{
+    code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:180000});
+  }catch(error){
+    const marker=otpMarker(error);
+    if(!protectedAccount||!retriableProtectedOtpMarkers.has(marker))throw error;
+    await page.getByRole('button',{name:'Close',exact:true}).click();
+    await signIn.click();
+    await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
+    request=await requestOtpFromOpenModal(page,identity);
+    if(request.response.status()!==202)throw new Error(`BLOCKED: ${tier} protected staging QA OTP retry was not accepted (HTTP ${request.response.status()}; after ${marker}).`);
+    code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:120000});
+  }
   if(invalidFirst){
     const invalid=code==='000000'?'111111':'000000';
     await page.locator('#otp').fill(invalid);
