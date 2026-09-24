@@ -30,6 +30,16 @@ test('@admin full admin credential resolves capabilities and renders operations 
   expect(payload.capabilities).toContain('reports.export');
   expect(payload.capabilities).toContain('subscription.manage_plans');
   await mkdir(captureDir,{recursive:true});
+  // The shell baseline intentionally masks dynamic operational data. Normalize
+  // the masked region to the remaining viewport height so changing report row
+  // counts cannot create false visual drift in the stable header/navigation.
+  await page.locator('#view').evaluate(node=>{
+    const top=node.getBoundingClientRect().top;
+    const height=Math.max(0,window.innerHeight-top);
+    node.style.height=`${height}px`;
+    node.style.minHeight=`${height}px`;
+    node.style.overflow='hidden';
+  });
   await page.screenshot({path:`${captureDir}/admin-shell.png`,fullPage:false,animations:'disabled',mask:[page.locator('#view')]});
   await context.close();
 });
