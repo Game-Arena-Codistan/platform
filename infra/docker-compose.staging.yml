@@ -59,9 +59,14 @@ services:
       ADMIN_PROXY_SECRET: ${ADMIN_PROXY_SECRET:-}
       ADMIN_PROXY_MAX_SKEW_SECONDS: ${ADMIN_PROXY_MAX_SKEW_SECONDS:-900}
       ADMIN_IDENTITY_ROLES_JSON: '{"game.arena+qa-admin@codistan.org":["admin"],"game.arena+qa-operator@codistan.org":["operator"],"game.arena+qa-support@codistan.org":["support"],"game.arena+qa-security@codistan.org":["security"],"game.arena+qa-finance@codistan.org":["finance"]}'
-      TOPUP_OFFERS_JSON: ${TOPUP_OFFERS_JSON:-}
+      # Staging-only deterministic fallback offers exercise the Arena+ 10% member discount.
+      # A protected environment value still overrides these defaults; production is unaffected.
+      TOPUP_OFFERS_JSON: '${TOPUP_OFFERS_JSON:-[{"id":"staging-starter","label":"Starter Coins","coins":100,"amountPkr":99,"status":"live"},{"id":"staging-value","label":"Value Coins","coins":550,"amountPkr":499,"status":"live","recommended":true},{"id":"staging-max","label":"Max Coins","coins":1200,"amountPkr":999,"status":"live"}]}'
       VOUCHER_CODES_JSON: ${VOUCHER_CODES_JSON:-}
       COMPETITIONS_ENABLED: ${COMPETITIONS_ENABLED:-true}
+      # Exercise the Free-vs-Arena+ play-limit boundary in staging without deciding
+      # the eventual production business cap. Production must set its own value explicitly.
+      FREE_PLAY_DAILY_LIMIT: ${FREE_PLAY_DAILY_LIMIT:-5}
       # Staging catalogue is controlled-origin only. Keep false so leftover
       # games.codistan.org rows (version=external) are paused at API boot.
       ALLOW_EXTERNAL_GAMES: ${ALLOW_EXTERNAL_GAMES:-false}
