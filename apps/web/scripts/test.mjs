@@ -61,6 +61,8 @@ test('live catalogue runtime and rewards wallet empty copy are wired for staging
   assert.match(rewardsSource,/Loading wallet activity/);
   assert.match(rewardsSource,/No wallet activity yet/);
   assert.match(rewardsSource,/walletEmptyCopy\(state\)/);
+  assert.match(apiSource,/game\.version&&game\.version!=='external'&&!game\.internalDemo/);
+  assert.match(rewardsSource,/getState\(\)\.user&&!getState\(\)\.walletLoaded/);
 });
 
 test('auth and PWA wiring preserve the staging browser contract',()=>{
