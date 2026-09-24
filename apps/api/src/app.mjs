@@ -27,7 +27,7 @@ export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPoli
       const url=new URL(req.url,'http://localhost');const path=url.pathname;const method=req.method??'GET';
       if(method==='OPTIONS'&&origin&&config.allowedOrigins.includes(origin))return reply(204,null,{'access-control-allow-methods':'GET,POST,PATCH,DELETE,OPTIONS','access-control-allow-headers':'content-type,x-csrf-token,x-request-id,idempotency-key,x-device-id','access-control-max-age':'600'});
       if(method==='GET'&&path==='/healthz')return reply(200,{status:'ok',service:'game-arena-api',time:new Date(clock()).toISOString()});
-      if(method==='GET'&&path==='/readyz')return reply(200,{status:'ready',catalogue:store.listGames().length,payments:config.jazzcashMode,otp:config.otpProviderMode,competitions:config.competitionsEnabled});
+      if(method==='GET'&&path==='/readyz')return reply(200,{status:'ready',catalogue:store.listGames().length,payments:config.jazzcashMode,otp:config.otpProviderMode,competitions:config.competitionsEnabled,freePlayDailyLimit:config.freePlayDailyLimit});
       if(method==='GET'&&path==='/v1/catalog/games')return reply(200,{games:store.listGames().map(({source,qaNote,...game})=>game)},{'cache-control':'public, max-age=30, stale-while-revalidate=120'});
       const gameMatch=path.match(/^\/v1\/catalog\/games\/([a-z0-9-]+)$/);if(method==='GET'&&gameMatch){const game=store.getGame(gameMatch[1]);if(!game)throw fail('Game not found.',404,'game_not_found');return reply(200,{game});}
 
