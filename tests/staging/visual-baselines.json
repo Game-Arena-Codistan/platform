@@ -6,11 +6,11 @@
     "status":"approved",
     "autoApprove":false
   },
-  "approvedFromStagingSha":"8887ae0223dd9c4e43b76dc3d642ab3c3ba145fb",
+  "approvedFromStagingSha":"12118d0bce75af94b9eaa8ca67ad640e1d4f20f9",
   "screenshots":{
     "admin-shell.png":"1ed55f117a467e1039fe7611db5ba4cb715ba7382dfb8f43cdf0a3565a41345d",
-    "player-home.png":"e5a111a3842aeff7cb5c1bb9ca48510b6099f2620a85dcce36f3d72eb1182b90",
-    "player-library.png":"a08528ad7d8db4d7e0bd5464626b87533409df13ac39a9005eeb982d6616d3fd",
+    "player-home.png":"aad9fae72a31d1053f3d5634f53bdcc7f491d302a068856c8ce948b150e9bcdf",
+    "player-library.png":"60a9be1dcb376c0fc3ac031e2924033bf80be5ccc387884fb2b8c25df9604fbd",
     "player-premium.png":"b5221500070891587a83a3253d038a564460dd91007ade57ea5b623ffc5c5e5f",
     "player-support.png":"9330966639e8beb701cd7fa5bbf6bb8c3418eef144463d242eff10972da796a3"
   }
