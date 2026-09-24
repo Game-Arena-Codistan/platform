@@ -2,6 +2,11 @@ import {test,expect} from '@playwright/test';
 import {signInFromAccount,runId} from './helpers.mjs';
 
 test('@player rewards page explains wallet semantics and gates account actions for guests',async({page})=>{
+  await page.context().clearCookies();
+  await page.addInitScript(()=>{localStorage.removeItem('game-arena:v2');sessionStorage.clear();});
+  const session=await page.context().request.get('/api/v1/session');
+  expect(session.status()).toBe(200);
+  expect((await session.json()).authenticated).toBe(false);
   await page.goto('/#/rewards');
   await expect(page.getByRole('heading',{name:/^\d[\d,]* coins$/i})).toBeVisible();
   await expect(page.getByText(/non-transferable, non-withdrawable and have no cash value/i)).toBeVisible();
