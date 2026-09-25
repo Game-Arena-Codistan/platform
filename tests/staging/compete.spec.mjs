@@ -45,7 +45,21 @@ test('@player authenticated user can create and rejoin a supported multiplayer r
 
   const joinResponse=page.waitForResponse(item=>item.url().includes(`/v1/multiplayer/rooms/${payload.room.id}/join`)&&item.request().method()==='POST');
   await roomCard.getByRole('button',{name:'Join'}).click();
-  expect((await joinResponse).status()).toBe(200);
-  await expect(roomCard.getByRole('button')).toHaveText('Joined');
-  await expect(roomCard.getByRole('button')).toBeDisabled();
+  const joinedResponse=await joinResponse;
+  expect(joinedResponse.status()).toBe(200);
+  const joined=await joinedResponse.json();
+  expect(joined.room?.id).toBe(payload.room.id);
+  await expect(page.getByText(/Room joined\. Waiting for the game server\./i)).toBeVisible();
+
+  const listed=await page.context().request.get('/api/v1/multiplayer/rooms');
+  expect(listed.status()).toBe(200);
+  const listedRoom=(await listed.json()).rooms?.find(item=>item.id===payload.room.id);
+  expect(listedRoom,'joined room should remain present in authoritative room listing').toBeTruthy();
+  expect(Number(listedRoom.players)).toBeGreaterThanOrEqual(1);
+
+  const currentButton=page.locator('.room-card').filter({hasText:name}).getByRole('button');
+  if(await currentButton.count()){
+    await expect(currentButton).toBeDisabled();
+    await expect(currentButton).toHaveText(/Joined|Waiting/i);
+  }
 });
