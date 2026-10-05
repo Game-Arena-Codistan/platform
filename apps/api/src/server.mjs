@@ -8,6 +8,8 @@ import {createPaymentServiceApp} from './payment-service-app.mjs';
 import {MemoryStore} from './adapters/memory-store.mjs';
 import {assertNormalizedPostgresRuntime} from './lib/persistence-readiness.mjs';
 import {JazzCashAdapter} from './adapters/jazzcash.mjs';
+import {JazzCashOrchestratorAdapter} from './adapters/jazzcash-orchestrator.mjs';
+import {createJazzCashRecurringApp} from './jazzcash-recurring-app.mjs';
 import {SupportDelivery} from './adapters/support-delivery.mjs';
 import {BrevoOtpProvider,DisabledOtpProvider,HttpOtpProvider,MockOtpProvider,OtpDeliveryRouter,SyntheticQaOtpProvider} from './adapters/otp-delivery.mjs';
 import {PaymentService} from './services/payments.mjs';
@@ -49,6 +51,8 @@ const providers=config.otpProviderMode==='mock'
       :[...debugMockFallback.length?debugMockFallback:[new DisabledOtpProvider()]];
 const otpDelivery=new OtpDeliveryRouter({providers,audit:store.audit,metrics:store.metrics});
 const jazzcash=new JazzCashAdapter(config);
+const jazzCashOrchestrator=config.jazzcashMode==='orchestrator'?new JazzCashOrchestratorAdapter(config):null;
+const jazzCashRecurring=jazzCashOrchestrator?createJazzCashRecurringApp({config,store,orchestrator:jazzCashOrchestrator}):null;
 const payments=new PaymentService({store,provider:jazzcash});
 const rewardPolicy=new RewardPolicy({config,store});
 const supportDelivery=new SupportDelivery({mode:config.supportMode,endpoint:config.supportEndpoint,secret:config.supportSecret});
@@ -100,6 +104,7 @@ async function dispatch(req,res){
   try{
     if(postgresReports&&await postgresReports(req,res)!==false)return;
     if(await supplemental(req,res)!==false)return;
+    if(jazzCashRecurring&&await jazzCashRecurring(req,res)!==false)return;
     if(await paymentService(req,res)!==false)return;
     if(await mvp(req,res)!==false)return;
     await primary(req,res);

@@ -17,8 +17,9 @@ export const cancelBillingSubscription=id=>request(`/v1/billing/subscriptions/${
 export const fetchBillingPayments=()=>request('/v1/billing/payments');
 export const fetchBillingPayment=id=>request(`/v1/billing/payments/${encodeURIComponent(id)}`);
 export function submitWalletPortal(result){
-  if(!result?.portalUrl||String(result.method||'POST').toUpperCase()!=='POST'||!result.fields)return false;
-  const form=document.createElement('form');form.method='POST';form.action=result.portalUrl;form.hidden=true;
+  const portalUrl=result?.portalUrl||result?.actionUrl;
+  if(!portalUrl||String(result.method||'POST').toUpperCase()!=='POST'||!result.fields)return false;
+  const form=document.createElement('form');form.method='POST';form.action=portalUrl;form.hidden=true;
   for(const [name,value] of Object.entries(result.fields)){const input=document.createElement('input');input.type='hidden';input.name=name;input.value=String(value);form.append(input);}
   document.body.append(form);form.submit();return true;
 }

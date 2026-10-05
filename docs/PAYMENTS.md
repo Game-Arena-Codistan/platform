@@ -81,6 +81,16 @@ PAYMENT_SERVICE_TIMEOUT_MS=8000
 
 Keep `PAYMENT_SERVICE_MODE=disabled` until the real staging provider values are installed.
 
+## JazzCash MWallet orchestrator (2026 DOC)
+
+When `JAZZCASH_MODE=orchestrator`, Game Arena+ billing uses the JazzCash payment-orchestrator flow documented in `resources/JAZZCASH_MWALLET_RECURRING_INTEGRATION_GUIDE.md`:
+
+- `POST /v1/billing/wallets/link` → signed LinkWallet form (`actionUrl` + `fields`)
+- JazzCash return URL → `https://<PUBLIC_ORIGIN>/callback` (gateway proxies to `/v1/jazzcash/wallet/callback`)
+- Server-side Pay via Token, Token Inquiry, Delete Token, Status Inquiry
+
+Keep `PAYMENT_SERVICE_MODE=disabled` when using direct orchestrator mode, or use `PAYMENT_SERVICE_MODE=external` when a separate Payment Service implements the same contract.
+
 ## Legacy/direct JazzCash code
 
 Direct JazzCash code/settings remain only for legacy/non-subscription compatibility such as unrelated existing payment/top-up paths.

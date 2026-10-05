@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {hmac,safeEqual} from '../lib/security.mjs';
+import {jazzCashSecureHash} from './jazzcash-secure-hash.mjs';
 function timestamp(date,timeZone='Asia/Karachi'){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(item=>item.type!=='literal').map(item=>[item.type,item.value]));return `${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}${parts.second}`;}
-export function jazzCashSecureHash(fields,salt){const values=Object.entries(fields).filter(([key,value])=>/^pp_/i.test(key)&&key.toLowerCase()!=='pp_securehash'&&value!==undefined&&value!==null&&String(value)!=='').sort(([a],[b])=>a.localeCompare(b,'en',{sensitivity:'case'})).map(([,value])=>String(value));return hmac(salt,[salt,...values].join('&')).toUpperCase();}
+export {jazzCashSecureHash};
 const text=value=>value===undefined||value===null?'':String(value).trim();
 export class JazzCashAdapter{
   constructor(config){this.mode=config.jazzcashMode;this.webhookSecret=config.jazzcashWebhookSecret;this.origin=config.publicOrigin;this.merchantId=config.jazzcashMerchantId;this.password=config.jazzcashPassword;this.integritySalt=config.jazzcashIntegritySalt;this.actionUrl=config.jazzcashActionUrl;this.returnUrl=config.jazzcashReturnUrl||`${config.publicOrigin}/api/v1/payments/jazzcash/return`;}
