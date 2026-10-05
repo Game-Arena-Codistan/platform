@@ -100,10 +100,15 @@ jobs:
             "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin >/dev/null"
 
       - name: Deploy exact SHA on staging
+        env:
+          JAZZCASH_MERCHANT_ID: ${{ secrets.JAZZCASH_MERCHANT_ID }}
+          JAZZCASH_PASSWORD: ${{ secrets.JAZZCASH_PASSWORD }}
+          JAZZCASH_INTEGRITY_SALT: ${{ secrets.JAZZCASH_INTEGRITY_SALT }}
+          APPLY_JAZZCASH_ORCHESTRATOR: ${{ vars.APPLY_JAZZCASH_ORCHESTRATOR || 'true' }}
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' RELEASE_RUN_ID='$RELEASE_RUN_ID' bash -s" <<'REMOTE'
+            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' RELEASE_RUN_ID='$RELEASE_RUN_ID' APPLY_JAZZCASH_ORCHESTRATOR='$APPLY_JAZZCASH_ORCHESTRATOR' JAZZCASH_MERCHANT_ID='$JAZZCASH_MERCHANT_ID' JAZZCASH_PASSWORD='$JAZZCASH_PASSWORD' JAZZCASH_INTEGRITY_SALT='$JAZZCASH_INTEGRITY_SALT' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /opt/codistan/platform
 
@@ -120,7 +125,34 @@ jobs:
               printf '\n%s=%s\n' "$key" "$generated" >> infra/.env
             fi
           }
+          upsert_env() {
+            key="$1"
+            value="$2"
+            [ -n "$value" ] || return 0
+            # Escape sed replacement delimiters for | -based substitute.
+            escaped="$(printf '%s' "$value" | sed -e 's/[|&]/\\&/g')"
+            if grep -q "^${key}=" infra/.env; then
+              sed -i "0,/^${key}=.*/s|^${key}=.*|${key}=${escaped}|" infra/.env
+            else
+              printf '\n%s=%s\n' "$key" "$value" >> infra/.env
+            fi
+          }
           ensure_runtime_secret ADMIN_PROXY_SECRET
+
+          # JazzCash 2026 MWallet orchestrator staging defaults (non-secret).
+          upsert_env JAZZCASH_RETURN_URL 'https://gsmarena-play.codistan.org/callback'
+          upsert_env JAZZCASH_ORCHESTRATOR_BASE_URL 'https://onlinepayments.jazzcash.com.pk'
+          upsert_env JAZZCASH_TIMEOUT_MS '8000'
+          if [ "${APPLY_JAZZCASH_ORCHESTRATOR:-}" = 'true' ] && [ -n "${JAZZCASH_MERCHANT_ID:-}" ] && [ -n "${JAZZCASH_PASSWORD:-}" ] && [ -n "${JAZZCASH_INTEGRITY_SALT:-}" ]; then
+            upsert_env JAZZCASH_MODE orchestrator
+            upsert_env PAYMENT_SERVICE_MODE disabled
+            upsert_env JAZZCASH_MERCHANT_ID "$JAZZCASH_MERCHANT_ID"
+            upsert_env JAZZCASH_PASSWORD "$JAZZCASH_PASSWORD"
+            upsert_env JAZZCASH_INTEGRITY_SALT "$JAZZCASH_INTEGRITY_SALT"
+            echo 'Applied JazzCash orchestrator staging credentials from protected secrets (values not logged).'
+          else
+            echo 'JazzCash orchestrator credentials not fully provided; leaving existing JAZZCASH_MODE untouched.'
+          fi
 
           compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
           export IMAGE_BASE IMAGE_TAG
