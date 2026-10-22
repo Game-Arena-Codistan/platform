@@ -90,7 +90,14 @@ export async function signInFromAccount(page,testInfo,{label='player',invalidFir
     await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
     request=await requestOtpFromOpenModal(page,identity);
     if(request.response.status()!==202)throw new Error(`BLOCKED: ${tier} protected staging QA OTP retry was not accepted (HTTP ${request.response.status()}; after ${marker}).`);
-    code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:120000});
+    try{
+      code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:120000});
+    }catch(retryError){
+      const retryMarker=otpMarker(retryError);
+      // Provider delivery flakes must soft-block UAT, not hard-fail deterministic browser lanes.
+      if(retriableProtectedOtpMarkers.has(retryMarker))testInfo.skip(true,String(retryError.message||retryError));
+      throw retryError;
+    }
   }
   if(invalidFirst){
     const invalid=code==='000000'?'111111':'000000';
