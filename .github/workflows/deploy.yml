@@ -96,8 +96,18 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          printf '%s' "$GHCR_TOKEN" | ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin >/dev/null"
+          # Staging host → ghcr.io can time out under load; retry before failing the release.
+          logged_in=false
+          for attempt in 1 2 3; do
+            if printf '%s' "$GHCR_TOKEN" | ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=30 "$DEPLOY_USER@$DEPLOY_HOST" \
+              "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin >/dev/null"; then
+              logged_in=true
+              break
+            fi
+            echo "GHCR login attempt $attempt failed; retrying..." >&2
+            sleep $((attempt * 5))
+          done
+          [ "$logged_in" = true ] || { echo 'GHCR login failed after 3 attempts.' >&2; exit 1; }
 
       - name: Deploy exact SHA on staging
         env:
@@ -179,14 +189,37 @@ jobs:
             sleep $((attempt * 5))
           done
           [ "$pulled" = true ] || { echo 'Application image pull failed after 3 attempts.' >&2; exit 1; }
-          # A previous failed admin recreate can leave 127.0.0.1:8083 allocated and block
-          # the next release. Force-remove anything publishing that host port first.
-          for cid in $(docker ps -aq --filter publish=8083); do
-            echo "Reclaiming stuck host port 8083 from container $cid"
-            docker rm -f "$cid" >/dev/null 2>&1 || true
-          done
-          "${compose[@]}" rm -f -s admin >/dev/null 2>&1 || true
-          "${compose[@]}" up -d --remove-orphans
+
+          reclaim_admin_port() {
+            # Failed admin recreates can leave 127.0.0.1:8083 allocated with no live
+            # publish filter hit (stale docker-proxy / Created-but-not-started container).
+            for name in infra-admin-1; do
+              if docker inspect "$name" >/dev/null 2>&1; then
+                echo "Removing admin container $name before bind"
+                docker rm -f "$name" >/dev/null 2>&1 || true
+              fi
+            done
+            "${compose[@]}" rm -f -s admin >/dev/null 2>&1 || true
+            for cid in $(docker ps -aq --filter publish=8083); do
+              echo "Reclaiming stuck host port 8083 from container $cid"
+              docker rm -f "$cid" >/dev/null 2>&1 || true
+            done
+            if command -v ss >/dev/null 2>&1; then
+              ss -ltnp '( sport = :8083 )' || true
+            fi
+            if command -v fuser >/dev/null 2>&1; then
+              fuser -k 8083/tcp >/dev/null 2>&1 || true
+              sleep 1
+            fi
+          }
+
+          reclaim_admin_port
+          if ! "${compose[@]}" up -d --remove-orphans; then
+            echo 'compose up failed; reclaiming admin port 8083 and retrying once' >&2
+            reclaim_admin_port
+            "${compose[@]}" up -d --remove-orphans --no-deps admin
+            "${compose[@]}" up -d --remove-orphans
+          fi
 
           # The gateway configuration is bind-mounted. Updating the file does not
           # make an already-running nginx process reload it, so validate the exact
