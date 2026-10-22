@@ -47,7 +47,7 @@ test('@player catalogue search, genre filter, save and recent state work in-brow
   assertClean();
 });
 
-test('@player a free account cannot browse the catalogue and is routed to JazzCash plans',async({page},testInfo)=>{
+test('@player a free account cannot launch a premium title from Games and is routed to JazzCash plans',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'premium-lock'});
   await page.goto('/#/library');
   await expect(page.getByRole('heading',{name:/Activate Game Arena\+/i})).toBeVisible();
