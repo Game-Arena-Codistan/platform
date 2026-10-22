@@ -65,16 +65,29 @@ async function webhook(fields){
   return{response,data};
 }
 
+let orchestratorMode=false;
 await lane('provider-mode',async()=>{
   const ready=await fetch(`${apiBase}/readyz`);expectStatus(ready.status,[200],'readyz failed');
   const data=await ready.json();
   if(data.payments==='hosted')block('PAYMENT SANDBOX NOT CONFIGURED — hosted JazzCash requires provider-specific sandbox automation under #17.');
+  if(data.payments==='orchestrator'){
+    orchestratorMode=true;
+    const guest=await fetch(`${apiBase}/v1/billing/wallets/link`,{
+      method:'POST',
+      headers:{accept:'application/json','content-type':'application/json',origin:playerUrl},
+      body:JSON.stringify({msisdn:'03119876543',planCode:'monthly',consentToAutoPay:true,returnPath:'/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash'})
+    });
+    expectStatus(guest.status,[201],'orchestrator guest wallet link start failed');
+    const callback=await fetch(`${apiBase}/v1/billing/wallets/callback?pp_ResponseCode=000&pp_TxnRefNo=missing-intent`,{redirect:'manual'});
+    expectStatus(callback.status,[303],'orchestrator wallet callback without a valid intent must redirect safely');
+    return{mode:'jazzcash_orchestrator',mockWebhookMatrix:'NOT_APPLICABLE',guestLinkStarted:true,browserReturnSafe:true};
+  }
   if(data.payments!=='mock')block(`Payment mode ${data.payments||'unknown'} is not certifiable by the mock callback harness.`);
   if(!webhookSecret)block('Staging mock payment webhook secret is unavailable to the protected certification job.');
   return{mode:'mock',externalTimeoutScenario:'NOT_APPLICABLE_IN_MOCK'};
 });
 
-if(!blocked){
+if(!blocked&&!orchestratorMode){
   await lane('pending-callback-stays-pending',async()=>{
     const transactionId=await checkout('pending');
     const response=await webhook(event(transactionId,'pending',`AUTO-QA-${runId}-pending`));

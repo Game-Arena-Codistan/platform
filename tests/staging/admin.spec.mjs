@@ -19,11 +19,16 @@ async function adminPage(browser,role='admin'){
   test.skip(!adminUrl,'BLOCKED: STAGING_ADMIN_URL is not configured for Admin browser certification.');
   const context=await browser.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});
   const page=await context.newPage();
+  const capabilities=page.waitForResponse(response=>response.url().includes('/v1/admin/capabilities'),{timeout:20000});
   await page.goto('/');
-  const consoleVisible=await page.locator('#console').isVisible().catch(()=>false);
+  const capabilitiesResponse=await capabilities.catch(()=>null);
+  // Gateway mode resolves capabilities asynchronously before unhiding #console.
+  const consoleVisible=await page.locator('#console').isVisible().catch(()=>false)||await page.locator('#console').waitFor({state:'visible',timeout:10000}).then(()=>true).catch(()=>false);
   if(!consoleVisible){
     const title=await page.title().catch(()=> '');
-    throw new Error(`Admin console did not render at ${adminUrl} (title=${title}). Tunnel may be pointing at the player shell.`);
+    const authStatus=String(await page.locator('#auth-status').textContent().catch(()=> '')||'').trim();
+    const capabilityStatus=capabilitiesResponse?capabilitiesResponse.status():'no-response';
+    throw new Error(`Admin console did not render at ${adminUrl} (title=${title}; capabilities=${capabilityStatus}${authStatus?`; auth=${authStatus}`:''}). Tunnel may be pointing at the player shell.`);
   }
   await expect(page.locator('#console')).toBeVisible();
   return{context,page};
