@@ -300,7 +300,7 @@ jobs:
           STAGING_QA_VOUCHER_CODE: ${{ secrets.STAGING_QA_VOUCHER_CODE }}
         run: |
           set -euo pipefail
-          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L 18083:127.0.0.1:8083 "$DEPLOY_USER@$DEPLOY_HOST" >/tmp/game-arena-admin-tunnel.log 2>&1 &
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L 18083:127.0.0.1:18183 "$DEPLOY_USER@$DEPLOY_HOST" >/tmp/game-arena-admin-tunnel.log 2>&1 &
           port_pid=$!
           trap 'kill "$port_pid" >/dev/null 2>&1 || true' EXIT
           ready=false

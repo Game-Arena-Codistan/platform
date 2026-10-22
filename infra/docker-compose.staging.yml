@@ -92,7 +92,8 @@ services:
     environment:
       GAME_ARENA_ADMIN_API_BASE_URL: /api
       GAME_ARENA_ADMIN_AUTH_MODE: signed-headers
-    ports: ["127.0.0.1:8083:8080"]
+    # Host 18183 avoids a stuck 127.0.0.1:8083 listener left by failed admin recreates.
+    ports: ["127.0.0.1:18183:8080"]
     depends_on: {api: {condition: service_healthy}}
     restart: unless-stopped
 

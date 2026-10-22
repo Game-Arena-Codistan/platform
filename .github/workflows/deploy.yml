@@ -191,8 +191,7 @@ jobs:
           [ "$pulled" = true ] || { echo 'Application image pull failed after 3 attempts.' >&2; exit 1; }
 
           reclaim_admin_port() {
-            # Failed admin recreates can leave 127.0.0.1:8083 allocated with no live
-            # publish filter hit (stale docker-proxy / Created-but-not-started container).
+            # Admin publishes 127.0.0.1:18183. Also clear legacy 8083 leftovers from older deploys.
             for name in infra-admin-1; do
               if docker inspect "$name" >/dev/null 2>&1; then
                 echo "Removing admin container $name before bind"
@@ -200,22 +199,28 @@ jobs:
               fi
             done
             "${compose[@]}" rm -f -s admin >/dev/null 2>&1 || true
-            for cid in $(docker ps -aq --filter publish=8083); do
-              echo "Reclaiming stuck host port 8083 from container $cid"
-              docker rm -f "$cid" >/dev/null 2>&1 || true
+            for port in 18183 8083; do
+              for cid in $(docker ps -aq --filter "publish=$port"); do
+                echo "Reclaiming stuck host port $port from container $cid"
+                docker rm -f "$cid" >/dev/null 2>&1 || true
+              done
+              if command -v ss >/dev/null 2>&1; then
+                ss -ltnp "( sport = :$port )" || true
+              fi
+              if command -v fuser >/dev/null 2>&1; then
+                fuser -k "$port/tcp" >/dev/null 2>&1 || true
+              fi
+              if command -v sudo >/dev/null 2>&1; then
+                sudo -n fuser -k "$port/tcp" >/dev/null 2>&1 || true
+                sudo -n pkill -f "docker-proxy.*:$port" >/dev/null 2>&1 || true
+              fi
             done
-            if command -v ss >/dev/null 2>&1; then
-              ss -ltnp '( sport = :8083 )' || true
-            fi
-            if command -v fuser >/dev/null 2>&1; then
-              fuser -k 8083/tcp >/dev/null 2>&1 || true
-              sleep 1
-            fi
+            sleep 1
           }
 
           reclaim_admin_port
           if ! "${compose[@]}" up -d --remove-orphans; then
-            echo 'compose up failed; reclaiming admin port 8083 and retrying once' >&2
+            echo 'compose up failed; reclaiming admin port and retrying once' >&2
             reclaim_admin_port
             "${compose[@]}" up -d --remove-orphans --no-deps admin
             "${compose[@]}" up -d --remove-orphans
@@ -233,7 +238,7 @@ jobs:
             gateway=0; api=0; admin=0; games=0
             curl --fail --silent http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || true
             curl --fail --silent http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || true
-            curl --fail --silent http://127.0.0.1:8083/healthz >/dev/null && admin=1 || true
+            curl --fail --silent http://127.0.0.1:18183/healthz >/dev/null && admin=1 || true
             curl --fail --silent http://127.0.0.1:8082/healthz >/dev/null && games=1 || true
             if [ "$gateway$api$admin$games" = 1111 ]; then break; fi
             sleep 2
