@@ -23,7 +23,8 @@ permissions:
 
 concurrency:
   group: game-arena-staging
-  cancel-in-progress: false
+  # Cancel stale repair/prior deploy lanes so a fresh SHA is not queued for 20–40 minutes.
+  cancel-in-progress: true
 
 jobs:
   deploy:

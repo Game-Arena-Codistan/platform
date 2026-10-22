@@ -81,7 +81,8 @@ export async function signInFromAccount(page,testInfo,{label='player',invalidFir
   if(request.response.status()!==202)throw new Error(`BLOCKED: ${tier} staging QA OTP request was not accepted (HTTP ${request.response.status()}).`);
   let code;
   try{
-    code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:180000});
+    // Keep protected Brevo waits bounded; long dual waits dominated browser certify runtime.
+    code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:protectedAccount?90000:180000});
   }catch(error){
     const marker=otpMarker(error);
     if(!protectedAccount||!retriableProtectedOtpMarkers.has(marker))throw error;
@@ -91,7 +92,7 @@ export async function signInFromAccount(page,testInfo,{label='player',invalidFir
     request=await requestOtpFromOpenModal(page,identity);
     if(request.response.status()!==202)throw new Error(`BLOCKED: ${tier} protected staging QA OTP retry was not accepted (HTTP ${request.response.status()}; after ${marker}).`);
     try{
-      code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:120000});
+      code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:45000});
     }catch(retryError){
       const retryMarker=otpMarker(retryError);
       // Provider delivery flakes must soft-block UAT, not hard-fail deterministic browser lanes.

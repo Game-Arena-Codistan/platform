@@ -10,7 +10,8 @@ export default defineConfig({
   timeout:45000,
   expect:{timeout:7000},
   retries:0,
-  workers:1,
+  // Two workers cut serial browser wall-clock; keep low to avoid OTP/session contention on shared staging.
+  workers:2,
   reporter:[['line'],['html',{open:'never',outputFolder:'report'}],['json',{outputFile:'results.json'}]],
   use:{
     baseURL:playerUrl,

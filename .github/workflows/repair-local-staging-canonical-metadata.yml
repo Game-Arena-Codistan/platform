@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: game-arena-staging
-  cancel-in-progress: false
+  # Yield immediately when a newer staging deploy starts.
+  cancel-in-progress: true
 
 env:
   STAGING_ORIGIN: https://gsmarena-play.codistan.org
