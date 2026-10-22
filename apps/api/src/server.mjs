@@ -51,7 +51,7 @@ const providers=config.otpProviderMode==='mock'
       :[...debugMockFallback.length?debugMockFallback:[new DisabledOtpProvider()]];
 const otpDelivery=new OtpDeliveryRouter({providers,audit:store.audit,metrics:store.metrics});
 const jazzcash=new JazzCashAdapter(config);
-const jazzCashOrchestrator=config.jazzcashMode==='orchestrator'?new JazzCashOrchestratorAdapter(config):null;
+const jazzCashOrchestrator=['orchestrator','mock'].includes(config.jazzcashMode)?new JazzCashOrchestratorAdapter(config):null;
 const jazzCashRecurring=jazzCashOrchestrator?createJazzCashRecurringApp({config,store,orchestrator:jazzCashOrchestrator}):null;
 const payments=new PaymentService({store,provider:jazzcash});
 const rewardPolicy=new RewardPolicy({config,store});

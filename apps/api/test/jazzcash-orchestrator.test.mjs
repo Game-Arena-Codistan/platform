@@ -47,7 +47,7 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
   const base=`http://127.0.0.1:${server.address().port}`;
   try{
     const auth=await signIn(base);
-    let response=await fetch(`${base}/v1/billing/wallets/link`,{method:'POST',headers:headers(auth.cookie,auth.csrf),body:JSON.stringify({msisdn:'03001234567',planCode:'monthly'})});
+    let response=await fetch(`${base}/v1/billing/wallets/link`,{method:'POST',headers:headers(auth.cookie,auth.csrf),body:JSON.stringify({msisdn:'03001234567',planCode:'monthly',consentToAutoPay:true})});
     assert.equal(response.status,201);
     const link=await response.json();
     assert.ok(link.actionUrl.includes('LinkWallet'));

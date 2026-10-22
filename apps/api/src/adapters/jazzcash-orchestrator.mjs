@@ -51,18 +51,23 @@ export class JazzCashOrchestratorAdapter{
   createLinkWalletForm({msisdn,requestId,returnUrl}){
     this.assertConfigured();
     const pp_RequestID=requestId||jazzCashRequestId();
+    const resolvedReturn=returnUrl||this.returnUrl;
     if(this.mode==='mock'){
+      // Local/mock: auto-post success fields back to our callback so guest pay-first can be tested without JazzCash.
       return{
         requestId:pp_RequestID,
-        actionUrl:`${this.baseUrl}${PATHS.linkWallet}`,
-        portalUrl:`${this.baseUrl}${PATHS.linkWallet}`,
+        actionUrl:resolvedReturn,
+        portalUrl:resolvedReturn,
         method:'POST',
         fields:{
           pp_MerchantID:this.merchantId||'mock-merchant',
           pp_Password:this.password||'mock-password',
           pp_MSISDN:msisdn,
           pp_RequestID:pp_RequestID,
-          pp_ReturnURL:returnUrl||this.returnUrl,
+          pp_ReturnURL:resolvedReturn,
+          pp_ResponseCode:'000',
+          pp_ResponseMessage:'Success',
+          pp_PaymentToken:`mock-token-${pp_RequestID}`,
           pp_SecureHash:'MOCKHASH'
         }
       };

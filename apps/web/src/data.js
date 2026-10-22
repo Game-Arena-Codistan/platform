@@ -13,8 +13,8 @@ export const previewGame={id:'arena-dash',title:'Arena Dash',genre:'Arcade',tier
 export const games=[previewGame,...enriched];
 export const genres=['All',...new Set(games.map(game=>game.genre))];
 export const plans=[
-  {id:'monthly',name:'Monthly',price:299,period:'month',description:'Fixed-duration access for one month.'},
-  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'Fixed-duration access for one year.'}
+  {id:'monthly',name:'Monthly',price:599,period:'month',description:'JazzCash monthly Game Arena+ access.',recommended:true,status:'live'},
+  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'Yearly Game Arena+ access.',status:'coming_soon',comingSoon:true}
 ];
 export const premiumFeatures=['Full catalogue access','Premium challenges','Tournament access','Reward eligibility','2× Arena Coins','10% member top-up discount'];
 export const benefits={free:['Selected catalogue','Standard rewards','Basic leaderboards','Configurable play limits'],premium:premiumFeatures};

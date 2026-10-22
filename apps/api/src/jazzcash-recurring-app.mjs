@@ -1,12 +1,13 @@
 import {randomUUID} from 'node:crypto';
 import {readJson,readPayload,send,problem,corsHeaders,redirect} from './lib/http.mjs';
-import {assertCsrf,parseCookies,sha256} from './lib/security.mjs';
+import {assertCsrf,normalizeIdentifier,parseCookies,sha256} from './lib/security.mjs';
 import {PLAN_DEFINITIONS} from './services/payments.mjs';
 import {jazzCashRequestId,jazzCashTxnRefNo} from './adapters/jazzcash-orchestrator.mjs';
 
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const msisdn=value=>{const phone=String(value||'').trim();if(!/^(\+92|0)?3\d{9}$/.test(phone.replace(/\s/g,'')))throw fail('JazzCash mobile number must be a valid Pakistani MSISDN (03XXXXXXXXX).',400,'invalid_body');const digits=phone.replace(/\D/g,'');return digits.startsWith('92')?`0${digits.slice(2)}`:digits.startsWith('0')?digits:`0${digits}`;};
 const planCode=value=>{const code=String(value||'').trim();if(!/^[A-Za-z0-9._-]{1,64}$/.test(code))throw fail('A valid planCode is required.',400,'invalid_body');return code;};
+const safeReturnPath=value=>{const raw=String(value||'/mainLanding').trim();if(raw.startsWith('/mainLanding')||raw.startsWith('/landing2'))return raw.split('#')[0].slice(0,200);return '/mainLanding';};
 
 function ensureJazzCashState(store){
   if(!store.jazzcashLinkIntents)store.jazzcashLinkIntents=new Map();
@@ -23,7 +24,9 @@ function planCatalog(){
     full_amount_minor:Math.round(plan.pricePkr*100),
     currency:plan.currency,
     trialHours:0,
-    recommended:plan.id==='yearly'
+    recommended:plan.id==='monthly',
+    status:plan.status||'live',
+    comingSoon:plan.status==='coming_soon'
   }));
 }
 
@@ -65,7 +68,7 @@ function billingStatusPayload(userId,store,clock){
   };
 }
 
-function sealToken(token,secret){
+function sealToken(token){
   return Buffer.from(String(token),'utf8').toString('base64url');
 }
 function openToken(sealed){
@@ -73,7 +76,7 @@ function openToken(sealed){
 }
 
 export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>Date.now()}){
-  if(config.jazzcashMode!=='orchestrator')return async()=>false;
+  if(!['orchestrator','mock'].includes(config.jazzcashMode))return async()=>false;
   ensureJazzCashState(store);
 
   function authContext(req){
@@ -81,7 +84,32 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     const session=store.getSession(sha256(token));if(!session)return null;const user=store.getUser(session.userId);return user?{user,session}:null;
   }
   function requireUser(req){const context=authContext(req);if(!context)throw fail('Sign in is required.',401,'authentication_required');return context;}
-  function mutation(req){assertCsrf(req,config);const origin=req.headers.origin;if(origin&&config.allowedOrigins.length&&!config.allowedOrigins.includes(origin))throw fail('Origin is not allowed.',403,'origin_rejected');}
+  function assertOrigin(req){
+    const origin=req.headers.origin;const referer=String(req.headers.referer||'');
+    if(origin){
+      if(config.allowedOrigins.length&&!config.allowedOrigins.includes(origin))throw fail('Origin is not allowed.',403,'origin_rejected');
+      return;
+    }
+    if(referer){
+      try{
+        const refOrigin=new URL(referer).origin;
+        if(config.allowedOrigins.length&&!config.allowedOrigins.includes(refOrigin))throw fail('Origin is not allowed.',403,'origin_rejected');
+        return;
+      }catch{/* fall through */}
+    }
+    // Same-origin navigations / form posts without Origin are allowed for callback only.
+  }
+  function mutation(req,{allowGuest=false}={}){
+    assertOrigin(req);
+    if(allowGuest&&!authContext(req))return;
+    assertCsrf(req,config);
+  }
+  function resolveCheckoutUser(req,phone){
+    const session=authContext(req);
+    if(session?.user)return session.user;
+    const identity=normalizeIdentifier(phone);
+    return store.findOrCreateUser(identity);
+  }
 
   async function completeWalletLink(userId,fields){
     if(!orchestrator.verifyReturnFields(fields))throw fail('JazzCash return signature is invalid.',401,'invalid_signature');
@@ -91,7 +119,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     if(intent&&intent.userId!==userId)throw fail('Wallet link intent does not belong to this account.',403,'forbidden');
     if(!normalized.success)throw fail(normalized.responseMessage||'JazzCash wallet linking failed.',422,'wallet_link_failed');
     const msisdnValue=normalized.msisdn||intent?.msisdn||'';
-    store.jazzcashWallets.set(userId,{status:'linked',msisdn:msisdnValue,paymentTokenSeal:sealToken(normalized.paymentToken,config.jazzcashWebhookSecret),linkedAt:new Date(clock()).toISOString(),requestId:normalized.requestId});
+    store.jazzcashWallets.set(userId,{status:'linked',msisdn:msisdnValue,paymentTokenSeal:sealToken(normalized.paymentToken),linkedAt:new Date(clock()).toISOString(),requestId:normalized.requestId});
     if(intent){intent.status='completed';intent.completedAt=clock();store.jazzcashLinkIntents.set(normalized.requestId,intent);}
     store.audit.write({actor:userId,action:'jazzcash.wallet_linked',targetType:'user',targetId:userId,metadata:{requestId:normalized.requestId,alreadyLinked:normalized.alreadyLinked}});
     return normalized;
@@ -102,6 +130,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     const wallet=store.jazzcashWallets.get(userId);
     if(!wallet||wallet.status!=='linked')throw fail('Link a JazzCash wallet before subscribing.',409,'wallet_not_linked');
     const plan=PLAN_DEFINITIONS[planCodeValue];if(!plan)throw fail('Unknown premium plan.',400,'invalid_plan');
+    if(plan.status==='coming_soon')throw fail('This plan is coming soon.',409,'plan_unavailable');
     const token=openToken(wallet.paymentTokenSeal);
     const txnRefNo=jazzCashTxnRefNo(randomUUID().replaceAll('-',''));
     const amountMinor=Math.round(plan.pricePkr*100);
@@ -131,36 +160,46 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
       if(callback&&(method==='GET'||method==='POST')){
         const {value}=await readPayload(req,65536);
         const fields={...Object.fromEntries(url.searchParams.entries()),...(value&&typeof value==='object'?value:{})};
-        let userId=null;
         const intentId=String(fields.pp_RequestID||'');
         ensureJazzCashState(store);
         const intent=store.jazzcashLinkIntents.get(intentId);
-        if(intent)userId=intent.userId;
+        const returnPath=safeReturnPath(intent?.returnPath);
+        let userId=intent?.userId||null;
         if(!userId){const session=authContext(req);userId=session?.user?.id||null;}
-        if(!userId)return redirect(res,303,`${config.publicOrigin}/#/premium?wallet=failed`);
-        const normalized=await completeWalletLink(userId,fields);
+        if(!userId)return redirect(res,303,`${config.publicOrigin}${returnPath}?payment=failed`);
         try{
+          await completeWalletLink(userId,fields);
           const planCodeValue=intent?.planCode||'monthly';
-          await chargeLinkedWallet(userId,planCodeValue);
-          return redirect(res,303,`${config.publicOrigin}/#/premium?wallet=linked&subscription_status=active&status=paid`);
+          const sub=await chargeLinkedWallet(userId,planCodeValue);
+          return redirect(res,303,`${config.publicOrigin}/#/home?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
         }catch(error){
-          store.audit.write({actor:userId,action:'jazzcash.wallet_linked_payment_pending',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
-          return redirect(res,303,`${config.publicOrigin}/#/premium?wallet=linked&subscription_status=initiated&status=pending`);
+          store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
+          return redirect(res,303,`${config.publicOrigin}${returnPath}?payment=failed`);
         }
       }
 
       if(method==='GET'&&path==='/v1/billing/plans')return reply(200,{enabled:true,mode:'jazzcash_orchestrator',plans:planCatalog()});
 
       if(method==='POST'&&path==='/v1/billing/wallets/link'){
-        const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,16384);
-        const phone=msisdn(value.msisdn);const selectedPlan=planCode(value.planCode||'monthly');
+        mutation(req,{allowGuest:true});
+        const {value}=await readJson(req,16384);
+        if(value.consentToAutoPay!==true&&value.consent!==true)throw fail('Automatic billing consent is required.',400,'consent_required');
+        const phone=msisdn(value.msisdn);
+        const selectedPlan=planCode(value.planCode||'monthly');
+        const plan=PLAN_DEFINITIONS[selectedPlan];
+        if(!plan||plan.status==='coming_soon')throw fail('This plan is coming soon.',409,'plan_unavailable');
         ensureJazzCashState(store);
+        const user=resolveCheckoutUser(req,phone);
         const existing=store.jazzcashWallets.get(user.id);
-        if(existing?.status==='linked')throw fail('Wallet already linked.',409,'already_linked');
+        if(existing?.status==='linked'){
+          const entitlement=store.getEntitlement(user.id,clock());
+          if(entitlement?.tier==='premium'&&entitlement?.status==='active')throw fail('Wallet already linked.',409,'already_linked');
+        }
         const requestIdValue=jazzCashRequestId();
-        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock()});
+        const returnPath=safeReturnPath(value.returnPath||value.landingPath);
+        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,attribution:value.attribution||null});
         const form=orchestrator.createLinkWalletForm({msisdn:phone,requestId:requestIdValue});
-        store.audit.write({actor:user.id,action:'jazzcash.wallet_link_started',targetType:'user',targetId:user.id,metadata:{requestId:requestIdValue,planCode:selectedPlan}});
+        store.audit.write({actor:user.id,action:'jazzcash.wallet_link_started',targetType:'user',targetId:user.id,metadata:{requestId:requestIdValue,planCode:selectedPlan,guest:!authContext(req)}});
         return reply(201,{requestId:requestIdValue,portalUrl:form.portalUrl,actionUrl:form.actionUrl,method:form.method,fields:form.fields});
       }
 

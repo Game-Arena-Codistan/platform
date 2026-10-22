@@ -8,7 +8,9 @@ async function request(path,options={}){
   if(!response.ok){const error=new Error(data?.error?.message||data?.message||`Billing request failed: ${response.status}`);error.code=data?.error?.code||data?.error;error.status=response.status;error.details=data?.error?.details;throw error;}return data;
 }
 export const fetchBillingPlans=()=>request('/v1/billing/plans');
-export const linkBillingWallet=({msisdn,planCode})=>request('/v1/billing/wallets/link',{method:'POST',body:JSON.stringify({msisdn,planCode})});
+export const linkBillingWallet=({msisdn,planCode,consentToAutoPay=true,returnPath,attribution})=>(
+  request('/v1/billing/wallets/link',{method:'POST',body:JSON.stringify({msisdn,planCode,consentToAutoPay,consent:consentToAutoPay,returnPath,attribution})})
+);
 export const fetchBillingWallet=()=>request('/v1/billing/wallets');
 export const unlinkBillingWallet=()=>request('/v1/billing/wallets/unlink',{method:'POST'});
 export const fetchBillingStatus=()=>request('/v1/billing/status');

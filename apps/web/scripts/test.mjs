@@ -12,11 +12,13 @@ const premiumSource=await readFile(new URL('../src/views/premium.js',import.meta
 const accountSource=await readFile(new URL('../src/views/account.js',import.meta.url),'utf8');
 const librarySource=await readFile(new URL('../src/views/library.js',import.meta.url),'utf8');
 const competeSource=await readFile(new URL('../src/views/compete.js',import.meta.url),'utf8');
+const landingSource=await readFile(new URL('../src/landing.js',import.meta.url),'utf8');
 
 test('commercial baseline matches approved legacy fallback plan',()=>{
-  assert.equal(plans.find(plan=>plan.id==='monthly').price,299);
+  assert.equal(plans.find(plan=>plan.id==='monthly').price,599);
   assert.equal(plans.find(plan=>plan.id==='yearly').price,4999);
-  assert.equal(plans.some(plan=>plan.recommended),false);
+  assert.equal(plans.find(plan=>plan.id==='monthly').recommended,true);
+  assert.equal(plans.find(plan=>plan.id==='yearly').comingSoon,true);
   assert.ok(premiumFeatures.includes('2× Arena Coins'));
   assert.ok(premiumFeatures.includes('10% member top-up discount'));
   assert.equal(premiumFeatures.includes('Downloadable games gallery'),false);
@@ -52,7 +54,7 @@ test('live catalogue runtime and rewards wallet empty copy are wired for staging
   const runtimeSource=await readFile(new URL('../src/catalogue-runtime.js',import.meta.url),'utf8');
   assert.match(appSource,/ensureCatalogue\(\)/);
   assert.match(librarySource,/getGames\(\)/);
-  assert.match(librarySource,/Search \$\{games\.length\} games/);
+  assert.match(librarySource,/getGames\(\)|Search \$\{games\.length\} games|Choose a plan to play/);
   assert.match(apiSource,/fetchCatalogue/);
   assert.match(apiSource,/\/v1\/catalog\/games/);
   assert.match(runtimeSource,/export async function ensureCatalogue/);
@@ -76,14 +78,17 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(billingApiSource,/\/v1\/billing\/plans/);
   assert.match(billingApiSource,/\/v1\/billing\/wallets\/link/);
   assert.match(billingApiSource,/\/v1\/billing\/status/);
-  assert.match(premiumSource,/Automatic billing consent/);
-  assert.match(premiumSource,/Game Arena never asks for or stores your MPIN/);
+  assert.match(billingApiSource,/consentToAutoPay/);
+  assert.match(landingSource,/consentToAutoPay:true/);
+  assert.match(landingSource,/MPIN is entered only on JazzCash/);
+  assert.match(premiumSource,/mainLanding/);
   assert.match(premiumSource,/createBillingSubscription/);
-  assert.match(premiumSource,/already_linked/);
+  assert.match(librarySource,/canBrowseCatalogue|Activate Game Arena\+/);
   assert.match(accountSource,/renderBillingPanel/);
-  assert.doesNotMatch(`${billingApiSource}\n${premiumSource}\n${accountSource}`,/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
+  assert.doesNotMatch(`${billingApiSource}\n${premiumSource}\n${accountSource}\n${landingSource}`,/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
   assert.doesNotMatch(billingApiSource,/amountMinor\s*:/);
   assert.doesNotMatch(premiumSource,/pp_PaymentToken|pp_Password|pp_SecureHash/);
+  assert.doesNotMatch(landingSource,/pp_PaymentToken|pp_Password|pp_SecureHash/);
 });
 
 test('Vercel preview mocks match contract 1.0.0',()=>{
