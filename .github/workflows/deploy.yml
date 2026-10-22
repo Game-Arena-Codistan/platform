@@ -179,6 +179,13 @@ jobs:
             sleep $((attempt * 5))
           done
           [ "$pulled" = true ] || { echo 'Application image pull failed after 3 attempts.' >&2; exit 1; }
+          # A previous failed admin recreate can leave 127.0.0.1:8083 allocated and block
+          # the next release. Force-remove anything publishing that host port first.
+          for cid in $(docker ps -aq --filter publish=8083); do
+            echo "Reclaiming stuck host port 8083 from container $cid"
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+          done
+          "${compose[@]}" rm -f -s admin >/dev/null 2>&1 || true
           "${compose[@]}" up -d --remove-orphans
 
           # The gateway configuration is bind-mounted. Updating the file does not
