@@ -78,7 +78,12 @@ await lane('provider-mode',async()=>{
       body:JSON.stringify({msisdn:'03119876543',planCode:'monthly',consentToAutoPay:true,returnPath:'/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash'})
     });
     expectStatus(guest.status,[201],'orchestrator guest wallet link start failed');
-    const callback=await fetch(`${apiBase}/v1/billing/wallets/callback?pp_ResponseCode=000&pp_TxnRefNo=missing-intent`,{redirect:'manual'});
+    const callback=await fetch(`${apiBase}/v1/jazzcash/wallet/callback`,{
+      method:'POST',
+      redirect:'manual',
+      headers:{'content-type':'application/x-www-form-urlencoded',origin:playerUrl},
+      body:new URLSearchParams({pp_RequestID:'missing-intent',pp_ResponseCode:'000',pp_PaymentToken:'x',pp_MSISDN:'03119876543'}).toString()
+    });
     expectStatus(callback.status,[303],'orchestrator wallet callback without a valid intent must redirect safely');
     return{mode:'jazzcash_orchestrator',mockWebhookMatrix:'NOT_APPLICABLE',guestLinkStarted:true,browserReturnSafe:true};
   }

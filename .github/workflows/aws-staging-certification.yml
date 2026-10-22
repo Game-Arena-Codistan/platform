@@ -328,11 +328,28 @@ jobs:
             export STAGING_QA_ADMIN_ASSERTIONS_JSON="$assertions"
             echo "STAGING_QA_ADMIN_ASSERTIONS_JSON=$assertions" >> "$GITHUB_ENV"
           fi
-          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ExitOnForwardFailure=yes -N -L 18083:127.0.0.1:18183 "$DEPLOY_USER@$DEPLOY_HOST" >/tmp/game-arena-admin-tunnel.log 2>&1 &
-          port_pid=$!
-          trap 'kill "$port_pid" >/dev/null 2>&1 || true' EXIT
+          # Supervise the Admin SSH tunnel for the full Playwright suite; idle drops
+          # previously caused ECONNREFUSED on mid-run premium fixture grants.
+          (
+            while true; do
+              ssh -i "$HOME/.ssh/game-arena-staging" \
+                -o BatchMode=yes \
+                -o ExitOnForwardFailure=yes \
+                -o ServerAliveInterval=15 \
+                -o ServerAliveCountMax=4 \
+                -N -L 18083:127.0.0.1:18183 \
+                "$DEPLOY_USER@$DEPLOY_HOST" >>/tmp/game-arena-admin-tunnel.log 2>&1 &
+              child=$!
+              printf '%s\n' "$child" >/tmp/game-arena-admin-tunnel.pid
+              wait "$child" || true
+              echo "Admin SSH tunnel exited; restarting." >>/tmp/game-arena-admin-tunnel.log
+              sleep 2
+            done
+          ) &
+          tunnel_supervisor=$!
+          trap 'kill "$tunnel_supervisor" "$(cat /tmp/game-arena-admin-tunnel.pid 2>/dev/null || true)" >/dev/null 2>&1 || true' EXIT
           ready=false
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 45); do
             if curl --fail --silent http://127.0.0.1:18083/healthz >/dev/null 2>&1; then
               html="$(curl --fail --silent http://127.0.0.1:18083/ || true)"
               if printf '%s' "$html" | grep -q 'id="console"'; then ready=true; break; fi
