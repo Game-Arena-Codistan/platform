@@ -25,6 +25,6 @@ test('@player discovery feed can save a title and routes locked premium play to 
   const premiumSlide=page.locator('.feed-slide').filter({has:page.locator('.badge').filter({hasText:/Game Arena\+/})}).first();
   await expect(premiumSlide).toBeVisible();
   await premiumSlide.locator('[data-play]').click();
-  await expect(page).toHaveURL(/#\/premium/);
-  await expect(page.getByRole('heading',{name:/More games/i})).toBeVisible();
+  await expect(page).toHaveURL(/\/mainLanding/);
+  await expect(page.getByRole('heading',{name:/Unlock the full game catalogue/i})).toBeVisible();
 });

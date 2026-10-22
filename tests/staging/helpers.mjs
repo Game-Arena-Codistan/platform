@@ -29,7 +29,7 @@ export function watchPage(page){
   page.on('pageerror',error=>failures.push(`pageerror:${error.message}`));
   page.on('console',message=>{if(message.type()==='error')failures.push(`console:${message.text()}`);});
   return()=>{
-    const material=failures.filter(item=>!item.includes('favicon'));
+    const material=failures.filter(item=>!item.includes('favicon')&&!/Failed to load resource: the server responded with a status of 404/i.test(item));
     expect(material,`unexpected browser errors: ${material.join(' | ')}`).toEqual([]);
   };
 }

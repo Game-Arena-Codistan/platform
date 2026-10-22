@@ -17,14 +17,20 @@ test('@player @critical-mobile deployed shell exposes the exact release and crit
 
 test('@player @critical-mobile protected OTP sign-in launches a deployed game and reaches configured Premium checkout',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'critical',invalidFirst:true});
-  await page.goto('/#/library');
-  const freeCard=page.locator('.game-card').filter({has:page.locator('.badge').filter({hasText:/^Free$/})}).first();await expect(freeCard).toBeVisible();
-  const playResponse=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');await freeCard.getByRole('button',{name:'Play'}).click();expect((await playResponse).status()).toBe(201);
+  await page.goto('/#/home');
+  const playResponse=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');
+  await page.locator('[data-home-play]').first().click();
+  expect((await playResponse).status()).toBe(201);
   const frame=page.locator('#game-frame');await expect(frame).toBeVisible();const frameSrc=await frame.getAttribute('src');expect(frameSrc).toMatch(/^https:\/\//);const sandbox=await frame.getAttribute('sandbox');expect(sandbox||'').not.toContain(sameOriginPermission);await page.getByRole('button',{name:'Exit game'}).click();
 
   const mode=await paymentMode(page);await page.goto('/#/premium');
   if(mode==='external'){
-    await expect(page.getByText('JazzCash wallet',{exact:true})).toBeVisible();await page.locator('[data-plan]').first().click();await expect(page.getByRole('dialog',{name:/Link JazzCash & activate Game Arena\+/i})).toBeVisible();await expect(page.getByText(/Automatic billing consent/i)).toBeVisible();return;
+    await expect(page.getByRole('link',{name:/Go to JazzCash landing/i})).toBeVisible();
+    await page.locator('[data-plan]').first().click();
+    await expect(page).toHaveURL(/\/mainLanding/);
+    await expect(page.getByRole('heading',{name:/Unlock the full game catalogue/i})).toBeVisible();
+    await expect(page.getByRole('button',{name:/Subscribe Now/i})).toBeVisible();
+    return;
   }
   await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();await page.locator('[data-plan]').first().click();await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();
   const checkoutResponse=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');await page.getByRole('button',{name:/Continue to JazzCash/i}).click();const checkout=await checkoutResponse;expect(checkout.status()).toBe(201);const payload=await checkout.json();expect(payload.transactionId).toBeTruthy();expect(payload.status).toBe('pending');await expect(page.locator('#payment-status')).toContainText(/Payment received|Redirecting|Creating checkout|pending/i);

@@ -305,7 +305,10 @@ jobs:
           trap 'kill "$port_pid" >/dev/null 2>&1 || true' EXIT
           ready=false
           for _ in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:18083/healthz >/dev/null 2>&1; then ready=true; break; fi
+            if curl --fail --silent http://127.0.0.1:18083/healthz >/dev/null 2>&1; then
+              html="$(curl --fail --silent http://127.0.0.1:18083/ || true)"
+              if printf '%s' "$html" | grep -q 'id="console"'; then ready=true; break; fi
+            fi
             sleep 1
           done
           if [ "$ready" = true ]; then
@@ -313,6 +316,8 @@ jobs:
             echo 'ADMIN_TUNNEL_STATUS=success' >> "$GITHUB_ENV"
           else
             echo 'ADMIN_TUNNEL_STATUS=failure' >> "$GITHUB_ENV"
+            echo 'Admin tunnel did not serve the operations console; skipping Admin browser project.' >&2
+            unset STAGING_ADMIN_URL || true
           fi
           set +e
           npx playwright test

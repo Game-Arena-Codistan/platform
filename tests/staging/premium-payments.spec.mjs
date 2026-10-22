@@ -9,14 +9,28 @@ async function ensurePremiumEntitlement(page){
 }
 
 test('@player premium page states configured billing and preserves fixed-duration billing semantics fallback',async({page})=>{
-  const assertClean=watchPage(page);const mode=await paymentMode(page);await page.goto('/#/premium');await expect(page.getByRole('heading',{name:/More games/i})).toBeVisible();const plans=page.locator('[data-plan]');await expect(plans.first()).toBeVisible();expect(await plans.count()).toBeGreaterThanOrEqual(2);
-  if(mode==='external'){await expect(page.getByText('JazzCash wallet',{exact:true})).toBeVisible();await expect(page.getByText('Server-authoritative billing',{exact:true})).toBeVisible();await expect(page.getByText(/How does billing work/i)).toBeVisible();await expect(page.getByText(/Game Arena never asks for or stores your MPIN/i)).toBeVisible();const html=await page.content();expect(html).not.toMatch(/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);}else{await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();await expect(page.getByText(/Does it auto-renew/i)).toBeVisible();await expect(page.getByText(/^No\. Monthly and yearly access are fixed-duration purchases/i)).toBeVisible();await expect(page.getByText(/JazzCash checkout/i)).toBeVisible();await expect(page.getByText(/Server-confirmed activation/i)).toBeVisible();}
+  const assertClean=watchPage(page);const mode=await paymentMode(page);await page.goto('/#/premium');await expect(page.getByRole('heading',{name:/More games/i})).toBeVisible();const plans=page.locator('[data-plan]');await expect(plans.first()).toBeVisible();
+  if(mode==='external'){
+    await expect(page.getByRole('button',{name:/Coming soon/i}).first()).toBeVisible();
+    await expect(page.getByRole('link',{name:/Go to JazzCash landing/i})).toBeVisible();
+    await expect(page.getByText(/Pay first, sign in later|JazzCash wallet|Server-authoritative billing/i).first()).toBeVisible();
+    const html=await page.content();expect(html).not.toMatch(/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
+  }else{
+    expect(await plans.count()).toBeGreaterThanOrEqual(2);
+    await expect(page.getByText('Fixed-duration purchase',{exact:true})).toBeVisible();await expect(page.getByText(/Does it auto-renew/i)).toBeVisible();await expect(page.getByText(/^No\. Monthly and yearly access are fixed-duration purchases/i)).toBeVisible();await expect(page.getByText(/JazzCash checkout/i)).toBeVisible();await expect(page.getByText(/Server-confirmed activation/i)).toBeVisible();
+  }
   assertClean();
 });
 
 test('@player authenticated Premium action uses configured server boundary and preserves legacy pending server transaction contract',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'membership-checkout'});const mode=await paymentMode(page);await page.goto('/#/premium');const plan=page.locator('[data-plan]').first();await plan.click();
-  if(mode==='external'){await expect(page.getByRole('dialog',{name:/Link JazzCash & activate Game Arena\+/i})).toBeVisible();await expect(page.getByText(/MPIN is entered only on JazzCash's hosted page/i)).toBeVisible();await expect(page.getByLabel('JazzCash mobile number')).toBeVisible();await expect(page.getByText(/Automatic billing consent/i)).toBeVisible();return;}
+  if(mode==='external'){
+    await expect(page).toHaveURL(/\/mainLanding/);
+    await expect(page.getByRole('heading',{name:/Unlock the full game catalogue/i})).toBeVisible();
+    await expect(page.getByLabel(/JazzCash mobile number/i)).toBeVisible();
+    await expect(page.getByText(/authorize automatic JazzCash billing/i)).toBeVisible();
+    return;
+  }
   await expect(page.getByRole('dialog',{name:/Activate Game Arena\+/i})).toBeVisible();await expect(page.getByText(/never collects your JazzCash PIN or card details/i)).toBeVisible();const responsePromise=page.waitForResponse(response=>response.url().includes('/v1/payments/jazzcash/checkout')&&response.request().method()==='POST');await page.getByRole('button',{name:/Continue to JazzCash/i}).click();const response=await responsePromise;expect(response.status()).toBe(201);const body=await response.json();expect(body.transactionId).toMatch(/^[a-f0-9-]+$/);expect(body.status).toBe('pending');const pending=await page.evaluate(()=>JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null'));expect(pending?.transactionId).toBe(body.transactionId);await expect(page.locator('#payment-status')).toContainText(/received|redirecting|pending|creating/i);
 });
 

@@ -15,7 +15,19 @@ function headersFor(role){
   throw new Error(`BLOCKED: missing staging QA credential for ${role}`);
 }
 async function adminCall(role,path,{method='GET',data}={}){const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});try{return await context.fetch(`/api${path}`,{method,data});}finally{await context.dispose();}}
-async function adminPage(browser,role='admin'){const context=await browser.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});const page=await context.newPage();await page.goto('/');await expect(page.locator('#console')).toBeVisible();return{context,page};}
+async function adminPage(browser,role='admin'){
+  test.skip(!adminUrl,'BLOCKED: STAGING_ADMIN_URL is not configured for Admin browser certification.');
+  const context=await browser.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});
+  const page=await context.newPage();
+  await page.goto('/');
+  const consoleVisible=await page.locator('#console').isVisible().catch(()=>false);
+  if(!consoleVisible){
+    const title=await page.title().catch(()=> '');
+    throw new Error(`Admin console did not render at ${adminUrl} (title=${title}). Tunnel may be pointing at the player shell.`);
+  }
+  await expect(page.locator('#console')).toBeVisible();
+  return{context,page};
+}
 
 test('@admin full admin credential resolves capabilities and renders operations console',async({browser})=>{
   test.skip(!assertions.admin&&!adminKey,'BLOCKED: no staging Admin credential is configured.');

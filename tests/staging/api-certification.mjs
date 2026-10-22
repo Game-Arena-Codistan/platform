@@ -17,18 +17,19 @@ let failed=false;
 function record(name,status,details={}){results.push({name,status,...details});if(status==='BLOCKED')blocked=true;if(status==='FAIL')failed=true;}
 function cookieHeader(){return[...cookies].map(([name,value])=>`${name}=${value}`).join('; ');}
 function rememberCookies(headers){const values=typeof headers.getSetCookie==='function'?headers.getSetCookie():[headers.get('set-cookie')].filter(Boolean);for(const raw of values){const first=raw.split(';',1)[0];const at=first.indexOf('=');if(at>0)cookies.set(first.slice(0,at),first.slice(at+1));}}
-async function call(path,{method='GET',body,headers={},auth=false,redirect='follow',retries=0}={}){
+async function call(path,{method='GET',body,headers={},auth=false,redirect='follow',retries=0,rawBody=false,requireOrigin=false}={}){
   const requestHeaders={'accept':'application/json',...headers};
-  if(body!==undefined)requestHeaders['content-type']='application/json';
+  if(body!==undefined&&!requestHeaders['content-type'])requestHeaders['content-type']='application/json';
   if(auth&&cookies.size)requestHeaders.cookie=cookieHeader();
-  if(auth&&!['GET','HEAD','OPTIONS'].includes(method)){
-    requestHeaders.origin=playerUrl;
-    requestHeaders['x-csrf-token']=csrf;
+  if((auth||requireOrigin)&&!['GET','HEAD','OPTIONS'].includes(method)){
+    requestHeaders.origin=requestHeaders.origin||playerUrl;
+    if(auth)requestHeaders['x-csrf-token']=csrf;
   }
+  const encoded=body===undefined?undefined:(rawBody||typeof body==='string'?body:JSON.stringify(body));
   let lastError;
   for(let attempt=0;attempt<=retries;attempt++){
     try{
-      const response=await fetch(`${apiBase}${path}`,{method,headers:requestHeaders,body:body===undefined?undefined:JSON.stringify(body),redirect,signal:AbortSignal.timeout(20000)});
+      const response=await fetch(`${apiBase}${path}`,{method,headers:requestHeaders,body:encoded,redirect,signal:AbortSignal.timeout(20000)});
       rememberCookies(response.headers);
       let data=null;const type=response.headers.get('content-type')||'';
       if(type.includes('json'))data=await response.json().catch(()=>null);
@@ -113,13 +114,29 @@ await lane('play-proof-and-idempotency',async()=>{
 
 await lane('membership-checkout-idempotency-and-return-safety',async()=>{
   if(ready?.payments==='hosted'&&process.env.STAGING_PAYMENT_SANDBOX_READY!=='true')block('PAYMENT SANDBOX NOT CONFIGURED');
+  if(ready?.payments==='orchestrator'){
+    const plans=await call('/v1/billing/plans');expectStatus(plans.response.status,[200],'orchestrator billing plans failed');
+    if(plans.data?.enabled!==true||plans.data?.mode!=='jazzcash_orchestrator')throw new Error('orchestrator billing plans are not enabled.');
+    const monthly=(plans.data.plans||[]).find(item=>String(item.code||item.planCode)==='monthly');
+    const yearly=(plans.data.plans||[]).find(item=>String(item.code||item.planCode)==='yearly');
+    if(!monthly||Number(monthly.fullAmountMinor||monthly.full_amount_minor)!==59900)throw new Error('monthly orchestrator plan must be Rs 599.');
+    if(!yearly||yearly.comingSoon!==true&&yearly.status!=='coming_soon')throw new Error('yearly orchestrator plan must be coming soon.');
+    const guest=await call('/v1/billing/wallets/link',{method:'POST',requireOrigin:true,body:{msisdn:'03111222333',planCode:'monthly',consentToAutoPay:true,returnPath:'/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash'}});
+    expectStatus(guest.response.status,[201],'guest orchestrator wallet link start failed');
+    if(!guest.data?.actionUrl||!guest.data?.fields?.pp_RequestID)throw new Error('guest wallet link did not return a JazzCash portal form.');
+    const blockedYearly=await call('/v1/billing/wallets/link',{method:'POST',requireOrigin:true,body:{msisdn:'03111222334',planCode:'yearly',consentToAutoPay:true,returnPath:'/landing2'}});
+    expectStatus(blockedYearly.response.status,[409],'yearly coming-soon plan was not blocked.');
+    const returned=await call('/v1/jazzcash/wallet/callback',{method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded'},rawBody:true,body:new URLSearchParams({pp_RequestID:'missing-intent',pp_ResponseCode:'000',pp_PaymentToken:'x',pp_MSISDN:'03111222333'}).toString()});
+    expectStatus(returned.response.status,[303],'orchestrator wallet callback without a valid intent must redirect safely');
+    return{mode:'jazzcash_orchestrator',guestLinkStarted:true,yearlyBlocked:true,browserReturnSafe:true};
+  }
   if(!['mock','hosted'].includes(ready?.payments))block(`payment provider mode ${ready?.payments||'unknown'} is not certifiable.`);
   const key=`${correlation}-membership`;
   const first=await call('/v1/payments/jazzcash/checkout',{method:'POST',auth:true,headers:{'idempotency-key':key},body:{planId:'monthly'}});expectStatus(first.response.status,[201],'membership checkout failed');
   const second=await call('/v1/payments/jazzcash/checkout',{method:'POST',auth:true,headers:{'idempotency-key':key},body:{planId:'monthly'}});expectStatus(second.response.status,[201],'membership checkout retry failed');
   if(!first.data?.transactionId||second.data?.transactionId!==first.data.transactionId)throw new Error('repeated membership checkout created a different transaction.');
   paymentTransaction=first.data.transactionId;
-  const returned=await call('/v1/payments/jazzcash/return',{method:'POST',redirect:'manual',body:{transactionId:paymentTransaction,status:'paid',amountMinor:29900,currency:'PKR'}});
+  const returned=await call('/v1/payments/jazzcash/return',{method:'POST',redirect:'manual',body:{transactionId:paymentTransaction,status:'paid',amountMinor:59900,currency:'PKR'}});
   expectStatus(returned.response.status,[303],'browser payment return did not redirect safely');
   const status=await call(`/v1/payments/${paymentTransaction}`,{auth:true});expectStatus(status.response.status,[200],'payment status lookup failed');
   if(status.data?.status!=='pending')throw new Error('browser return incorrectly activated payment/entitlement.');
