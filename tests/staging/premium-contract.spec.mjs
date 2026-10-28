@@ -39,7 +39,9 @@ async function persona(browser,testInfo,label,{premium=false}={}){
   await signInFromAccount(page,testInfo,{label});
   if(premium){
     await adjustEntitlement(page,{action:'grant',durationDays:30,planId:'manual',reason:`AUTO-QA premium differential ${label}`});
-    await page.reload();
+    await expect.poll(async()=>{const body=await session(page);return body.entitlement?.tier||body.entitlement;},{timeout:20000}).toBe('premium');
+    await page.goto('/#/account');
+    await expect(page.getByText(/Subscribed · Game Arena\+|Game Arena\+ member/i)).toBeVisible({timeout:20000});
   }
   const current=await session(page);
   expect(current.entitlement?.tier||current.entitlement).toBe(premium?'premium':'free');
