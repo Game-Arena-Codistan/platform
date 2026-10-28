@@ -7,10 +7,14 @@ async function request(path,options={}){
   const response=await fetch(`${config.apiBaseUrl}${path}`,{credentials:'include',...options,headers});const data=response.status===204?null:await response.json().catch(()=>null);
   if(!response.ok){const error=new Error(data?.error?.message||data?.message||`Billing request failed: ${response.status}`);error.code=data?.error?.code||data?.error;error.status=response.status;error.details=data?.error?.details;throw error;}return data;
 }
-export const fetchBillingPlans=()=>request('/v1/billing/plans');
-export const linkBillingWallet=({msisdn,planCode,consentToAutoPay=true,returnPath,attribution})=>(
-  request('/v1/billing/wallets/link',{method:'POST',body:JSON.stringify({msisdn,planCode,consentToAutoPay,consent:consentToAutoPay,returnPath,attribution})})
-);
+export const fetchBillingPlans=()=>config.mode==='live'?request('/v1/billing/plans'):Promise.resolve({enabled:true,plans:[{code:'monthly',fullAmountMinor:59900,interval:'month',recommended:true},{code:'yearly',fullAmountMinor:499900,interval:'year',comingSoon:true,status:'coming_soon'}]});
+export async function linkBillingWallet({msisdn,planCode,consentToAutoPay=true,returnPath,attribution}){
+  if(config.mode!=='live'){
+    await wait(500);
+    return{mock:true,method:'mock',transactionId:crypto.randomUUID(),msisdn,planCode,returnPath,attribution,consentToAutoPay};
+  }
+  return request('/v1/billing/wallets/link',{method:'POST',body:JSON.stringify({msisdn,planCode,consentToAutoPay,consent:consentToAutoPay,returnPath,attribution})});
+}
 export const fetchBillingWallet=()=>request('/v1/billing/wallets');
 export const unlinkBillingWallet=()=>request('/v1/billing/wallets/unlink',{method:'POST'});
 export const fetchBillingStatus=()=>request('/v1/billing/status');

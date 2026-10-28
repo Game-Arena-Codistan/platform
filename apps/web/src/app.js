@@ -31,6 +31,7 @@ function paymentBanner(){
   banner.className='notice';
   banner.innerHTML='<b>Premium Features Unlocked.</b> Your JazzCash subscription is active. Sign in with your JazzCash number when you are ready to use Game Arena+.';
   app.prepend(banner);
+  if(getState().entitlement!=='premium')update({entitlement:'premium'});
 }
 function render(force=false){const name=route();if(force||name!==current){current=name;const [view,bind]=routes[name];app.innerHTML=view();bind?.();paymentBanner();document.querySelectorAll('[data-route]').forEach(link=>link.classList.toggle('active',link.dataset.route===name));app.focus({preventScroll:true});track('route_view',{route:name});}const state=getState();balance.textContent=Number(state.coins||0).toLocaleString('en-PK');document.querySelector('#profile-button').textContent=state.user?(state.user.displayName||'P').slice(0,2).toUpperCase():'GA';document.querySelector('#premium-button').hidden=state.entitlement==='premium';document.documentElement.classList.toggle('reduce-motion',state.settings.reducedMotion);}
 function setNetwork(){const online=navigator.onLine;network.textContent=online?'Online':'Offline';network.classList.toggle('offline',!online);}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 36" role="img" aria-label="JazzCash">
+  <rect x="0" y="2" width="32" height="32" rx="8" fill="#111"/>
+  <path fill="#F5C518" d="M8 8c5.2 3.6 9.2 8.4 10.5 14.2-3.6-2.2-7.2-4.6-10.5-8V8z"/>
+  <path fill="#E11D48" d="M24 8c-5.2 3.6-9.2 8.4-10.5 14.2 3.6-2.2 7.2-4.6 10.5-8V8z"/>
+  <path fill="#F97316" d="M16 16.5c1.2 3.4 2.4 6.8 2.4 10h-4.8c0-3.2 1.2-6.6 2.4-10z"/>
+  <text x="40" y="24" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="800" fill="#111">JazzCash</text>
+</svg>

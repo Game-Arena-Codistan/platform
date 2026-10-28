@@ -4,10 +4,11 @@ import {getState,toggleFavourite,isPremium} from '../state.js';
 import {escapeHtml,money,toast} from '../ui.js';
 import {openGame} from '../game-player.js';
 import {amountPkr,fetchBillingPlans} from '../billing-api.js';
+import {defaultLandingHref} from '../landing-campaign.js';
 import {track} from '../analytics.js';
 
 let query='';let genre='All';let tab='all';
-const landingHref='/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash';
+const landingHref=defaultLandingHref('monthly');
 function canBrowseCatalogue(){return Boolean(getState().user)&&isPremium();}
 function filtered(){const state=getState();const games=getGames();let list=games.filter(game=>(genre==='All'||game.genre===genre)&&(`${game.title} ${game.description} ${game.genre}`.toLowerCase().includes(query.toLowerCase())));if(tab==='saved')list=list.filter(game=>state.favourites.includes(game.id));if(tab==='recent')list=state.recent.map(id=>list.find(game=>game.id===id)).filter(Boolean);if(tab==='downloads')list=list.filter(game=>game.downloadUrl&&game.tier==='free');return list;}
 function card(game){const locked=game.tier==='premium'&&!isPremium();const saved=getState().favourites.includes(game.id);const offlineEligible=game.tier==='free'&&Boolean(game.downloadUrl);return `<article class="card game-card" style="--art:${game.art}"><div class="game-card-shade"></div><div class="game-card-content"><div class="badge-row"><span class="badge ${game.tier==='premium'?'premium':''}">${game.tier==='premium'?'Arena+':'Free'}</span>${game.multiplayer?'<span class="badge">Multiplayer</span>':''}</div><h2>${escapeHtml(game.title)}</h2><p>${escapeHtml(game.description)}</p><div class="game-actions"><button class="button ${locked?'gold':'primary'}" data-play="${game.id}" type="button">${locked?'Unlock':'Play'}</button><button class="button secondary" data-save="${game.id}" aria-pressed="${saved}" type="button">${saved?'★':'☆'}</button>${offlineEligible?`<button class="button secondary" data-download="${game.id}" type="button" aria-label="Save ${escapeHtml(game.title)} for offline access">↓</button>`:''}</div></div></article>`;}

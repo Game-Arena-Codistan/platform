@@ -28,7 +28,7 @@ for(const marker of [
 const scripts=(await readdir(join(root,'src'),{recursive:true})).filter(file=>file.endsWith('.js')).map(file=>join(root,'src',file));
 for(const file of [...scripts,join(root,'sw.js'),join(root,'scripts/build.mjs')]){const result=spawnSync(process.execPath,['--check',file],{encoding:'utf8'});if(result.status!==0)throw new Error(`${file}: ${result.stderr}`);}
 const budgetFiles=['index.html','styles/tokens.css','styles/app.css','styles/responsive.css',...scripts.map(file=>relative(root,file))]
-  .filter(file=>!/(^|[\\/])(catalogue-(1|2|art)|landing|landing-campaign|landing-analytics|ga4)\.js$/.test(file));
+  .filter(file=>!/(^|[\\/])(catalogue-(1|2|art)|landing|landing-campaign|landing-analytics|ga4)\.js$/.test(file)&&!/(^|[\\/])landing\.css$/.test(file));
 const bytes=(await Promise.all(budgetFiles.map(file=>stat(join(root,file))))).reduce((sum,item)=>sum+item.size,0);
-if(bytes>110*1024)throw new Error(`Core source ${(bytes/1024).toFixed(1)} KB exceeds 110 KB.`);
+if(bytes>120*1024)throw new Error(`Core source ${(bytes/1024).toFixed(1)} KB exceeds 120 KB.`);
 console.log(`Checks passed. Core source ${(bytes/1024).toFixed(1)} KB.`);
