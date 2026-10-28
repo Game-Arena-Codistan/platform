@@ -168,7 +168,8 @@ function ensureLandingStyles(){
   if(document.querySelector('link[data-landing-styles]'))return;
   const link=document.createElement('link');
   link.rel='stylesheet';
-  link.href='/styles/landing.css';
+  const release=encodeURIComponent(window.GAME_ARENA_CONFIG?.releaseSha||'dev');
+  link.href=`/styles/landing.css?v=${release}`;
   link.dataset.landingStyles='true';
   document.head.append(link);
 }

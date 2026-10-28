@@ -33,10 +33,55 @@ function paymentBanner(){
   app.prepend(banner);
   if(getState().entitlement!=='premium')update({entitlement:'premium'});
 }
-function render(force=false){const name=route();if(force||name!==current){current=name;const [view,bind]=routes[name];app.innerHTML=view();bind?.();paymentBanner();document.querySelectorAll('[data-route]').forEach(link=>link.classList.toggle('active',link.dataset.route===name));app.focus({preventScroll:true});track('route_view',{route:name});}const state=getState();balance.textContent=Number(state.coins||0).toLocaleString('en-PK');const profile=document.querySelector('#profile-button');if(state.user){profile.textContent=(state.user.displayName||'P').slice(0,2).toUpperCase();profile.classList.remove('avatar-cta');profile.setAttribute('aria-label','Open account');}else{profile.textContent='Sign up';profile.classList.add('avatar-cta');profile.setAttribute('aria-label','Sign up');}document.querySelector('#premium-button').hidden=state.entitlement==='premium';document.documentElement.classList.toggle('reduce-motion',state.settings.reducedMotion);}
-function setNetwork(){const online=navigator.onLine;network.textContent=online?'Online':'Offline';network.classList.toggle('offline',!online);}
-async function hydrate(){try{await ensureCatalogue();}catch{}try{const session=await getSession();if(session.authenticated)update({user:session.user,entitlement:session.entitlement?.tier||session.entitlement,coins:session.coins});}catch{}}
+function render(force=false){
+  try{
+    if(!app)return;
+    const name=route();
+    if(force||name!==current){
+      current=name;
+      const [view,bind]=routes[name];
+      app.innerHTML=view();
+      try{bind?.();}catch(error){console.error('route bind failed',name,error);}
+      paymentBanner();
+      document.querySelectorAll('[data-route]').forEach(link=>link.classList.toggle('active',link.dataset.route===name));
+      app.focus({preventScroll:true});
+      track('route_view',{route:name});
+    }
+    const state=getState();
+    if(balance)balance.textContent=Number(state.coins||0).toLocaleString('en-PK');
+    const profile=document.querySelector('#profile-button');
+    if(profile){
+      if(state.user){profile.textContent=(state.user.displayName||'P').slice(0,2).toUpperCase();profile.classList.remove('avatar-cta');profile.setAttribute('aria-label','Open account');}
+      else{profile.textContent='Sign up';profile.classList.add('avatar-cta');profile.setAttribute('aria-label','Sign up');}
+    }
+    const premium=document.querySelector('#premium-button');
+    if(premium)premium.hidden=state.entitlement==='premium'||state.entitlement?.tier==='premium';
+    document.documentElement.classList.toggle('reduce-motion',state.settings.reducedMotion);
+  }catch(error){
+    console.error('render failed',error);
+    if(app&&!app.innerHTML)app.innerHTML='<section class="page"><div class="empty"><h3>Unable to load this screen</h3><p>Refresh the page. If this continues, clear site data for Game Arena.</p></div></section>';
+  }
+}
+function setNetwork(){const online=navigator.onLine;if(network){network.textContent=online?'Online':'Offline';network.classList.toggle('offline',!online);}}
+async function hydrate(){
+  try{await Promise.race([ensureCatalogue(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('catalogue timeout')),8000))]);}catch{}
+  try{const session=await getSession();if(session.authenticated)update({user:session.user,entitlement:session.entitlement?.tier||session.entitlement,coins:session.coins});}catch{}
+}
 async function reconcilePayment(){const match=location.hash.match(/payment-return\?(.+)$/);const pending=JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null');const query=match?new URLSearchParams(match[1]):null;const transactionId=query?.get('transactionId')||pending?.transactionId;if(!transactionId)return;const kind=query?.get('kind')||pending?.kind||'membership';try{if(kind==='topup'){for(let attempt=0;attempt<12;attempt++){const result=await paymentStatus(transactionId);if(result.status==='paid'){const wallet=await fetchWallet();update({coins:wallet.balance,walletEntries:wallet.entries||[],walletLoaded:true});sessionStorage.removeItem('game-arena:pending-payment');toast(`+${result.coins||pending?.coins||0} Arena Coins`);location.hash='#/rewards';return;}if(['failed','refunded','voided'].includes(result.status))throw new Error(`Payment ${result.status}.`);await new Promise(resolve=>setTimeout(resolve,2000));}toast('Top-up payment is pending confirmation.');location.hash='#/rewards';return;}const entitlement=await refreshEntitlement(transactionId,{attempts:15,intervalMs:2000});if(entitlement.status==='active'){update({entitlement:entitlement.entitlement,selectedPlan:pending?.planId||getState().selectedPlan});sessionStorage.removeItem('game-arena:pending-payment');track('checkout_complete',{planId:pending?.planId});toast('Game Arena+ is active');location.hash='#/account';}else{toast('Payment is pending confirmation.');location.hash='#/premium';}}catch(error){toast(error.message);location.hash=kind==='topup'?'#/rewards':'#/premium';}}
 function registerServiceWorker(){navigator.serviceWorker.register(`/sw.js?release=${encodeURIComponent(releaseSha())}`,{updateViaCache:'none'}).catch(()=>{});}
-addEventListener('hashchange',()=>{if(location.hash.startsWith('#/payment-return'))reconcilePayment();else render();});addEventListener('online',setNetwork);addEventListener('offline',setNetwork);addEventListener('beforeinstallprompt',event=>{event.preventDefault();window.__GAME_ARENA_INSTALL_PROMPT=event;update({installPromptAvailable:true});});document.querySelector('#profile-button').addEventListener('click',()=>{if(getState().user)location.hash='#/account';else openAuth('signup');});document.querySelector('#coins-button').addEventListener('click',()=>location.hash='#/rewards');document.querySelector('#premium-button').addEventListener('click',()=>location.assign('/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash'));subscribe(()=>render(true));observeVitals();observeErrors();setNetwork();await hydrate();if(!location.hash)location.replace('#/home');else if(location.hash.startsWith('#/payment-return'))reconcilePayment();else render();if('serviceWorker'in navigator){if(document.readyState==='complete')registerServiceWorker();else addEventListener('load',registerServiceWorker,{once:true});}
+addEventListener('hashchange',()=>{if(location.hash.startsWith('#/payment-return'))reconcilePayment();else render();});
+addEventListener('online',setNetwork);addEventListener('offline',setNetwork);
+addEventListener('beforeinstallprompt',event=>{event.preventDefault();window.__GAME_ARENA_INSTALL_PROMPT=event;update({installPromptAvailable:true});});
+document.querySelector('#profile-button')?.addEventListener('click',()=>{if(getState().user)location.hash='#/account';else openAuth('signup');});
+document.querySelector('#coins-button')?.addEventListener('click',()=>location.hash='#/rewards');
+document.querySelector('#premium-button')?.addEventListener('click',()=>location.assign('/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash'));
+subscribe(()=>render(true));
+observeVitals();observeErrors();setNetwork();
+// Paint the shell immediately so a slow/hung catalogue fetch cannot leave every tab blank.
+if(!location.hash)location.replace('#/home');
+else if(location.hash.startsWith('#/payment-return'))reconcilePayment();
+else render();
+await hydrate();
+render(true);
+if('serviceWorker'in navigator){if(document.readyState==='complete')registerServiceWorker();else addEventListener('load',registerServiceWorker,{once:true});}
 }
