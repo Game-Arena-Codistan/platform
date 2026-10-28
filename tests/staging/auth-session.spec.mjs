@@ -17,7 +17,7 @@ test('@player guest browsing stays anonymous until an action needs identity',asy
 
 test('@player OTP rejects a wrong code, accepts the correct code, persists session, and signs out',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'auth-session',invalidFirst:true});
-  await expect(page.getByText(/Free member|Subscribed|Game Arena\+ member/i)).toBeVisible();
+  await expect(page.getByText(/Free member|Subscribed · Game Arena\+|Game Arena\+ member/i)).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading',{name:/Player/i})).toBeVisible();
   await expect(page.locator('#session-summary')).toContainText(/active session/i);

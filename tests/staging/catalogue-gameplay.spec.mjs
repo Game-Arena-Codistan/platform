@@ -4,10 +4,11 @@ import {signInFromAccount,watchPage} from './helpers.mjs';
 const sameOriginPermission=['allow','same-origin'].join('-');
 function adminAssertions(){try{return JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');}catch{return{};}}
 async function ensurePremiumEntitlement(page){
-  const sessionResponse=await page.context().request.get('/api/v1/session');expect(sessionResponse.status()).toBe(200);const session=await sessionResponse.json();expect(session.authenticated).toBe(true);if((session.entitlement?.tier||session.entitlement)==='premium'&&(!session.entitlement?.status||session.entitlement.status==='active')){await page.reload();await expect(page.getByRole('button',{name:'Arena+'}).or(page.getByText(/Subscribed|Game Arena\+ member/i))).toBeVisible({timeout:15000}).catch(()=>{});return;}
+  const sessionResponse=await page.context().request.get('/api/v1/session');expect(sessionResponse.status()).toBe(200);const session=await sessionResponse.json();expect(session.authenticated).toBe(true);if((session.entitlement?.tier||session.entitlement)==='premium'&&(!session.entitlement?.status||session.entitlement.status==='active')){await page.reload();await expect(page.getByRole('button',{name:'Arena+'}).or(page.getByText(/Subscribed · Game Arena\+|Game Arena\+ member/i))).toBeVisible({timeout:15000}).catch(()=>{});return;}
   const adminUrl=String(process.env.STAGING_ADMIN_URL||'').trim();const assertions=adminAssertions();if(!adminUrl||!assertions.admin)throw new Error('BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:assertions.admin});try{const grant=await context.post(`/api/v1/admin/subscriptions/${encodeURIComponent(session.user.id)}/adjust`,{data:{action:'grant',durationDays:30,planId:'manual',reason:'AUTO-QA protected premium catalogue fixture'}});expect(grant.status(),'audited premium fixture grant should succeed').toBe(200);}finally{await context.dispose();}
   await expect.poll(async()=>{const probe=await page.context().request.get('/api/v1/session');const body=await probe.json();return body.entitlement?.tier||body.entitlement;},{timeout:20000}).toBe('premium');
-  await page.reload();
+  await page.goto('/#/account');
+  await expect(page.getByText(/Subscribed · Game Arena\+|Game Arena\+ member/i)).toBeVisible({timeout:20000});
 }
 
 test('@player guest Games surface shows plans only until an active paid plan unlocks the catalogue',async({page})=>{
@@ -25,8 +26,9 @@ test('@player catalogue search, genre filter, save and recent state work in-brow
   await signInFromAccount(page,testInfo,{label:'catalogue-search'});
   await ensurePremiumEntitlement(page);
   await page.goto('/#/library');
+  await expect(page.getByRole('heading',{name:/Discover your next game/i})).toBeVisible({timeout:20000});
   const cards=page.locator('.game-card');
-  await expect(cards.first()).toBeVisible();
+  await expect(cards.first()).toBeVisible({timeout:20000});
   const initialCount=await cards.count();
   expect(initialCount).toBeGreaterThan(1);
   const firstTitle=(await cards.first().locator('h2').textContent())?.trim();
@@ -66,8 +68,9 @@ test('@player authenticated free-game launch uses the isolated iframe and exits 
   await signInFromAccount(page,testInfo,{label:'game-launch'});
   await ensurePremiumEntitlement(page);
   await page.goto('/#/library');
+  await expect(page.getByRole('heading',{name:/Discover your next game/i})).toBeVisible({timeout:20000});
   const freeCard=page.locator('.game-card').filter({has:page.locator('.badge').filter({hasText:/^Free$/})}).first();
-  await expect(freeCard).toBeVisible();
+  await expect(freeCard).toBeVisible({timeout:20000});
   const playResponse=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');
   await freeCard.getByRole('button',{name:'Play'}).click();
   expect((await playResponse).status()).toBe(201);
@@ -79,7 +82,9 @@ test('@player authenticated free-game launch uses the isolated iframe and exits 
   await page.getByRole('button',{name:'Exit game'}).click();
   await expect(page.locator('#game-frame')).toHaveCount(0);
 
-  await page.getByRole('button',{name:'Recent'}).click();
+  await page.goto('/#/library');
+  await expect(page.getByRole('heading',{name:/Discover your next game/i})).toBeVisible({timeout:20000});
+  await page.locator('[data-tab="recent"]').click();
   await expect(page.locator('.game-card')).toHaveCount(1);
   assertClean();
 });
