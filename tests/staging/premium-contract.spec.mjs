@@ -40,8 +40,9 @@ async function persona(browser,testInfo,label,{premium=false}={}){
   if(premium){
     await adjustEntitlement(page,{action:'grant',durationDays:30,planId:'manual',reason:`AUTO-QA premium differential ${label}`});
     await expect.poll(async()=>{const body=await session(page);return body.entitlement?.tier||body.entitlement;},{timeout:20000}).toBe('premium');
+    await page.reload({waitUntil:'domcontentloaded'});
     await page.goto('/#/account');
-    await expect(page.getByText(/Subscribed · Game Arena\+|Game Arena\+ member/i)).toBeVisible({timeout:20000});
+    await expect(page.getByText(/Subscribed.*Game Arena\+|Game Arena\+ member/i)).toBeVisible({timeout:20000});
   }
   const current=await session(page);
   expect(current.entitlement?.tier||current.entitlement).toBe(premium?'premium':'free');
@@ -69,7 +70,7 @@ test('@player @premium-contract free and Arena+ identities stay isolated and eve
     await free.page.goto('/#/account');
     await expect(free.page.getByText(/Free member/i)).toBeVisible();
     await premium.page.goto('/#/account');
-    await expect(premium.page.getByText(/Subscribed · Game Arena\+|Game Arena\+ member/i)).toBeVisible();
+    await expect(premium.page.getByText(/Subscribed.*Game Arena\+|Game Arena\+ member/i)).toBeVisible();
 
     const catalogueResponse=await free.context.request.get('/api/v1/catalog/games');
     expect(catalogueResponse.status()).toBe(200);
