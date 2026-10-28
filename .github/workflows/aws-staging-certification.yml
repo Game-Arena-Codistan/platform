@@ -56,7 +56,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.image_tag }}
-          fetch-depth: 1
+          # Full history so the main-ancestor guard can resolve origin/main after a SHA checkout.
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -94,6 +95,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo 'Certification image_tag must be a full SHA.' >&2; exit 1; }
+          # SHA checkouts do not create origin/main; fetch it explicitly (same pattern as aws-deploy.yml).
+          git fetch origin main --prune
           git merge-base --is-ancestor "$IMAGE_TAG" origin/main || { echo 'Certification SHA is not reachable from main.' >&2; exit 1; }
 
           release_run="$RELEASE_RUN_INPUT"
