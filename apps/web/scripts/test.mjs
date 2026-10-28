@@ -90,7 +90,9 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(librarySource,/canBrowseCatalogue|Activate Game Arena\+/);
   assert.match(accountSource,/renderBillingPanel/);
   assert.match(accountSource,/Subscribed/);
-  assert.match(uiSource,/Confirm password|auth-confirm|registerAccount/);
+  assert.match(uiSource,/Send OTP|#identifier|requestOtp/);
+  assert.match(apiSource,/registerAccount|loginAccount/);
+  assert.match(landingSource,/password|Confirm password|auth-confirm|registerAccount/);
   assert.doesNotMatch(`${billingApiSource}\n${premiumSource}\n${accountSource}\n${landingSource}`,/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
   assert.doesNotMatch(billingApiSource,/amountMinor\s*:/);
   assert.doesNotMatch(premiumSource,/pp_PaymentToken|pp_Password|pp_SecureHash/);
