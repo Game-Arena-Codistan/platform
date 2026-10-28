@@ -74,30 +74,33 @@ function requestOrigin(page){
   return String(process.env.STAGING_PLAYER_URL||'https://gsmarena-play.codistan.org').replace(/\/$/,'');
 }
 
-/** Protected fixtures still use mailbox OTP via API (UI is password+MSISDN). */
+/** Protected fixtures still use mailbox OTP; run verify in-page so HttpOnly cookies attach to the browser jar. */
 async function signInProtectedViaApi(page,testInfo,{tier='free'}={}){
   const identity=protectedQaIdentifier(tier);
-  const origin=requestOrigin(page);
+  await page.goto('/#/account');
+  await expect(page.getByRole('heading',{name:'Guest player'})).toBeVisible();
   const requestedAt=Date.now();
-  const otpResponse=await page.request.post('/api/v1/auth/otp',{data:{identifier:identity},headers:{'content-type':'application/json',origin}});
-  if(otpResponse.status()!==202)throw new Error(`BLOCKED: ${tier} protected staging QA OTP request was not accepted (HTTP ${otpResponse.status()}).`);
-  const payload=await otpResponse.json().catch(()=>({}));
+  const otpResponse=await page.evaluate(async identifier=>{
+    const response=await fetch('/api/v1/auth/otp',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({identifier})});
+    return{status:response.status,payload:await response.json().catch(()=>({}))};
+  },identity);
+  if(otpResponse.status!==202)throw new Error(`BLOCKED: ${tier} protected staging QA OTP request was not accepted (HTTP ${otpResponse.status}).`);
   let code;
   try{
-    code=await resolveOtp({identity,otpResponse:payload,tier,protectedAccount:true,requestedAt,waitMs:90000});
+    code=await resolveOtp({identity,otpResponse:otpResponse.payload,tier,protectedAccount:true,requestedAt,waitMs:90000});
   }catch(error){
     const marker=otpMarker(error);
     if(!retriableProtectedOtpMarkers.has(marker))throw error;
     testInfo.skip(true,String(error.message||error));
   }
-  const verified=await page.request.post('/api/v1/auth/otp/verify',{data:{challengeId:payload.challengeId,code},headers:{'content-type':'application/json',origin}});
-  if(!verified.ok())throw new Error(`BLOCKED: ${tier} protected staging QA OTP verify failed (HTTP ${verified.status()}).`);
-  const session=await page.request.get('/api/v1/session');
-  if(!session.ok())throw new Error(`BLOCKED: ${tier} protected staging QA session probe failed (HTTP ${session.status()}).`);
-  const sessionBody=await session.json().catch(()=>({}));
-  if(!sessionBody.authenticated)throw new Error(`BLOCKED: ${tier} protected staging QA session was not authenticated after OTP verify.`);
+  const verified=await page.evaluate(async({challengeId,code})=>{
+    const response=await fetch('/api/v1/auth/otp/verify',{method:'POST',credentials:'include',headers:{'content-type':'application/json'},body:JSON.stringify({challengeId,code})});
+    return{status:response.status,payload:await response.json().catch(()=>({}))};
+  },{challengeId:otpResponse.payload.challengeId,code});
+  if(verified.status<200||verified.status>=300)throw new Error(`BLOCKED: ${tier} protected staging QA OTP verify failed (HTTP ${verified.status}).`);
+  await page.reload();
   await page.goto('/#/account');
-  await expect(page.getByRole('heading',{level:1})).not.toHaveText('Guest player');
+  await expect(page.getByRole('heading',{level:1})).not.toHaveText('Guest player',{timeout:20000});
   await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
 }
 
