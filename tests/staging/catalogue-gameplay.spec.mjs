@@ -4,7 +4,7 @@ import {signInFromAccount,watchPage} from './helpers.mjs';
 const sameOriginPermission=['allow','same-origin'].join('-');
 function adminAssertions(){try{return JSON.parse(process.env.STAGING_QA_ADMIN_ASSERTIONS_JSON||'{}');}catch{return{};}}
 async function ensurePremiumEntitlement(page){
-  const sessionResponse=await page.context().request.get('/api/v1/session');expect(sessionResponse.status()).toBe(200);const session=await sessionResponse.json();expect(session.authenticated).toBe(true);if((session.entitlement?.tier||session.entitlement)==='premium'&&(!session.entitlement?.status||session.entitlement.status==='active')){await page.reload();await expect(page.getByRole('button',{name:'Arena+'}).or(page.getByText(/Game Arena\+ member/i))).toBeVisible({timeout:15000}).catch(()=>{});return;}
+  const sessionResponse=await page.context().request.get('/api/v1/session');expect(sessionResponse.status()).toBe(200);const session=await sessionResponse.json();expect(session.authenticated).toBe(true);if((session.entitlement?.tier||session.entitlement)==='premium'&&(!session.entitlement?.status||session.entitlement.status==='active')){await page.reload();await expect(page.getByRole('button',{name:'Arena+'}).or(page.getByText(/Subscribed|Game Arena\+ member/i))).toBeVisible({timeout:15000}).catch(()=>{});return;}
   const adminUrl=String(process.env.STAGING_ADMIN_URL||'').trim();const assertions=adminAssertions();if(!adminUrl||!assertions.admin)throw new Error('BLOCKED: signed staging Admin access is required to provision the premium QA fixture.');const context=await request.newContext({baseURL:adminUrl,extraHTTPHeaders:assertions.admin});try{const grant=await context.post(`/api/v1/admin/subscriptions/${encodeURIComponent(session.user.id)}/adjust`,{data:{action:'grant',durationDays:30,planId:'manual',reason:'AUTO-QA protected premium catalogue fixture'}});expect(grant.status(),'audited premium fixture grant should succeed').toBe(200);}finally{await context.dispose();}
   await expect.poll(async()=>{const probe=await page.context().request.get('/api/v1/session');const body=await probe.json();return body.entitlement?.tier||body.entitlement;},{timeout:20000}).toBe('premium');
   await page.reload();
@@ -56,7 +56,8 @@ test('@player a free account cannot launch a premium title from Games and is rou
   await expect(page.locator('.game-card')).toHaveCount(0);
   await page.getByRole('link',{name:/Open checkout|Subscribe with JazzCash/i}).first().click();
   await expect(page).toHaveURL(/\/mainLanding/);
-  await expect(page.getByRole('heading',{name:/Unlock the full Game Arena catalogue/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Enter Your JazzCash Number/i})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Subscribe Now/i})).toBeVisible();
 });
 
 test('@player authenticated free-game launch uses the isolated iframe and exits cleanly',async({page},testInfo)=>{

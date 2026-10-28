@@ -67,7 +67,7 @@ test('@player @premium-contract free and Arena+ identities stay isolated and eve
     await free.page.goto('/#/account');
     await expect(free.page.getByText(/Free member/i)).toBeVisible();
     await premium.page.goto('/#/account');
-    await expect(premium.page.getByText(/Game Arena\+ member/i)).toBeVisible();
+    await expect(premium.page.getByText(/Subscribed|Game Arena\+ member/i)).toBeVisible();
 
     const catalogueResponse=await free.context.request.get('/api/v1/catalog/games');
     expect(catalogueResponse.status()).toBe(200);

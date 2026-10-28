@@ -26,5 +26,6 @@ test('@player discovery feed can save a title and routes locked premium play to 
   await expect(premiumSlide).toBeVisible();
   await premiumSlide.locator('[data-play]').click();
   await expect(page).toHaveURL(/\/mainLanding/);
-  await expect(page.getByRole('heading',{name:/Unlock the full Game Arena catalogue/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Enter Your JazzCash Number/i})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Subscribe Now/i})).toBeVisible();
 });
