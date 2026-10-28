@@ -92,7 +92,7 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(accountSource,/Subscribed/);
   assert.match(uiSource,/Send OTP|#identifier|requestOtp/);
   assert.match(apiSource,/registerAccount|loginAccount/);
-  assert.match(landingSource,/password|Confirm password|auth-confirm|registerAccount/);
+  assert.match(landingSource,/landing-msisdn|Enter Your JazzCash Number/);
   assert.doesNotMatch(`${billingApiSource}\n${premiumSource}\n${accountSource}\n${landingSource}`,/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
   assert.doesNotMatch(billingApiSource,/amountMinor\s*:/);
   assert.doesNotMatch(premiumSource,/pp_PaymentToken|pp_Password|pp_SecureHash/);
