@@ -5,7 +5,7 @@ import {join} from 'node:path';
 const captureDir=process.env.VISUAL_CAPTURE_DIR||'visual-captures';
 const baselinePath=process.env.VISUAL_BASELINE_FILE||'visual-baselines.json';
 const output=process.env.VISUAL_RESULT_OUTPUT||'visual-results.json';
-const baseline=JSON.parse(await readFile(baselinePath,'utf8'));
+const baseline=JSON.parse(String(await readFile(baselinePath,'utf8')).replace(/^\uFEFF/,''));
 const files=(await readdir(captureDir)).filter(name=>name.endsWith('.png')).sort();
 const results=[];
 let reviewRequired=0;

@@ -12,11 +12,11 @@ test('@player rewards page explains wallet semantics and gates account actions f
     await expect(page.getByText(/Keep playing to complete this challenge/i)).toBeVisible();
   }
   await page.locator('[data-topup]').first().click();
-  await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:/Sign in/i})).toBeVisible();
   await page.getByRole('button',{name:'Close'}).click();
   await page.locator('#voucher-form input[name="code"]').fill('AUTO-QA-NOOP');
   await page.getByRole('button',{name:'Redeem'}).click();
-  await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:/Sign in/i})).toBeVisible();
 });
 
 test('@player authenticated rewards loads authoritative wallet and creates a top-up only when offers are enabled',async({page},testInfo)=>{

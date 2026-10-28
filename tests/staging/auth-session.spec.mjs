@@ -17,9 +17,10 @@ test('@player guest browsing stays anonymous until an action needs identity',asy
 
 test('@player password auth rejects a wrong password, accepts the correct one, persists session, and signs out',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'auth-session',invalidFirst:true});
-  await expect(page.getByText(/Free member|Subscribed.*Game Arena\+|Game Arena\+ member|Current plan/i)).toBeVisible();
+  await expect(page.locator('#account-current-plan')).toContainText(/Free|Game Arena\+/i);
+  await expect(page.getByText(/Free member|Subscribed · Game Arena\+/i).first()).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading',{name:/Player|QA/i})).toBeVisible();
+  await expect(page.getByRole('heading',{level:1})).not.toHaveText('Guest player');
   await page.getByRole('button',{name:'Sign out',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Guest player'})).toBeVisible();
   const session=await page.context().request.get('/api/v1/session');
@@ -48,7 +49,8 @@ test('@player password signup and sign-in mode switch works for a fresh MSISDN',
 test('@player protected free QA account authenticates with delivered OTP and remains on the free entitlement',async({page},testInfo)=>{
   test.setTimeout(360000);
   await signInFromAccount(page,testInfo,{label:'free-entitlement',tier:'free',protectedAccount:true});
-  await expect(page.getByText(/Free member/i)).toBeVisible();
+  await expect(page.getByRole('heading',{level:1})).not.toHaveText('Guest player');
+  await expect(page.getByText('Free member',{exact:true})).toBeVisible();
   const session=await page.context().request.get('/api/v1/session');
   expect(session.status()).toBe(200);
   const payload=await session.json();

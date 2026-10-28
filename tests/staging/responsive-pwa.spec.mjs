@@ -11,18 +11,24 @@ test('@critical-mobile key player routes fit the mobile viewport without horizon
 
 test('@player primary navigation is keyboard-operable',async({page})=>{
   await page.goto('/#/home');
-  const games=page.getByRole('link',{name:'Games',exact:true});
+  const games=page.getByRole('link',{name:'Premium Games',exact:true});
   await games.focus();
   await expect(games).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#\/library/);
   await expect(page.locator('#app')).toBeFocused();
 
-  const account=page.locator('#profile-button');
+  const account=page.getByRole('link',{name:'Account',exact:true});
   await account.focus();
   await expect(account).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#\/account/);
+
+  const signUp=page.locator('#profile-button');
+  await signUp.focus();
+  await expect(signUp).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('dialog',{name:/Sign up/i})).toBeVisible();
 });
 
 test('@player PWA manifest and release-scoped service worker are available',async({page})=>{

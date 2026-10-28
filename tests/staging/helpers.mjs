@@ -92,8 +92,13 @@ async function signInProtectedViaApi(page,testInfo,{tier='free'}={}){
   }
   const verified=await page.request.post('/api/v1/auth/otp/verify',{data:{challengeId:payload.challengeId,code},headers:{'content-type':'application/json',origin}});
   if(!verified.ok())throw new Error(`BLOCKED: ${tier} protected staging QA OTP verify failed (HTTP ${verified.status()}).`);
+  const session=await page.request.get('/api/v1/session');
+  if(!session.ok())throw new Error(`BLOCKED: ${tier} protected staging QA session probe failed (HTTP ${session.status()}).`);
+  const sessionBody=await session.json().catch(()=>({}));
+  if(!sessionBody.authenticated)throw new Error(`BLOCKED: ${tier} protected staging QA session was not authenticated after OTP verify.`);
   await page.goto('/#/account');
-  await expect(page.getByRole('heading',{name:/Player|Account|QA/i})).toBeVisible();
+  await expect(page.getByRole('heading',{level:1})).not.toHaveText('Guest player');
+  await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
 }
 
 async function openSignInModal(page){
@@ -168,7 +173,8 @@ export async function signInFromAccount(page,testInfo,{label='player',invalidFir
   }
 
   await expect(page.getByText(/Signed in successfully|Signed in · Game Arena\+/i)).toBeVisible();
-  await expect(page.getByRole('heading',{name:/Player|Account|QA/i})).toBeVisible();
+  await expect(page.getByRole('heading',{level:1})).not.toHaveText('Guest player');
+  await expect(page.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
 }
 
 export async function assertNoHorizontalOverflow(page){
