@@ -28,7 +28,7 @@ test('@player @critical-mobile protected OTP sign-in launches a deployed game an
     await expect(page.getByRole('link',{name:/Go to JazzCash landing/i})).toBeVisible();
     await page.locator('[data-plan]').first().click();
     await expect(page).toHaveURL(/\/mainLanding/);
-    await expect(page.getByRole('heading',{name:/Unlock the full game catalogue/i})).toBeVisible();
+    await expect(page.getByRole('heading',{name:/Unlock the full Game Arena catalogue/i})).toBeVisible();
     await expect(page.getByRole('button',{name:/Subscribe Now/i})).toBeVisible();
     return;
   }

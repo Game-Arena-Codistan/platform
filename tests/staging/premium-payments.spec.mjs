@@ -28,7 +28,7 @@ test('@player authenticated Premium action uses configured server boundary and p
   await signInFromAccount(page,testInfo,{label:'membership-checkout'});const mode=await paymentMode(page);await page.goto('/#/premium');const plan=page.locator('[data-plan]').first();await plan.click();
   if(mode==='external'){
     await expect(page).toHaveURL(/\/mainLanding/);
-    await expect(page.getByRole('heading',{name:/Unlock the full game catalogue/i})).toBeVisible();
+    await expect(page.getByRole('heading',{name:/Unlock the full Game Arena catalogue/i})).toBeVisible();
     await expect(page.getByLabel(/JazzCash mobile number/i)).toBeVisible();
     await expect(page.getByText(/authorize automatic JazzCash billing/i)).toBeVisible();
     return;

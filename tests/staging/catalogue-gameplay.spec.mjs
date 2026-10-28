@@ -56,7 +56,7 @@ test('@player a free account cannot launch a premium title from Games and is rou
   await expect(page.locator('.game-card')).toHaveCount(0);
   await page.getByRole('link',{name:/Open checkout|Subscribe with JazzCash/i}).first().click();
   await expect(page).toHaveURL(/\/mainLanding/);
-  await expect(page.getByRole('heading',{name:/Unlock the full game catalogue/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Unlock the full Game Arena catalogue/i})).toBeVisible();
 });
 
 test('@player authenticated free-game launch uses the isolated iframe and exits cleanly',async({page},testInfo)=>{
