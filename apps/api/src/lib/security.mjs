@@ -1,5 +1,7 @@
-import {createHash,createHmac,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
+import {createHash,createHmac,randomBytes,randomInt,scrypt,timingSafeEqual} from 'node:crypto';
+import {promisify} from 'node:util';
 
+const scryptAsync=promisify(scrypt);
 export const sha256=value=>createHash('sha256').update(String(value)).digest('hex');
 export const randomToken=(bytes=24)=>randomBytes(bytes).toString('base64url');
 export const sixDigitCode=()=>String(randomInt(0,1000000)).padStart(6,'0');
@@ -8,6 +10,21 @@ export function safeEqual(left,right){
   const a=Buffer.from(String(left));
   const b=Buffer.from(String(right));
   return a.length===b.length&&timingSafeEqual(a,b);
+}
+
+export async function hashPassword(password){
+  const salt=randomBytes(16).toString('hex');
+  const derived=await scryptAsync(String(password),salt,32);
+  return `scrypt:${salt}:${Buffer.from(derived).toString('hex')}`;
+}
+
+export async function verifyPassword(password,stored){
+  const [scheme,salt,hash]=String(stored||'').split(':');
+  if(scheme!=='scrypt'||!salt||!hash)return false;
+  const derived=await scryptAsync(String(password),salt,32);
+  const left=Buffer.from(hash,'hex');
+  const right=Buffer.from(derived);
+  return left.length===right.length&&timingSafeEqual(left,right);
 }
 
 export function hmac(secret,value){

@@ -3,6 +3,7 @@ import {expect} from '@playwright/test';
 import {fetchDeliveredBrevoOtp} from './brevo-otp.mjs';
 
 export const runId=String(process.env.QA_RUN_ID||Date.now()).replace(/[^a-zA-Z0-9-]/g,'').slice(-32);
+const qaPassword=String(process.env.STAGING_QA_PASSWORD||`GaQa-${runId.slice(-8)}x`).trim();
 const genericOtp=String(process.env.STAGING_QA_OTP_CODE||'').trim();
 const freeIdentifier=String(process.env.STAGING_QA_FREE_PLAYER_IDENTIFIER||'game.arena+qa-free@codistan.org').trim();
 const freeOtp=String(process.env.STAGING_QA_FREE_PLAYER_OTP_CODE||'').trim();
@@ -13,11 +14,18 @@ function protectedIdentity(tier='free'){
   return tier==='premium'?{identifier:premiumIdentifier,otp:premiumOtp}:{identifier:freeIdentifier,otp:freeOtp};
 }
 
+/** Synthetic player MSISDN unique per run/project/label (03XXXXXXXXX). */
 export function qaIdentifier(testInfo,label='player'){
   const project=String(testInfo.project.name||'browser').replace(/[^a-z0-9]/gi,'-').toLowerCase();
   const suffix=String(label).replace(/[^a-z0-9]/gi,'-').toLowerCase();
-  const token=createHash('sha256').update(`${runId}|${project}|${suffix}`).digest('hex').slice(0,12);
-  return `game.arena+qa-auto-${runId.slice(-10)}-${token}@codistan.org`;
+  const digest=createHash('sha256').update(`${runId}|${project}|${suffix}`).digest('hex');
+  let digits='';
+  for(const ch of digest){
+    const n=parseInt(ch,16);
+    digits+=String(n%10);
+    if(digits.length>=9)break;
+  }
+  return `03${digits.slice(0,9)}`;
 }
 
 export function protectedQaIdentifier(tier='free'){
@@ -58,58 +66,109 @@ async function resolveOtp({identity,otpResponse,tier,protectedAccount,requestedA
   return fetchDeliveredBrevoOtp(identity,{notBefore:requestedAt,waitMs});
 }
 
-async function requestOtpFromOpenModal(page,identity){
-  await page.locator('#identifier').fill(identity);
+function requestOrigin(page){
+  try{
+    const href=page.url();
+    if(href&&href.startsWith('http'))return new URL(href).origin;
+  }catch{/* ignore */}
+  return String(process.env.STAGING_PLAYER_URL||'https://gsmarena-play.codistan.org').replace(/\/$/,'');
+}
+
+/** Protected fixtures still use mailbox OTP via API (UI is password+MSISDN). */
+async function signInProtectedViaApi(page,testInfo,{tier='free'}={}){
+  const identity=protectedQaIdentifier(tier);
+  const origin=requestOrigin(page);
   const requestedAt=Date.now();
-  const responsePromise=page.waitForResponse(response=>response.url().includes('/v1/auth/otp')&&response.request().method()==='POST');
-  await page.getByRole('button',{name:'Send OTP'}).click();
-  const response=await responsePromise;
-  const payload=await response.json().catch(()=>({}));
-  return{response,payload,requestedAt};
+  const otpResponse=await page.request.post('/api/v1/auth/otp',{data:{identifier:identity},headers:{'content-type':'application/json',origin}});
+  if(otpResponse.status()!==202)throw new Error(`BLOCKED: ${tier} protected staging QA OTP request was not accepted (HTTP ${otpResponse.status()}).`);
+  const payload=await otpResponse.json().catch(()=>({}));
+  let code;
+  try{
+    code=await resolveOtp({identity,otpResponse:payload,tier,protectedAccount:true,requestedAt,waitMs:90000});
+  }catch(error){
+    const marker=otpMarker(error);
+    if(!retriableProtectedOtpMarkers.has(marker))throw error;
+    testInfo.skip(true,String(error.message||error));
+  }
+  const verified=await page.request.post('/api/v1/auth/otp/verify',{data:{challengeId:payload.challengeId,code},headers:{'content-type':'application/json',origin}});
+  if(!verified.ok())throw new Error(`BLOCKED: ${tier} protected staging QA OTP verify failed (HTTP ${verified.status()}).`);
+  await page.goto('/#/account');
+  await expect(page.getByRole('heading',{name:/Player|Account|QA/i})).toBeVisible();
+}
+
+async function openSignInModal(page){
+  await page.goto('/#/account');
+  const signIn=page.getByRole('button',{name:'Sign in'});
+  await expect(signIn).toBeVisible();
+  await signIn.click();
+  await expect(page.getByRole('dialog',{name:/Sign in/i})).toBeVisible();
+}
+
+async function switchAuthMode(page,mode){
+  const target=mode==='signup'?'Sign up':'sign in';
+  await page.locator(`[data-auth-mode="${mode}"]`).click();
+  await expect(page.getByRole('dialog',{name:mode==='signup'?/Sign up/i:/Sign in/i})).toBeVisible();
+  void target;
+}
+
+async function registerViaApi(page,msisdn,{name='QA Player',password=qaPassword}={}){
+  const origin=requestOrigin(page);
+  const response=await page.request.post('/api/v1/auth/register',{
+    data:{msisdn,name,password},
+    headers:{'content-type':'application/json',origin}
+  });
+  if(response.status()===201||response.status()===409)return;
+  throw new Error(`BLOCKED: staging QA register failed (HTTP ${response.status()}).`);
+}
+
+async function fillSignIn(page,msisdn,password){
+  await page.locator('#auth-msisdn').fill(msisdn);
+  await page.locator('#auth-password').fill(password);
+  await page.locator('#auth-form button[type="submit"]').click();
+}
+
+async function fillSignUp(page,msisdn,{name='QA Player',password=qaPassword}={}){
+  await page.locator('#auth-msisdn').fill(msisdn);
+  await page.locator('#auth-name').fill(name);
+  await page.locator('#auth-password').fill(password);
+  await page.locator('#auth-confirm').fill(password);
+  await page.locator('#auth-form button[type="submit"]').click();
 }
 
 export async function signInFromAccount(page,testInfo,{label='player',invalidFirst=false,tier='free',protectedAccount=false}={}){
   const suffix=String(label).replace(/[^a-z0-9]/gi,'-').toLowerCase();
   await page.context().setExtraHTTPHeaders({'x-device-id':`autoqa-${runId}-${suffix}`.slice(0,120)});
-  await page.goto('/#/account');
-  const signIn=page.getByRole('button',{name:'Sign in'});
-  await expect(signIn).toBeVisible();
-  await signIn.click();
-  await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
-  const identity=protectedAccount?protectedQaIdentifier(tier):qaIdentifier(testInfo,label);
-  let request=await requestOtpFromOpenModal(page,identity);
-  if(request.response.status()!==202)throw new Error(`BLOCKED: ${tier} staging QA OTP request was not accepted (HTTP ${request.response.status()}).`);
-  let code;
-  try{
-    // Keep protected Brevo waits bounded; long dual waits dominated browser certify runtime.
-    code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:protectedAccount?90000:180000});
-  }catch(error){
-    const marker=otpMarker(error);
-    if(!protectedAccount||!retriableProtectedOtpMarkers.has(marker))throw error;
-    await page.getByRole('button',{name:'Close',exact:true}).click();
-    await signIn.click();
-    await expect(page.getByRole('dialog',{name:/Sign in to continue/i})).toBeVisible();
-    request=await requestOtpFromOpenModal(page,identity);
-    if(request.response.status()!==202)throw new Error(`BLOCKED: ${tier} protected staging QA OTP retry was not accepted (HTTP ${request.response.status()}; after ${marker}).`);
-    try{
-      code=await resolveOtp({identity,otpResponse:request.payload,tier,protectedAccount,requestedAt:request.requestedAt,waitMs:45000});
-    }catch(retryError){
-      const retryMarker=otpMarker(retryError);
-      // Provider delivery flakes must soft-block UAT, not hard-fail deterministic browser lanes.
-      if(retriableProtectedOtpMarkers.has(retryMarker))testInfo.skip(true,String(retryError.message||retryError));
-      throw retryError;
+
+  if(protectedAccount){
+    await page.goto('/');
+    await signInProtectedViaApi(page,testInfo,{tier});
+    return;
+  }
+
+  const msisdn=qaIdentifier(testInfo,label);
+  const password=qaPassword;
+
+  if(invalidFirst){
+    await registerViaApi(page,msisdn,{password});
+    await page.context().clearCookies();
+    await openSignInModal(page);
+    await fillSignIn(page,msisdn,password==='wrong-pass'?'other-pass':'wrong-pass');
+    await expect(page.locator('#auth-status')).toContainText(/invalid|password/i);
+    await fillSignIn(page,msisdn,password);
+  }else{
+    await openSignInModal(page);
+    await switchAuthMode(page,'signup');
+    await fillSignUp(page,msisdn,{password});
+    const status=page.locator('#auth-status');
+    const exists=await status.textContent().catch(()=>'');
+    if(/already exists|sign in instead/i.test(String(exists||''))){
+      await switchAuthMode(page,'signin');
+      await fillSignIn(page,msisdn,password);
     }
   }
-  if(invalidFirst){
-    const invalid=code==='000000'?'111111':'000000';
-    await page.locator('#otp').fill(invalid);
-    await page.getByRole('button',{name:'Verify'}).click();
-    await expect(page.locator('#auth-status')).toContainText(/invalid|expired/i);
-  }
-  await page.locator('#otp').fill(code);
-  await page.getByRole('button',{name:'Verify'}).click();
-  await expect(page.getByText(/Signed in successfully/i)).toBeVisible();
-  await expect(page.getByRole('heading',{name:/Player|Account/i})).toBeVisible();
+
+  await expect(page.getByText(/Signed in successfully|Signed in · Game Arena\+/i)).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Player|Account|QA/i})).toBeVisible();
 }
 
 export async function assertNoHorizontalOverflow(page){

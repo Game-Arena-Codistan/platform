@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {readJson,readPayload,send,problem,redirect,corsHeaders} from './lib/http.mjs';
-import {assertCsrf,clearCookie,csrfCookie,deviceFingerprint,normalizeIdentifier,parseCookies,randomToken,requestIp,safeEqual,sessionCookie,sha256,sixDigitCode} from './lib/security.mjs';
+import {assertCsrf,clearCookie,csrfCookie,deviceFingerprint,hashPassword,normalizeIdentifier,parseCookies,randomToken,requestIp,safeEqual,sessionCookie,sha256,sixDigitCode,verifyPassword} from './lib/security.mjs';
 import {authenticateAdmin} from './lib/admin-auth.mjs';
 import {MockOtpProvider,OtpDeliveryRouter} from './adapters/otp-delivery.mjs';
 import {PaymentService} from './services/payments.mjs';
@@ -31,6 +31,41 @@ export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPoli
       if(method==='GET'&&path==='/v1/catalog/games')return reply(200,{games:store.listGames().map(({source,qaNote,...game})=>game)},{'cache-control':'public, max-age=30, stale-while-revalidate=120'});
       const gameMatch=path.match(/^\/v1\/catalog\/games\/([a-z0-9-]+)$/);if(method==='GET'&&gameMatch){const game=store.getGame(gameMatch[1]);if(!game)throw fail('Game not found.',404,'game_not_found');return reply(200,{game});}
 
+      if(method==='POST'&&path==='/v1/auth/register'){
+        const {value}=await readJson(req);
+        const identity=normalizeIdentifier(value.msisdn||value.identifier);
+        if(identity.type!=='phone')throw fail('Use a Pakistani mobile number to register.',400,'invalid_identifier');
+        const name=String(value.name||'').trim();
+        if(name.length<2||name.length>80)throw fail('Enter your name (2–80 characters).',400,'invalid_name');
+        if(String(value.password||'').length<6)throw fail('Password must be at least 6 characters.',400,'invalid_password');
+        const identityKey=`${identity.type}:${identity.value}`;
+        if(store.usersByIdentity.has(identityKey))throw fail('An account already exists for this number. Sign in instead.',409,'account_exists');
+        const user=store.findOrCreateUser(identity);
+        user.displayName=name;
+        user.passwordHash=await hashPassword(value.password);
+        user.updatedAt=new Date(clock()).toISOString();
+        store.users.set(user.id,user);
+        const token=randomToken();const csrf=randomToken(18);const deviceHash=deviceFingerprint(req);const ipHash=sha256(requestIp(req));const now=clock();
+        const session={id:randomUUID(),hash:sha256(token),csrfHash:sha256(csrf),userId:user.id,deviceHash,ipHash,risk:'new_device',createdAt:now,lastSeenAt:now,rotatedAt:now,expiresAt:now+config.sessionTtlSeconds*1000,revokedAt:null};
+        store.createSession(session);
+        store.audit.write({actor:user.id,action:'auth.registered',targetType:'session',targetId:session.id,requestId,metadata:{identityType:identity.type}});
+        return reply(201,{user:{id:user.id,displayName:user.displayName,status:user.status},entitlement:store.getEntitlement(user.id).tier,coins:store.wallet(user.id),csrfToken:csrf},{'set-cookie':[sessionCookie(config.sessionCookieName,token,config.sessionTtlSeconds,secure),csrfCookie(config.csrfCookieName,csrf,config.sessionTtlSeconds,secure)]});
+      }
+      if(method==='POST'&&path==='/v1/auth/login'){
+        const {value}=await readJson(req);
+        const identity=normalizeIdentifier(value.msisdn||value.identifier);
+        if(identity.type!=='phone')throw fail('Use a Pakistani mobile number to sign in.',400,'invalid_identifier');
+        const identityKey=`${identity.type}:${identity.value}`;
+        const userId=store.usersByIdentity.get(identityKey);
+        const user=userId?store.getUser(userId):null;
+        if(!user?.passwordHash||!(await verifyPassword(value.password,user.passwordHash)))throw fail('Invalid mobile number or password.',401,'invalid_credentials');
+        const token=randomToken();const csrf=randomToken(18);const deviceHash=deviceFingerprint(req);const ipHash=sha256(requestIp(req));const now=clock();
+        const known=store.devices.has(`${user.id}:${deviceHash}`);
+        const session={id:randomUUID(),hash:sha256(token),csrfHash:sha256(csrf),userId:user.id,deviceHash,ipHash,risk:known?'normal':'new_device',createdAt:now,lastSeenAt:now,rotatedAt:now,expiresAt:now+config.sessionTtlSeconds*1000,revokedAt:null};
+        store.createSession(session);
+        store.audit.write({actor:user.id,action:'auth.signed_in',targetType:'session',targetId:session.id,requestId,metadata:{identityType:identity.type,method:'password',risk:session.risk}});
+        return reply(200,{user:{id:user.id,displayName:user.displayName,status:user.status},entitlement:store.getEntitlement(user.id).tier,coins:store.wallet(user.id),csrfToken:csrf},{'set-cookie':[sessionCookie(config.sessionCookieName,token,config.sessionTtlSeconds,secure),csrfCookie(config.csrfCookieName,csrf,config.sessionTtlSeconds,secure)]});
+      }
       if(method==='POST'&&path==='/v1/auth/otp'){
         const {value}=await readJson(req);const identity=normalizeIdentifier(value.identifier);const ipHash=sha256(requestIp(req));const deviceHash=deviceFingerprint(req);const now=clock();
         const recent=[...store.otp.values()].find(item=>item.identity.type===identity.type&&item.identity.value===identity.value&&!item.consumed&&item.createdAt>now-config.otpResendSeconds*1000);if(recent)throw fail('Please wait before requesting another code.',429,'otp_resend_too_soon',{retryAfter:Math.ceil((recent.createdAt+config.otpResendSeconds*1000-now)/1000)});

@@ -285,11 +285,14 @@ body.landing-mode #app{
 .ga-lp-legal a{color:var(--purple);font-weight:700;text-decoration:underline}
 
 @media (max-width:720px){
-  .ga-lp{width:100%;--ga-panel-w:calc(100% - 20px)}
-  .ga-lp-above{padding-bottom:.35rem}
-  .ga-lp-hero{background:#0b1630;border-radius:16px}
-  .ga-lp-banner-swap{background:#0b1630;border-radius:16px}
-  .ga-lp-card{border-radius:16px;margin-top:6px;padding:12px 12px 10px}
+  /* Full-bleed banner on mobile — no side gutters, no crop. */
+  .ga-lp{width:100%;--ga-panel-w:100%;background:#fff}
+  .ga-lp-above{padding-top:0;padding-bottom:.35rem}
+  .ga-lp-hero{background:#0b1630;border-radius:0;width:100%;max-width:100%;box-shadow:none}
+  .ga-lp-banner-swap{background:#0b1630;border-radius:0}
+  .ga-lp-banner{width:100%;height:auto;object-fit:contain}
+  .ga-lp-card{width:calc(100% - 20px);max-width:calc(100% - 20px);border-radius:16px;margin-top:6px;padding:12px 12px 10px}
+  .ga-lp-trust,.ga-lp-legal{width:calc(100% - 20px);max-width:calc(100% - 20px)}
   .ga-lp-title{gap:6px;margin-bottom:8px;font-size:16px}
   .ga-lp-phone-icon{width:26px;height:26px}
   .ga-lp-phone-icon svg{width:14px;height:14px}
@@ -309,6 +312,7 @@ body.landing-mode #app{
   .ga-lp-trust>div:last-child{border-bottom:0}
 }
 @media (max-width:520px){
-  .ga-lp{--ga-panel-w:calc(100% - 16px)}
-  .ga-lp-card{padding:12px}
+  .ga-lp{--ga-panel-w:100%}
+  .ga-lp-card{padding:12px;width:calc(100% - 16px);max-width:calc(100% - 16px)}
+  .ga-lp-trust,.ga-lp-legal{width:calc(100% - 16px);max-width:calc(100% - 16px)}
 }

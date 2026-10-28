@@ -135,6 +135,10 @@ async function startCheckout({landing,campaign,commerce}){
     status.textContent='Redirecting to JazzCash…';
     if(!submitWalletPortal(result))throw new Error('JazzCash portal response was incomplete.');
   }catch(error){
+    if(error.code==='already_linked'||/already linked/i.test(String(error.message||''))){
+      status.textContent='This JazzCash number already has Game Arena+. Sign in with the same number to continue.';
+      return;
+    }
     status.textContent=error.status===429?'Too many requests. Please retry shortly.':(error.message||'Unable to start JazzCash checkout.');
   }
 }

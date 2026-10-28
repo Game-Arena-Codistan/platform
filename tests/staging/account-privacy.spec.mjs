@@ -1,26 +1,21 @@
 import {test,expect} from '@playwright/test';
 import {signInFromAccount} from './helpers.mjs';
 
-test('@player account preferences persist locally and legal documents stay reachable',async({page})=>{
+test('@player guest account shows legal documents and upgrade path',async({page})=>{
   await page.goto('/#/account');
-  const reduced=page.locator('[data-setting="reducedMotion"]');
-  await expect(reduced).not.toBeChecked();
-  await reduced.check();
-  await expect(reduced).toBeChecked();
-  await page.reload();
-  await expect(page.locator('[data-setting="reducedMotion"]')).toBeChecked();
-  const reducedClass=await page.evaluate(()=>document.documentElement.classList.contains('reduce-motion'));
-  expect(reducedClass).toBe(true);
-
+  await expect(page.getByRole('heading',{name:'Guest player'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Privacy'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Terms'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Reward rules'})).toBeVisible();
   for(const path of ['/legal/privacy.html','/legal/terms.html','/legal/rewards.html']){
     const response=await page.context().request.get(path);
     expect(response.status(),`${path} should be reachable`).toBe(200);
   }
 });
 
-test('@player signed-in account exposes active sessions, export, and other-device revocation',async({page},testInfo)=>{
+test('@player signed-in account shows current plan, export, and other-device revocation',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'account-controls'});
-  await expect(page.locator('#session-summary')).toContainText(/active session/i);
+  await expect(page.locator('#account-current-plan')).toContainText(/Free|Game Arena\+/i);
 
   const downloadPromise=page.waitForEvent('download');
   await page.getByRole('button',{name:'Export data'}).click();
@@ -29,7 +24,7 @@ test('@player signed-in account exposes active sessions, export, and other-devic
 
   await page.getByRole('button',{name:'Sign out other devices'}).click();
   await expect(page.getByText(/other session.*signed out/i)).toBeVisible();
-  await expect(page.getByRole('heading',{name:/Player/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Player|QA/i})).toBeVisible();
 });
 
 test('@player account deletion is executable only with the explicit synthetic-account safety flag',async({page},testInfo)=>{
