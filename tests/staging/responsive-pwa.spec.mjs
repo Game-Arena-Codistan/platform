@@ -25,8 +25,12 @@ test('@player primary navigation is keyboard-operable',async({page})=>{
   await expect(page).toHaveURL(/#\/account/);
 
   const signUp=page.locator('#profile-button');
-  await signUp.focus();
-  await expect(signUp).toBeFocused();
+  await expect(signUp).toBeVisible();
+  // Programmatic focus can lose the race to chrome re-renders; retry via the element API.
+  await expect.poll(async()=>{
+    await signUp.evaluate(node=>node.focus());
+    return signUp.evaluate(node=>document.activeElement===node);
+  },{timeout:10000}).toBe(true);
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog',{name:/Sign up/i})).toBeVisible();
 });

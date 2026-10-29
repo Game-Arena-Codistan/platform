@@ -70,8 +70,17 @@ function render(force=false){
     if(balance)balance.textContent=Number(state.coins||0).toLocaleString('en-PK');
     const profile=document.querySelector('#profile-button');
     if(profile){
-      if(state.user){profile.textContent=(state.user.displayName||'P').slice(0,2).toUpperCase();profile.classList.remove('avatar-cta');profile.setAttribute('aria-label','Open account');}
-      else{profile.textContent='Sign up';profile.classList.add('avatar-cta');profile.setAttribute('aria-label','Sign up');}
+      if(state.user){
+        const label=(state.user.displayName||'P').slice(0,2).toUpperCase();
+        // Avoid rewriting DOM when unchanged — textContent assignment blurs a focused control.
+        if(profile.textContent!==label)profile.textContent=label;
+        profile.classList.remove('avatar-cta');
+        if(profile.getAttribute('aria-label')!=='Open account')profile.setAttribute('aria-label','Open account');
+      }else{
+        if(profile.textContent!=='Sign up')profile.textContent='Sign up';
+        profile.classList.add('avatar-cta');
+        if(profile.getAttribute('aria-label')!=='Sign up')profile.setAttribute('aria-label','Sign up');
+      }
     }
     const premium=document.querySelector('#premium-button');
     if(premium)premium.hidden=state.entitlement==='premium'||state.entitlement?.tier==='premium';
