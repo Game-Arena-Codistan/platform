@@ -13,13 +13,17 @@ async function ensurePremiumEntitlement(page){
   await expect(page.getByText(/Subscribed.*Game Arena\+|Game Arena\+ member/i)).toBeVisible({timeout:20000});
 }
 
-test('@player guest Games surface shows plans only until an active paid plan unlocks the catalogue',async({page})=>{
+test('@player guest Games surface lists free titles and routes premium unlock to JazzCash',async({page})=>{
   const assertClean=watchPage(page);
   await page.goto('/#/library');
-  await expect(page.getByRole('heading',{name:/Choose a plan to play|Activate Game Arena\+/i})).toBeVisible();
-  await expect(page.locator('.game-card')).toHaveCount(0);
-  await expect(page.getByRole('link',{name:/Subscribe with JazzCash|Open checkout/i}).first()).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Discover your next game/i})).toBeVisible();
+  await expect(page.getByText(/10 free games for guests/i)).toBeVisible();
+  await expect(page.locator('.game-card').first()).toBeVisible();
+  const premium=page.locator('.game-card').filter({has:page.locator('.badge',{hasText:/^Arena\+$/})}).first();
+  await expect(premium.getByRole('button',{name:'Unlock'})).toBeVisible();
   assertClean();
+  await premium.getByRole('button',{name:'Unlock'}).click();
+  await expect(page).toHaveURL(/\/mainLanding/);
 });
 
 test('@player catalogue search, genre filter, save and recent state work in-browser',async({page},testInfo)=>{
@@ -56,9 +60,10 @@ test('@player catalogue search, genre filter, save and recent state work in-brow
 test('@player a free account cannot launch a premium title from Games and is routed to JazzCash plans',async({page},testInfo)=>{
   await signInFromAccount(page,testInfo,{label:'premium-lock'});
   await page.goto('/#/library');
-  await expect(page.getByRole('heading',{name:/Activate Game Arena\+/i})).toBeVisible();
-  await expect(page.locator('.game-card')).toHaveCount(0);
-  await page.getByRole('link',{name:/Open checkout|Subscribe with JazzCash/i}).first().click();
+  await expect(page.getByRole('heading',{name:/Discover your next game/i})).toBeVisible();
+  const premium=page.locator('.game-card').filter({has:page.locator('.badge',{hasText:/^Arena\+$/})}).first();
+  await expect(premium).toBeVisible();
+  await premium.getByRole('button',{name:'Unlock'}).click();
   await expect(page).toHaveURL(/\/mainLanding/);
   await expect(page.getByRole('heading',{name:/Enter Your JazzCash Number/i})).toBeVisible();
   await expect(page.getByRole('button',{name:/Subscribe Now/i})).toBeVisible();

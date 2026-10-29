@@ -6,9 +6,10 @@ test('@player guest browsing stays anonymous until an action needs identity',asy
   await page.goto('/#/account');
   await expect(page.getByRole('heading',{name:'Guest player'})).toBeVisible();
   await page.goto('/#/library');
-  await expect(page.getByRole('heading',{name:/Choose a plan to play|Activate Game Arena\+/i})).toBeVisible();
-  await expect(page.locator('.game-card')).toHaveCount(0);
-  await expect(page.getByRole('link',{name:/Subscribe with JazzCash|Open checkout|Upgrade/i}).first()).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Discover your next game/i})).toBeVisible();
+  await expect(page.getByText(/10 free games for guests/i)).toBeVisible();
+  await expect(page.locator('.game-card').first()).toBeVisible();
+  await expect(page.getByRole('link',{name:/Unlock with JazzCash/i})).toBeVisible();
   await page.goto('/#/premium');
   await page.locator('[data-plan]:not([disabled])').first().click();
   await expect(page).toHaveURL(/\/mainLanding/);

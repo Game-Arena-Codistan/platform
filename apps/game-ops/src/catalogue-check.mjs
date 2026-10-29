@@ -18,11 +18,11 @@ for(const game of catalogue){
     pilotCount+=1;
     if(game.status!=='paused')errors.push(`${game.title}: controlled pilot must remain paused`);
     if(Number(game.rolloutPercentage)!==0)errors.push(`${game.title}: controlled pilot rollout must remain zero`);
-    if(game.version!=='1.0.0-pilot.1')errors.push(`${game.title}: unexpected controlled pilot version`);
+    if(game.version!=='1.0.0')errors.push(`${game.title}: unexpected controlled pilot version`);
     if(game.sourceType!=='controlled-pilot')errors.push(`${game.title}: controlled pilot source type missing`);
     if(game.rewardsEnabled!==false)errors.push(`${game.title}: controlled pilot rewards must remain disabled`);
     if(game.competitionsEnabled!==false)errors.push(`${game.title}: controlled pilot competitions must remain disabled`);
-    if(game.gameUrl)errors.push(`${game.title}: controlled pilot must not expose an external URL`);
+    if(game.gameUrl&&!String(game.gameUrl).startsWith('/games/'))errors.push(`${game.title}: controlled pilot must not expose an external URL`);
     continue;
   }
 
@@ -37,8 +37,10 @@ for(const game of catalogue){
 
   activeCount+=1;
   if(game.status!=='live'||(game.qaStatus&&game.qaStatus!=='working'))errors.push(`${game.title}: not release-approved`);
+  const gameUrl=String(game.gameUrl||'');
+  if(gameUrl.startsWith('/games/'))continue;
   try{
-    const url=new URL(game.gameUrl);
+    const url=new URL(gameUrl);
     if(url.protocol!=='https:'||!allowedHosts.has(url.hostname))errors.push(`${game.title}: unapproved game URL`);
   }catch{errors.push(`${game.title}: invalid game URL`);}
 }

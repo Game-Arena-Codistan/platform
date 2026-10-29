@@ -13,7 +13,7 @@ test('controlled pilot overlay owns all four pilot catalogue records',()=>{
     const game=records[0];
     assert.equal(game.status,'paused');
     assert.equal(game.rolloutPercentage,0);
-    assert.equal(game.version,'1.0.0-pilot.1');
+    assert.equal(game.version,'1.0.0');
     assert.equal(game.sourceType,'controlled-pilot');
     assert.equal(game.rewardsEnabled,false);
     assert.equal(game.competitionsEnabled,false);
