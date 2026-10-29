@@ -16,6 +16,7 @@ import {PaymentService} from './services/payments.mjs';
 import {RewardPolicy} from './services/reward-policy.mjs';
 import {processAccountRetention} from './services/account-retention.mjs';
 import {hashPassword} from './lib/security.mjs';
+import {applyCatalogueTier} from './lib/catalogue-tier-policy.mjs';
 
 const config=loadConfig();
 let store;
@@ -26,6 +27,19 @@ if(config.databaseUrl){
 }else{
   if(config.requireDatabase)throw new Error('DATABASE_URL is required in production.');
   store=new MemoryStore();
+}
+
+const tierSync=applyCatalogueTier(store.games);
+if(tierSync.updated){
+  try{
+    if(store.commit){
+      const commit=()=>store.commit();
+      if(store.runExclusive)await store.runExclusive(commit);else await commit();
+    }
+    console.log(JSON.stringify({level:'info',message:'Catalogue free/premium tiers applied',updated:tierSync.updated,freeSlots:tierSync.free}));
+  }catch(error){
+    console.error(JSON.stringify({level:'error',message:'Catalogue tier sync failed',error:error.message}));
+  }
 }
 
 if(!config.allowExternalGames){
