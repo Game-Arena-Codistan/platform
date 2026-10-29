@@ -24,8 +24,11 @@ window.GAME_ARENA_CONFIG={mode:"${MODE}",apiBaseUrl:"${API}",gameOrigin:"${ORIGI
 EOF
 cp /usr/share/nginx/html/index.template.html /usr/share/nginx/html/index.html
 if [ -n "$GAME_SOURCE" ]; then
-  sed -i "s#frame-src 'self';#frame-src 'self' ${GAME_SOURCE};#" /usr/share/nginx/html/index.html
-  sed -i "s#img-src 'self' data:;#img-src 'self' data: ${GAME_SOURCE};#" /usr/share/nginx/html/index.html
+  # Keep baked-in portfolio CDN hosts; prepend the configured controlled origin when distinct.
+  if ! grep -Fq "$GAME_SOURCE" /usr/share/nginx/html/index.html; then
+    sed -i "s#frame-src 'self'#frame-src 'self' ${GAME_SOURCE}#" /usr/share/nginx/html/index.html
+    sed -i "s#img-src 'self' data:#img-src 'self' data: ${GAME_SOURCE}#" /usr/share/nginx/html/index.html
+  fi
 fi
 sed -i "s#/src/app.js#/src/app.js?v=${RELEASE}#" /usr/share/nginx/html/index.html
 sed -i "s#/styles/tokens.css#/styles/tokens.css?v=${RELEASE}#;s#/styles/app.css#/styles/app.css?v=${RELEASE}#;s#/styles/responsive.css#/styles/responsive.css?v=${RELEASE}#" /usr/share/nginx/html/index.html

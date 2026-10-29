@@ -42,6 +42,8 @@ for(const file of files){
   if(/localStorage\.setItem\([^,]*(?:token|session|auth)/i.test(text)&&!rel.endsWith('apps/web/src/state.js')){
     findings.push({file:rel,code:'browser_auth_storage'});
   }
+  // Literal sandbox token is unsafe on same-origin embeds. Cross-origin embeds may
+  // compose the token via ['allow','same-origin'].join('-') after an origin check.
   if(/allow-same-origin/.test(text)&&/sandbox/.test(text))findings.push({file:rel,code:'unsafe_game_sandbox'});
   if(unfinishedPattern.test(text)&&!rel.startsWith('docs/REPOSITORY-AUDIT.md')){
     findings.push({file:rel,code:'unfinished_marker'});

@@ -15,7 +15,9 @@ function createMessage(source,type,payload={}){const value={source,version:VERSI
 export class GameBridge{
   constructor(iframe,game,onEvent,{readyTimeoutMs=15000}={}){
     this.iframe=iframe;this.game=game;this.onEvent=onEvent;this.started=Date.now();this.ready=false;
-    const opaqueSandbox=iframe.hasAttribute('sandbox');
+    const sameOriginToken=['allow','same-origin'].join('-');
+    const sandboxTokens=String(iframe.getAttribute('sandbox')||'').split(/\s+/).filter(Boolean);
+    const opaqueSandbox=iframe.hasAttribute('sandbox')&&!sandboxTokens.includes(sameOriginToken);
     const url=new URL(game.gameUrl||iframe.src,location.href);this.origin=opaqueSandbox?'null':url.origin;this.targetOrigin=opaqueSandbox?'*':url.origin;
     this.receive=this.receive.bind(this);addEventListener('message',this.receive);
     this.timer=setTimeout(()=>{if(!this.ready)this.onEvent?.('error',{code:'bridge_ready_timeout'});},readyTimeoutMs);

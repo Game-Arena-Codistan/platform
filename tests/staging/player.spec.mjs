@@ -21,7 +21,7 @@ test('@player @critical-mobile protected OTP sign-in launches a deployed game an
   const playResponse=page.waitForResponse(response=>response.url().includes('/v1/play-sessions')&&response.request().method()==='POST');
   await page.locator('[data-home-play]').first().click();
   expect((await playResponse).status()).toBe(201);
-  const frame=page.locator('#game-frame');await expect(frame).toBeVisible();const frameSrc=await frame.getAttribute('src');expect(frameSrc).toMatch(/^https:\/\//);const sandbox=await frame.getAttribute('sandbox');expect(sandbox||'').not.toContain(sameOriginPermission);await page.getByRole('button',{name:'Exit game'}).click();
+  const frame=page.locator('#game-frame');await expect(frame).toBeVisible();const frameSrc=await frame.getAttribute('src');expect(frameSrc).toMatch(/^https:\/\//);const sandbox=await frame.getAttribute('sandbox')||'';const crossOrigin=new URL(frameSrc).origin!==new URL(page.url()).origin;if(crossOrigin)expect(sandbox).toContain(sameOriginPermission);else expect(sandbox).not.toContain(sameOriginPermission);await page.getByRole('button',{name:'Exit game'}).click();
 
   const mode=await paymentMode(page);await page.goto('/#/premium');
   if(mode==='external'){

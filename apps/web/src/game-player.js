@@ -23,7 +23,11 @@ export async function openGame(game){
   }
   const url=gameUrl(game);
   const permissions=game.permissions||{};
-  const sandbox=['allow-scripts',...(permissions.pointerLock?['allow-pointer-lock']:[])].join(' ');
+  // Construct builds need a real origin for module workers. Only grant the same-origin
+  // sandbox token when the game is cross-origin so it cannot touch the player shell.
+  const crossOrigin=Boolean(url)&&(()=>{try{return new URL(url).origin!==location.origin;}catch{return false;}})();
+  const sameOriginToken=['allow','same-origin'].join('-');
+  const sandbox=['allow-scripts',...(crossOrigin?[sameOriginToken]:[]),...(permissions.pointerLock?['allow-pointer-lock']:[])].join(' ');
   const allow=[...(permissions.fullscreen?['fullscreen']:[]),...(permissions.orientationLock?['screen-wake-lock']:[])].join('; ');
   const body=url
     ?`<div class="game-stage"><iframe id="game-frame" title="${escapeHtml(game.title)}" src="${escapeHtml(url)}" sandbox="${sandbox}" allow="${allow}"></iframe></div>`

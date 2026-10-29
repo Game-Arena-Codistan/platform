@@ -17,6 +17,7 @@ import {RewardPolicy} from './services/reward-policy.mjs';
 import {processAccountRetention} from './services/account-retention.mjs';
 import {hashPassword} from './lib/security.mjs';
 import {applyCatalogueTier} from './lib/catalogue-tier-policy.mjs';
+import {applyPortfolioDelivery,DEFAULT_PORTFOLIO_ORIGIN} from './lib/catalogue-delivery.mjs';
 
 const config=loadConfig();
 let store;
@@ -30,15 +31,22 @@ if(config.databaseUrl){
 }
 
 const tierSync=applyCatalogueTier(store.games);
-if(tierSync.updated){
+// Always rewrite controlled /games/... portfolio entrypoints to the cross-origin
+// Codistan bundle so Construct workers can run under a safe cross-origin sandbox.
+const deliverySync=applyPortfolioDelivery(store.games,{
+  origin:process.env.GAME_ARENA_PORTFOLIO_ORIGIN||DEFAULT_PORTFOLIO_ORIGIN,
+  enabled:process.env.GAME_ARENA_PORTFOLIO_DELIVERY!=='0'
+});
+if(tierSync.updated||deliverySync.updated){
   try{
     if(store.commit){
       const commit=()=>store.commit();
       if(store.runExclusive)await store.runExclusive(commit);else await commit();
     }
-    console.log(JSON.stringify({level:'info',message:'Catalogue free/premium tiers applied',updated:tierSync.updated,freeSlots:tierSync.free}));
+    if(tierSync.updated)console.log(JSON.stringify({level:'info',message:'Catalogue free/premium tiers applied',updated:tierSync.updated,freeSlots:tierSync.free}));
+    if(deliverySync.updated)console.log(JSON.stringify({level:'info',message:'Catalogue portfolio delivery URLs applied',updated:deliverySync.updated,origin:deliverySync.origin}));
   }catch(error){
-    console.error(JSON.stringify({level:'error',message:'Catalogue tier sync failed',error:error.message}));
+    console.error(JSON.stringify({level:'error',message:'Catalogue tier/delivery sync failed',error:error.message}));
   }
 }
 

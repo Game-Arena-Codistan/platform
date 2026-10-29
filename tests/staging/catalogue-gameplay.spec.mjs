@@ -83,8 +83,16 @@ test('@player authenticated free-game launch uses the isolated iframe and exits 
   expect((await playResponse).status()).toBe(201);
   const frame=page.locator('#game-frame');
   await expect(frame).toBeVisible();
-  expect(await frame.getAttribute('src')).toMatch(/^https:\/\//);
-  expect((await frame.getAttribute('sandbox'))||'').not.toContain(sameOriginPermission);
+  const frameSrc=await frame.getAttribute('src');
+  expect(frameSrc).toMatch(/^https:\/\//);
+  const sandbox=(await frame.getAttribute('sandbox'))||'';
+  const frameOrigin=new URL(frameSrc,page.url()).origin;
+  const shellOrigin=new URL(page.url()).origin;
+  if(frameOrigin===shellOrigin)expect(sandbox).not.toContain(sameOriginPermission);
+  else{
+    expect(sandbox).toContain(sameOriginPermission);
+    expect(frameOrigin).toContain('gamesbundle.codistan.org');
+  }
   await expect(page.getByText('Secure isolated player')).toBeVisible();
   await page.getByRole('button',{name:'Exit game'}).click();
   await expect(page.locator('#game-frame')).toHaveCount(0);
