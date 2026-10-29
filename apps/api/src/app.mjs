@@ -39,8 +39,12 @@ export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPoli
         if(name.length<2||name.length>80)throw fail('Enter your name (2–80 characters).',400,'invalid_name');
         if(String(value.password||'').length<6)throw fail('Password must be at least 6 characters.',400,'invalid_password');
         const identityKey=`${identity.type}:${identity.value}`;
-        if(store.usersByIdentity.has(identityKey))throw fail('An account already exists for this number. Sign in instead.',409,'account_exists');
-        const user=store.findOrCreateUser(identity);
+        const existingId=store.usersByIdentity.get(identityKey);
+        const existing=existingId?store.getUser(existingId):null;
+        // Guest JazzCash checkout creates a phone user without a password; claim it on signup.
+        if(existing?.passwordHash)throw fail('An account already exists for this number. Sign in instead.',409,'account_exists');
+        const user=existing||store.findOrCreateUser(identity);
+        const claimed=Boolean(existing);
         user.displayName=name;
         user.passwordHash=await hashPassword(value.password);
         user.updatedAt=new Date(clock()).toISOString();
@@ -48,8 +52,8 @@ export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPoli
         const token=randomToken();const csrf=randomToken(18);const deviceHash=deviceFingerprint(req);const ipHash=sha256(requestIp(req));const now=clock();
         const session={id:randomUUID(),hash:sha256(token),csrfHash:sha256(csrf),userId:user.id,deviceHash,ipHash,risk:'new_device',createdAt:now,lastSeenAt:now,rotatedAt:now,expiresAt:now+config.sessionTtlSeconds*1000,revokedAt:null};
         store.createSession(session);
-        store.audit.write({actor:user.id,action:'auth.registered',targetType:'session',targetId:session.id,requestId,metadata:{identityType:identity.type}});
-        return reply(201,{user:{id:user.id,displayName:user.displayName,status:user.status},entitlement:store.getEntitlement(user.id).tier,coins:store.wallet(user.id),csrfToken:csrf},{'set-cookie':[sessionCookie(config.sessionCookieName,token,config.sessionTtlSeconds,secure),csrfCookie(config.csrfCookieName,csrf,config.sessionTtlSeconds,secure)]});
+        store.audit.write({actor:user.id,action:claimed?'auth.claimed':'auth.registered',targetType:'session',targetId:session.id,requestId,metadata:{identityType:identity.type,claimed}});
+        return reply(claimed?200:201,{user:{id:user.id,displayName:user.displayName,status:user.status},entitlement:store.getEntitlement(user.id).tier,coins:store.wallet(user.id),csrfToken:csrf},{'set-cookie':[sessionCookie(config.sessionCookieName,token,config.sessionTtlSeconds,secure),csrfCookie(config.csrfCookieName,csrf,config.sessionTtlSeconds,secure)]});
       }
       if(method==='POST'&&path==='/v1/auth/login'){
         const {value}=await readJson(req);

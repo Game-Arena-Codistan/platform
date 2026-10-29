@@ -8,11 +8,19 @@ export function toast(message){const node=document.createElement('div');node.cla
 export function closeModal(){modalRoot.replaceChildren();}
 export function modal(title,body,{wide=false}={}){modalRoot.innerHTML=`<div class="modal-backdrop" role="presentation"><section class="modal ${wide?'modal-wide':''}" role="dialog" aria-modal="true" aria-labelledby="modal-title"><header class="modal-head"><h2 id="modal-title">${escapeHtml(title)}</h2><button class="icon-button" data-close type="button" aria-label="Close">×</button></header>${body}</section></div>`;modalRoot.querySelector('[data-close]').addEventListener('click',closeModal);modalRoot.querySelector('.modal-backdrop').addEventListener('click',event=>{if(event.target===event.currentTarget)closeModal();});modalRoot.querySelector('input,button')?.focus();return modalRoot.querySelector('.modal');}
 
+function landingMsisdn(){
+  try{return String(sessionStorage.getItem('game-arena:landing-msisdn')||'').replace(/\s/g,'');}catch{return'';}
+}
+function clearLandingAuthSeed(){
+  try{sessionStorage.removeItem('game-arena:landing-msisdn');sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
+}
 function authMarkup(mode='signin'){
   const isSignUp=mode==='signup';
+  const seeded=landingMsisdn();
+  const phoneAttrs=seeded?` value="${escapeHtml(seeded)}" readonly`:'';
   return `<form id="auth-form" class="stack" data-mode="${mode}">
-    <p class="muted">${isSignUp?'Create an account with your mobile number.':'Sign in with your mobile number and password.'}</p>
-    <div class="field"><label for="auth-msisdn">Phone number</label><input id="auth-msisdn" name="msisdn" inputmode="tel" autocomplete="tel" required pattern="(\\+92|0)?3\\d{9}" placeholder="03XX XXXXXXX"></div>
+    <p class="muted">${isSignUp?'Create an account with your mobile number.':'Sign in with your mobile number and password.'}${seeded?' Your JazzCash number is locked until you finish sign-in.':''}</p>
+    <div class="field"><label for="auth-msisdn">Phone number</label><input id="auth-msisdn" name="msisdn" inputmode="tel" autocomplete="tel" required pattern="(\\+92|0)?3\\d{9}" placeholder="03XX XXXXXXX"${phoneAttrs}></div>
     ${isSignUp?'<div class="field"><label for="auth-name">Name</label><input id="auth-name" name="name" autocomplete="name" required maxlength="80" placeholder="Your name"></div>':''}
     <div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="${isSignUp?'new-password':'current-password'}" required minlength="6" placeholder="At least 6 characters"></div>
     ${isSignUp?'<div class="field"><label for="auth-confirm">Confirm password</label><input id="auth-confirm" name="confirm" type="password" autocomplete="new-password" required minlength="6" placeholder="Re-enter password"></div>':''}
@@ -48,6 +56,7 @@ function bindAuthForm(resolve){
         update({user:result.user,entitlement:result.entitlement?.tier||result.entitlement||'free',coins:result.coins??getState().coins});
         track('signin_complete');
       }
+      clearLandingAuthSeed();
       closeModal();
       toast(getState().entitlement==='premium'?'Signed in · Game Arena+ subscribed':'Signed in successfully');
       resolve(true);

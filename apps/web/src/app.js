@@ -20,11 +20,26 @@ if(bootLandingIfNeeded()){
 const routes={home:[renderHome,bindHome],feed:[renderFeed,bindFeed],library:[renderLibrary,bindLibrary],compete:[renderCompete,bindCompete],rewards:[renderRewards,bindRewards],premium:[renderPremium,bindPremium],account:[renderAccount,bindAccount],support:[renderSupport,bindSupport]};
 const app=document.querySelector('#app');const balance=document.querySelector('#coin-balance');const network=document.querySelector('#network-status');let current='';
 function route(){const name=location.hash.replace(/^#\//,'').split(/[/?]/)[0]||'home';return routes[name]?name:'home';}
+function hasPendingSubscription(){
+  try{return Boolean(JSON.parse(sessionStorage.getItem('game-arena:pending-subscription')||'null'));}catch{return false;}
+}
+function syncLibraryNavVisibility(state=getState()){
+  const library=document.querySelector('[data-route="library"]');
+  if(!library)return;
+  const hide=!state.user&&(hasPendingSubscription()||state.entitlement==='premium'||state.entitlement?.tier==='premium');
+  library.hidden=hide;
+  library.setAttribute('aria-hidden',hide?'true':'false');
+  if(hide&&location.hash.startsWith('#/library'))location.hash='#/home';
+}
 function paymentBanner(){
   const params=new URLSearchParams(location.hash.includes('?')?location.hash.split('?')[1]:'');
   if(params.get('payment')!=='succeeded')return;
   const txn=params.get('orderId')||params.get('txn')||'';
   if(txn)trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
+  try{
+    const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
+    if(!getState().user)sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:'monthly',at:Date.now(),source:'home-return'}));
+  }catch{/* ignore */}
   if(document.querySelector('#payment-success-banner'))return;
   const banner=document.createElement('div');
   banner.id='payment-success-banner';
@@ -56,6 +71,7 @@ function render(force=false){
     }
     const premium=document.querySelector('#premium-button');
     if(premium)premium.hidden=state.entitlement==='premium'||state.entitlement?.tier==='premium';
+    syncLibraryNavVisibility(state);
     document.documentElement.classList.toggle('reduce-motion',state.settings.reducedMotion);
   }catch(error){
     console.error('render failed',error);

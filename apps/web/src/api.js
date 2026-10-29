@@ -25,25 +25,33 @@ export async function registerAccount({msisdn,name,password}){
   const phone=mobile.startsWith('0')?mobile:`0${mobile}`;
   if(!String(name||'').trim())throw new Error('Name is required.');
   if(String(password||'').length<6)throw new Error('Password must be at least 6 characters.');
-  if(config.mode==='live')return request('/v1/auth/register',{method:'POST',body:JSON.stringify({msisdn:phone,name:String(name).trim(),password})});
+  if(config.mode==='live'){
+    const result=await request('/v1/auth/register',{method:'POST',body:JSON.stringify({msisdn:phone,name:String(name).trim(),password})});
+    try{sessionStorage.removeItem('game-arena:landing-msisdn');sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
+    return result;
+  }
   await wait();
   const accounts=readAccounts();
   if(accounts[phone])throw new Error('An account already exists for this number. Sign in instead.');
   accounts[phone]={id:`local-${phone}`,displayName:String(name).trim(),password:String(password),msisdn:phone};
   writeAccounts(accounts);
   const premium=pendingPremium(phone);
-  if(premium)try{sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
+  if(premium)try{sessionStorage.removeItem('game-arena:pending-subscription');sessionStorage.removeItem('game-arena:landing-msisdn');}catch{/* ignore */}
   return{user:{id:accounts[phone].id,displayName:accounts[phone].displayName,msisdn:phone},entitlement:premium?'premium':'free',coins:120,csrfToken:'demo'};
 }
 export async function loginAccount({msisdn,password}){
   const mobile=normalizeMsisdn(msisdn);
   const phone=mobile.startsWith('0')?mobile:(/^3\d{9}$/.test(mobile)?`0${mobile}`:mobile);
-  if(config.mode==='live')return request('/v1/auth/login',{method:'POST',body:JSON.stringify({msisdn:phone,password})});
+  if(config.mode==='live'){
+    const result=await request('/v1/auth/login',{method:'POST',body:JSON.stringify({msisdn:phone,password})});
+    try{sessionStorage.removeItem('game-arena:landing-msisdn');sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
+    return result;
+  }
   await wait();
   const account=readAccounts()[phone];
   if(!account||account.password!==String(password||''))throw new Error('Invalid mobile number or password.');
   const premium=pendingPremium(phone);
-  if(premium)try{sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
+  if(premium)try{sessionStorage.removeItem('game-arena:pending-subscription');sessionStorage.removeItem('game-arena:landing-msisdn');}catch{/* ignore */}
   return{user:{id:account.id,displayName:account.displayName,msisdn:phone},entitlement:premium?'premium':'free',coins:120,csrfToken:'demo'};
 }
 export async function logout(){if(config.mode==='live')return request('/v1/auth/logout',{method:'POST'});}

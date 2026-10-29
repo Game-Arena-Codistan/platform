@@ -10,11 +10,18 @@ import {track} from '../analytics.js';
 let query='';let genre='All';let tab='all';
 const landingHref=defaultLandingHref('monthly');
 function canBrowseCatalogue(){return Boolean(getState().user)&&isPremium();}
+function hasPendingGuestPremium(){
+  if(getState().user)return false;
+  try{if(JSON.parse(sessionStorage.getItem('game-arena:pending-subscription')||'null'))return true;}catch{/* ignore */}
+  return getState().entitlement==='premium'||getState().entitlement?.tier==='premium';
+}
 function filtered(){const state=getState();const games=getGames();let list=games.filter(game=>(genre==='All'||game.genre===genre)&&(`${game.title} ${game.description} ${game.genre}`.toLowerCase().includes(query.toLowerCase())));if(tab==='saved')list=list.filter(game=>state.favourites.includes(game.id));if(tab==='recent')list=state.recent.map(id=>list.find(game=>game.id===id)).filter(Boolean);if(tab==='downloads')list=list.filter(game=>game.downloadUrl&&game.tier==='free');return list;}
 function card(game){const locked=game.tier==='premium'&&!isPremium();const saved=getState().favourites.includes(game.id);const offlineEligible=game.tier==='free'&&Boolean(game.downloadUrl);return `<article class="card game-card" style="--art:${game.art}"><div class="game-card-shade"></div><div class="game-card-content"><div class="badge-row"><span class="badge ${game.tier==='premium'?'premium':''}">${game.tier==='premium'?'Arena+':'Free'}</span>${game.multiplayer?'<span class="badge">Multiplayer</span>':''}</div><h2>${escapeHtml(game.title)}</h2><p>${escapeHtml(game.description)}</p><div class="game-actions"><button class="button ${locked?'gold':'primary'}" data-play="${game.id}" type="button">${locked?'Unlock':'Play'}</button><button class="button secondary" data-save="${game.id}" aria-pressed="${saved}" type="button">${saved?'★':'☆'}</button>${offlineEligible?`<button class="button secondary" data-download="${game.id}" type="button" aria-label="Save ${escapeHtml(game.title)} for offline access">↓</button>`:''}</div></div></article>`;}
 function planCard(plan){const comingSoon=Boolean(plan.comingSoon||plan.status==='coming_soon');const recommended=Boolean(plan.recommended);return `<article class="card plan ${recommended?'recommended':''}">${recommended?'<span class="badge premium">Best value</span>':''}<h2>${escapeHtml(plan.name)}</h2><div class="price">${money(plan.price)} <small>/ ${escapeHtml(plan.period)}</small></div><p class="muted">${escapeHtml(plan.description||'')}</p>${comingSoon?'<button class="button secondary" type="button" disabled>Coming soon</button>':`<a class="button gold" href="${landingHref}">Subscribe with JazzCash</a>`}</article>`;}
 function renderPlansGate(plans){const signedIn=Boolean(getState().user);return `<section class="page"><header class="page-head"><div><span class="eyebrow">Games</span><h1>${signedIn?'Activate Game Arena+ to unlock games':'Choose a plan to play'}</h1><p>${signedIn?'Your account is signed in, but an active paid plan is required for the full catalogue.':'Sign-in is not required to pay. Subscribe with JazzCash, then sign in with the same number.'}</p></div><a class="button secondary" href="${landingHref}">Open checkout</a></header><div class="plan-grid">${plans.map(planCard).join('')}</div><section class="card card-body"><h2>Premium includes</h2><ul class="feature-list">${premiumFeatures.map(item=>`<li>${escapeHtml(item)}</li>`).join('')}</ul></section></section>`;}
+function renderPendingSignInGate(){return `<section class="page"><header class="page-head"><div><span class="eyebrow">Premium Games</span><h1>Sign in to open your catalogue</h1><p>Your JazzCash plan is active. Sign in with the same number to play premium games — plans are already purchased.</p></div><a class="button gold" href="#/account">Sign in</a></header></section>`;}
 export function renderLibrary(){
+  if(hasPendingGuestPremium())return renderPendingSignInGate();
   if(!canBrowseCatalogue()){
     const plans=legacyPlans.map(item=>({...item,price:Number(item.price),period:item.period}));
     return renderPlansGate(plans);
@@ -23,6 +30,13 @@ export function renderLibrary(){
   return `<section class="page"><header class="page-head"><div><span class="eyebrow">Games catalogue</span><h1>Discover your next game</h1><p>Search, save, revisit and launch games from one mobile-first library.</p></div><a class="button secondary" href="#/feed">Open swipe feed</a></header><div class="tab-row" role="tablist"><button class="chip ${tab==='all'?'active':''}" data-tab="all">All</button><button class="chip ${tab==='saved'?'active':''}" data-tab="saved">Saved</button><button class="chip ${tab==='recent'?'active':''}" data-tab="recent">Recent</button><button class="chip ${tab==='downloads'?'active':''}" data-tab="downloads">Offline</button></div><div class="searchbar"><input id="game-search" type="search" value="${escapeHtml(query)}" placeholder="Search ${games.length} games" aria-label="Search games"></div><div class="chip-row" aria-label="Genres">${genres.map(item=>`<button class="chip ${item===genre?'active':''}" data-genre="${item}" type="button">${escapeHtml(item)}</button>`).join('')}</div><div id="library-grid" class="grid">${list.map(card).join('')}</div><div id="library-empty" class="empty" ${list.length?'hidden':''}><h3>No games here yet</h3><p>Try another filter or play a game to build your recent list.</p></div></section>`;
 }
 export function bindLibrary(){
+  if(hasPendingGuestPremium()){
+    document.querySelector('a[href="#/account"]')?.addEventListener('click',event=>{
+      event.preventDefault();
+      import('../ui.js').then(({openAuth})=>openAuth('signin'));
+    });
+    return;
+  }
   if(!canBrowseCatalogue()){
     fetchBillingPlans().then(payload=>{
       const plans=(payload?.plans||[]).filter(item=>['monthly','yearly'].includes(String(item.code||item.planCode||''))).map(item=>{

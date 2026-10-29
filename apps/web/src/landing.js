@@ -42,6 +42,15 @@ function fitLandingAboveFold(){
   if(!fit||!above)return;
   above.style.transform='none';
   fit.style.height='auto';
+  // Mobile: never scale — scaling leaves white side gutters. Keep full-bleed banner.
+  if(window.matchMedia('(max-width:720px)').matches){
+    fit.dataset.scale='1';
+    if(img&&!img.dataset.fitBound){
+      img.dataset.fitBound='1';
+      img.addEventListener('load',fitLandingAboveFold,{once:true});
+    }
+    return;
+  }
   const natural=above.scrollHeight||above.offsetHeight;
   const available=Math.max(320,window.innerHeight-8);
   const scale=natural>available?Math.min(1,available/natural):1;
@@ -52,6 +61,30 @@ function fitLandingAboveFold(){
     img.dataset.fitBound='1';
     img.addEventListener('load',fitLandingAboveFold,{once:true});
   }
+}
+
+function benefitsFooter(){
+  const items=[
+    ['catalogue','Full Game Catalogue','Unlock the complete Game Arena library, including premium games unavailable to free members.'],
+    ['tournaments','Exclusive Tournaments','Get access to premium tournaments and special gaming events.'],
+    ['coins','Earn Arena Coins','Play, compete and complete eligible challenges to earn Arena Coins and exciting rewards.'],
+    ['vouchers','Exclusive Offers & Vouchers','Enjoy special discounts, promotional offers and partner vouchers when available.'],
+    ['priority','Priority Access','Be the first to know about new games, tournaments, events and exclusive offers.'],
+    ['rewards','Enhanced Rewards','Unlock additional reward opportunities, including Arena Coins, vouchers and other eligible rewards.'],
+    ['community','Join a Bigger Community','Connect with players, teams and gaming enthusiasts across Pakistan.'],
+    ['experience','A Better Gaming Experience','More games, more tournaments, more rewards and more of what you love.']
+  ];
+  return `<section class="ga-lp-benefits" aria-labelledby="ga-lp-benefits-title">
+    <div class="ga-lp-benefits-inner">
+      <header class="ga-lp-benefits-head">
+        <h2 id="ga-lp-benefits-title">Game Arena <span>Premium</span> Benefits</h2>
+        <p>More games — more rewards — a better gaming experience.</p>
+      </header>
+      <ul class="ga-lp-benefits-grid">
+        ${items.map(([key,title,copy])=>`<li class="ga-lp-benefit" data-icon="${key}"><span class="ga-lp-benefit-icon" aria-hidden="true"></span><div><h3>${title}</h3><p>${copy}</p></div></li>`).join('')}
+      </ul>
+    </div>
+  </section>`;
 }
 
 function renderLanding(landing,commerce){
@@ -101,6 +134,7 @@ function renderLanding(landing,commerce){
     <div><b>Help jab chahiye</b><small>24/7 Support</small></div>
   </section>
   <p class="ga-lp-legal">Jari rakhne se aap Game Arena ki <a href="/legal/terms.html" target="_blank" rel="noopener">Terms and Conditions</a> se raazi hoon. Already paid? <a href="/#/account">Sign in</a>.</p>
+  ${benefitsFooter()}
 </main>`;
 }
 
@@ -129,7 +163,7 @@ async function startCheckout({landing,campaign,commerce}){
       try{sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:commerce.planCode,landing,at:Date.now()}));}catch{/* ignore */}
       update({entitlement:'premium',selectedPlan:commerce.planCode==='yearly'?'yearly':'monthly'});
       status.textContent='Premium Features Unlocked. Redirecting…';
-      location.assign('/#/account?payment=succeeded');
+      location.assign('/#/home?payment=succeeded');
       return;
     }
     status.textContent='Redirecting to JazzCash…';
@@ -159,8 +193,8 @@ function handleLandingReturn(campaign,landing){
       const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
       sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:planCodeForPackage(campaign.package),landing,at:Date.now()}));
     }catch{/* ignore */}
-    if(status)status.textContent='Premium Features Unlocked. Sign in with your JazzCash number to continue.';
-    setTimeout(()=>location.assign('/#/account?payment=succeeded'),900);
+    if(status)status.textContent='Premium Features Unlocked. Redirecting…';
+    setTimeout(()=>location.assign('/#/home?payment=succeeded'),900);
   }
 }
 

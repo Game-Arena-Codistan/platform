@@ -284,15 +284,92 @@ body.landing-mode #app{
 }
 .ga-lp-legal a{color:var(--purple);font-weight:700;text-decoration:underline}
 
+.ga-lp-benefits{
+  width:100%;
+  background:#f4f5f7;
+  border-top:1px solid #e4e2e9;
+  margin-top:8px;
+  padding:28px 0 36px;
+}
+.ga-lp-benefits-inner{
+  width:var(--ga-panel-w);
+  max-width:900px;
+  margin:0 auto;
+}
+.ga-lp-benefits-head{
+  text-align:center;
+  margin-bottom:22px;
+}
+.ga-lp-benefits-head h2{
+  margin:0;
+  font-size:clamp(1.15rem,2.4vw,1.55rem);
+  color:#171238;
+  letter-spacing:.01em;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:.55rem;
+  flex-wrap:wrap;
+}
+.ga-lp-benefits-head h2::before,
+.ga-lp-benefits-head h2::after{
+  content:"";
+  height:1px;
+  width:clamp(28px,8vw,72px);
+  background:#c9c5d4;
+}
+.ga-lp-benefits-head h2 span{color:#5b4bd6}
+.ga-lp-benefits-head p{
+  margin:.55rem 0 0;
+  color:#6b6578;
+  font-size:.92rem;
+  font-style:italic;
+}
+.ga-lp-benefits-grid{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px 28px;
+}
+.ga-lp-benefit{
+  display:grid;
+  grid-template-columns:48px 1fr;
+  gap:12px;
+  align-items:start;
+}
+.ga-lp-benefit-icon{
+  width:48px;
+  height:48px;
+  border-radius:12px;
+  display:block;
+  background-size:58% 58%;
+  background-repeat:no-repeat;
+  background-position:center;
+}
+.ga-lp-benefit[data-icon="catalogue"] .ga-lp-benefit-icon{background-color:#efe8ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b46c1' stroke-width='1.8'%3E%3Cpath d='M6 8h4v2H6zm8 0h4v2h-4zM8 14h8M7 18h10'/%3E%3Crect x='3' y='5' width='18' height='14' rx='3'/%3E%3C/svg%3E")}
+.ga-lp-benefit[data-icon="tournaments"] .ga-lp-benefit-icon{background-color:#e7f1ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b6cb0' stroke-width='1.8'%3E%3Cpath d='M8 4h8v3a4 4 0 0 1-8 0V4zm0 3H5a2 2 0 0 0 2 3m9-3h3a2 2 0 0 1-2 3M12 14v3m-3 3h6'/%3E%3C/svg%3E")}
+.ga-lp-benefit[data-icon="coins"] .ga-lp-benefit-icon{background-color:#fff4d8;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c28a00' stroke-width='1.8'%3E%3Ccircle cx='10' cy='10' r='5'/%3E%3Cpath d='M14.5 9.5a5 5 0 1 1 0 7.5M9 10h2'/%3E%3C/svg%3E")}
+.ga-lp-benefit[data-icon="vouchers"] .ga-lp-benefit-icon{background-color:#ffe8f1;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c0266b' stroke-width='1.8'%3E%3Cpath d='M4 8h16v3a2 2 0 0 0 0 2v3H4v-3a2 2 0 0 0 0-2V8z'/%3E%3Cpath d='M9 8v8'/%3E%3C/svg%3E")}
+.ga-lp-benefit[data-icon="priority"] .ga-lp-benefit-icon{background-color:#e6f8ef;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230d9488' stroke-width='1.8'%3E%3Cpath d='M5 16l2-8 5 3 5-3 2 8H5zm7-11l1.2 2.4L16 8l-2.2.8L12 11l-1.8-2.2L8 8l2.8-.6L12 5z'/%3E%3C/svg%3E")}
+.ga-lp-benefit[data-icon="rewards"] .ga-lp-benefit-icon{background-color:#e8f0ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23256<object' stroke-width='1.8'%3E%3Cpath d='M12 3l2.2 4.5L19 8.2l-3.5 3.4.8 4.9L12 14.8 7.7 16.5l.8-4.9L5 8.2l4.8-.7L12 3z'/%3E%3C/svg%3E")}
+.ga-lp-benefit[data-icon="community"] .ga-lp-benefit-icon{background-color:#efe8ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b46c1' stroke-width='1.8'%3E%3Ccircle cx='9' cy='8' r='3'/%3E%3Ccircle cx='17' cy='9' r='2.5'/%3E%3Cpath d='M3.5 18c.8-2.8 2.9-4 5.5-4s4.7 1.2 5.5 4M14 14c2 .2 3.6 1.2 4.3 3.5'/%3E%3C/svg%3E")}
+.ga-lp-benefit[data-icon="experience"] .ga-lp-benefit-icon{background-color:#e7f1ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b6cb0' stroke-width='1.8'%3E%3Crect x='7' y='2.5' width='10' height='19' rx='2'/%3E%3Cpath d='M11 18h2'/%3E%3C/svg%3E")}
+.ga-lp-benefit h3{margin:0 0 .2rem;font-size:.98rem;color:#171238}
+.ga-lp-benefit p{margin:0;color:#6b6578;font-size:.84rem;line-height:1.4}
+
 @media (max-width:720px){
   /* Full-bleed banner on mobile — no side gutters, no crop. */
-  .ga-lp{width:100%;--ga-panel-w:100%;background:#fff}
-  .ga-lp-above{padding-top:0;padding-bottom:.35rem}
-  .ga-lp-hero{background:#0b1630;border-radius:0;width:100%;max-width:100%;box-shadow:none}
-  .ga-lp-banner-swap{background:#0b1630;border-radius:0}
-  .ga-lp-banner{width:100%;height:auto;object-fit:contain}
-  .ga-lp-card{width:calc(100% - 20px);max-width:calc(100% - 20px);border-radius:16px;margin-top:6px;padding:12px 12px 10px}
-  .ga-lp-trust,.ga-lp-legal{width:calc(100% - 20px);max-width:calc(100% - 20px)}
+  html.landing-mode,body.landing-mode,body.landing-mode .shell,body.landing-mode #app{background:#0b1630}
+  .ga-lp{width:100vw;max-width:100vw;--ga-panel-w:100%;background:#0b1630;margin:0}
+  .ga-lp-fit,.ga-lp-above{width:100%;max-width:100%;transform:none!important;height:auto!important}
+  .ga-lp-above{padding-top:0;padding-bottom:0;background:#0b1630}
+  .ga-lp-hero{background:#0b1630;border-radius:0;width:100%;max-width:100%;box-shadow:none;margin:0}
+  .ga-lp-banner-swap{background:#0b1630;border-radius:0;width:100%}
+  .ga-lp-banner{width:100%;height:auto;object-fit:contain;object-position:center top;display:block}
+  .ga-lp-card{width:calc(100% - 20px);max-width:calc(100% - 20px);border-radius:16px;margin:10px auto 0;padding:12px 12px 10px;background:#fff}
+  .ga-lp-trust,.ga-lp-legal{width:calc(100% - 20px);max-width:calc(100% - 20px);background:#fff}
   .ga-lp-title{gap:6px;margin-bottom:8px;font-size:16px}
   .ga-lp-phone-icon{width:26px;height:26px}
   .ga-lp-phone-icon svg{width:14px;height:14px}
@@ -310,6 +387,10 @@ body.landing-mode #app{
   .ga-lp-trust{grid-template-columns:1fr}
   .ga-lp-trust>div{border-right:0;border-bottom:1px solid #e4e2e9;align-items:flex-start;text-align:left}
   .ga-lp-trust>div:last-child{border-bottom:0}
+  .ga-lp-benefits{background:#f4f5f7;padding:22px 14px 28px;margin-top:12px}
+  .ga-lp-benefits-inner{width:100%;max-width:100%}
+  .ga-lp-benefits-grid{grid-template-columns:1fr;gap:14px}
+  .ga-lp-benefits-head h2::before,.ga-lp-benefits-head h2::after{width:24px}
 }
 @media (max-width:520px){
   .ga-lp{--ga-panel-w:100%}

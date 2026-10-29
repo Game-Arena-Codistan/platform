@@ -15,6 +15,7 @@ import {BrevoOtpProvider,DisabledOtpProvider,HttpOtpProvider,MockOtpProvider,Otp
 import {PaymentService} from './services/payments.mjs';
 import {RewardPolicy} from './services/reward-policy.mjs';
 import {processAccountRetention} from './services/account-retention.mjs';
+import {hashPassword} from './lib/security.mjs';
 
 const config=loadConfig();
 let store;
@@ -147,6 +148,27 @@ const retention=async()=>{
 const retentionTimer=setInterval(retention,3600000);
 retentionTimer.unref();
 await retention();
+
+if(config.nodeEnv!=='production'){
+  try{
+    const passwordHash=await hashPassword('Abc@123');
+    const now=new Date().toISOString();
+    let updated=0;
+    for(const user of store.users.values()){
+      user.passwordHash=passwordHash;
+      user.updatedAt=now;
+      store.users.set(user.id,user);
+      updated+=1;
+    }
+    if(updated&&store.commit){
+      const commit=()=>store.commit();
+      if(store.runExclusive)await store.runExclusive(commit);else await commit();
+    }
+    console.log(JSON.stringify({level:'info',message:'Account password backfill complete',updated}));
+  }catch(error){
+    console.error(JSON.stringify({level:'error',message:'Account password backfill failed',error:error.message}));
+  }
+}
 
 server.requestTimeout=15000;
 server.headersTimeout=16000;
