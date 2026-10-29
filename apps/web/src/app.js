@@ -52,15 +52,19 @@ function render(force=false){
   try{
     if(!app)return;
     const name=route();
-    if(force||name!==current){
+    const routeChanged=name!==current;
+    if(force||routeChanged){
       current=name;
       const [view,bind]=routes[name];
       app.innerHTML=view();
       try{bind?.();}catch(error){console.error('route bind failed',name,error);}
       paymentBanner();
       document.querySelectorAll('[data-route]').forEach(link=>link.classList.toggle('active',link.dataset.route===name));
-      app.focus({preventScroll:true});
-      track('route_view',{route:name});
+      // Only move focus on real navigation — state-driven re-renders must not steal keyboard focus.
+      if(routeChanged){
+        app.focus({preventScroll:true});
+        track('route_view',{route:name});
+      }
     }
     const state=getState();
     if(balance)balance.textContent=Number(state.coins||0).toLocaleString('en-PK');
