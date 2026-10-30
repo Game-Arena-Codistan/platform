@@ -12,7 +12,7 @@ const required={
   '.github/workflows/promote-production.yml':['workflow_dispatch:','uat_record:','confirmation:','No successful staging deployment + certification workflow','AUTHORIZED FOR PRODUCTION PREPARATION','NO DEPLOYMENT PERFORMED'],
   '.github/workflows/aws-production.yml':['Managed AWS production promotion - future lane','AWS_MANAGED_PRODUCTION_ENABLED','needs: guard'],
   'infra/docker-compose.staging.yml':['${IMAGE_TAG:?IMAGE_TAG is required}','${IMAGE_BASE}-api:${IMAGE_TAG}','${IMAGE_BASE}-web:${IMAGE_TAG}','${IMAGE_BASE}-admin:${IMAGE_TAG}','${IMAGE_BASE}-games:${IMAGE_TAG}','ADMIN_AUTH_MODE: signed-headers','ADMIN_API_KEYS: ${ADMIN_API_KEYS:-}','game.arena+qa-admin@codistan.org','127.0.0.1:18183:8080'],
-  'infra/gateway/nginx.conf':['upstream admin','location = /admin','location /admin/','proxy_pass http://admin/'],
+  'infra/gateway/nginx.conf':['resolver 127.0.0.11','location = /admin','location /admin/','set $admin_upstream admin:8080'],
   'tests/staging/playwright.config.mjs':['retries:0','trace:\'off\'','video:\'off\'','mobile-chromium','admin-chromium','visual-chromium'],
   'tests/staging/brevo-otp.mjs':['fetchDeliveredBrevoOtp','BREVO_API_KEY','transactionalEmails','BREVO_OTP_NOT_DELIVERED'],
   'tests/staging/helpers.mjs':['STAGING_QA_FREE_PLAYER_IDENTIFIER','STAGING_QA_PREMIUM_PLAYER_IDENTIFIER','STAGING_QA_OTP_CODE','STAGING_QA_PASSWORD','game.arena+qa-free@codistan.org','brevo-remote','signInFromAccount','assertNoHorizontalOverflow'],
