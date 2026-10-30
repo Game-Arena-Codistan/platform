@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'infra/gateway/**'
+      - 'infra/host-nginx/**'
       - 'infra/docker-compose.staging.yml'
       - '.github/workflows/staging-edge-recovery.yml'
 
@@ -44,9 +45,9 @@ jobs:
       - name: Restore gateway route and public edge
         run: |
           set -euo pipefail
-          tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf | \
+          tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf infra/host-nginx | \
             ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=30 "$DEPLOY_USER@$DEPLOY_HOST" \
-              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env'
+              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env; test -f infra/host-nginx/game-arena-admin.conf'
           ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=30 "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -uo pipefail
           cd /opt/codistan/platform
@@ -121,11 +122,70 @@ jobs:
             exit 1
           fi
           if [ "$admin" != 1 ] || [ "$admin_via_gateway" != 1 ]; then
-            echo "CRITICAL: /admin unhealthy (admin=$admin admin_via_gateway=$admin_via_gateway admin_dns=$admin_dns)" >&2
+            echo "CRITICAL: docker /admin unhealthy (admin=$admin admin_via_gateway=$admin_via_gateway admin_dns=$admin_dns)" >&2
             "${compose[@]}" logs --tail=120 admin gateway 2>&1 || true
             "${compose[@]}" exec -T gateway getent hosts admin 2>&1 || true
             exit 1
           fi
-          echo 'Staging edge recovery complete (player + /admin).'
+
+          echo '=== fix public host nginx /admin → gateway:8095 ==='
+          echo '--- nginx admin mentions ---'
+          sudo -n grep -RIn 'admin' /etc/nginx 2>/dev/null | head -n 80 || grep -RIn 'admin' /etc/nginx 2>/dev/null | head -n 80 || true
+          sudo -n mkdir -p /etc/nginx/snippets 2>/dev/null || mkdir -p /etc/nginx/snippets 2>/dev/null || true
+          if sudo -n test -d /etc/nginx/snippets 2>/dev/null; then
+            sudo -n cp -f infra/host-nginx/game-arena-admin.conf /etc/nginx/snippets/game-arena-admin.conf
+          elif test -d /etc/nginx/snippets; then
+            cp -f infra/host-nginx/game-arena-admin.conf /etc/nginx/snippets/game-arena-admin.conf
+          fi
+          # Ensure the public site includes the snippet once (idempotent).
+          site_files="$(sudo -n grep -Rls 'gsmarena-play.codistan.org' /etc/nginx 2>/dev/null || grep -Rls 'gsmarena-play.codistan.org' /etc/nginx 2>/dev/null || true)"
+          for site in $site_files; do
+            echo "patching $site"
+            if ! sudo -n grep -q 'snippets/game-arena-admin.conf' "$site" 2>/dev/null && ! grep -q 'snippets/game-arena-admin.conf' "$site" 2>/dev/null; then
+              tmp="$(mktemp)"
+              sudo -n cat "$site" 2>/dev/null | awk '
+                BEGIN{done=0}
+                /server_name[[:space:]]+.*gsmarena-play\.codistan\.org/ && done==0 {
+                  print
+                  print "    include snippets/game-arena-admin.conf;"
+                  done=1
+                  next
+                }
+                {print}
+              ' > "$tmp" || cat "$site" | awk '
+                BEGIN{done=0}
+                /server_name[[:space:]]+.*gsmarena-play\.codistan\.org/ && done==0 {
+                  print
+                  print "    include snippets/game-arena-admin.conf;"
+                  done=1
+                  next
+                }
+                {print}
+              ' > "$tmp"
+              sudo -n cp "$tmp" "$site" 2>/dev/null || cp "$tmp" "$site"
+              rm -f "$tmp"
+            fi
+          done
+          # Remove conflicting /admin locations that are not our snippet (best-effort).
+          for site in $site_files; do
+            if sudo -n grep -n 'location.*/admin' "$site" 2>/dev/null | grep -v game-arena-admin >/dev/null; then
+              echo "WARNING: $site still contains other /admin locations; inspect manually if public /admin stays 502" >&2
+              sudo -n grep -n 'location.*/admin' "$site" 2>/dev/null || true
+            fi
+          done
+          if sudo -n nginx -t 2>&1 || nginx -t 2>&1; then
+            sudo -n systemctl reload nginx 2>&1 || systemctl reload nginx 2>&1 || sudo -n systemctl restart nginx 2>&1 || true
+          else
+            echo 'WARNING: nginx -t failed after admin snippet install' >&2
+          fi
+
+          public_admin="$(curl --silent --max-time 8 -k -o /dev/null -w '%{http_code}' -H 'Host: gsmarena-play.codistan.org' https://127.0.0.1/admin/healthz || true)"
+          echo "public_admin_via_host=$public_admin"
+          if [ "$public_admin" != 200 ]; then
+            echo "CRITICAL: public host /admin still not 200 (got $public_admin). Docker gateway is healthy; host nginx routing for /admin is wrong." >&2
+            sudo -n nginx -T 2>/dev/null | grep -n 'admin' | head -n 80 || true
+            exit 1
+          fi
+          echo 'Staging edge recovery complete (player + public /admin).'
           exit 0
           REMOTE
