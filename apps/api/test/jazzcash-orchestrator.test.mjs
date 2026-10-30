@@ -66,12 +66,12 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
     assert.equal(response.status,200);
     const canceled=await response.json();
     assert.equal(canceled.status,'canceled');
-    assert.equal(canceled.appEntitlement.tier,'premium');
+    assert.equal(canceled.appEntitlement.tier,'free');
     assert.equal(canceled.appEntitlement.autoRenew,false);
     response=await fetch(`${base}/v1/billing/status`,{headers:{cookie:auth.cookie}});
     const after=await response.json();
     assert.equal(after.subscriptions?.[0]?.status,'canceled');
-    assert.equal(after.appEntitlement.tier,'premium');
+    assert.equal(after.appEntitlement.tier,'free');
     assert.equal(after.appEntitlement.autoRenew,false);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });

@@ -251,11 +251,13 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
           sub.canceledAt=new Date(clock()).toISOString();
           store.jazzcashSubscriptions.set(user.id,sub);
         }
+        const now=clock();
         if(entitlement?.tier==='premium'){
-          store.setEntitlement(user.id,{...entitlement,autoRenew:false,cancelAtPeriodEnd:true});
+          store.setEntitlement(user.id,{...entitlement,id:randomUUID(),status:'cancelled',cancelledAt:now,sourceType:'user_cancel',origin:entitlement.origin||'paid',autoRenew:false,cancelAtPeriodEnd:true});
         }
-        store.audit.write({actor:user.id,action:'jazzcash.subscription_canceled',targetType:'user',targetId:user.id,metadata:{subscriptionId}});
-        return reply(200,{status:'canceled',id:sub?.id||subscriptionId,appEntitlement:store.getEntitlement(user.id,clock())});
+        const appEntitlement=store.setEntitlement(user.id,{tier:'free',status:'active',origin:'system',sourceType:'user_cancel',sourceId:sub?.id||subscriptionId,startsAt:now,expiresAt:null,autoRenew:false});
+        store.audit.write({actor:user.id,action:'jazzcash.subscription_canceled',targetType:'user',targetId:user.id,metadata:{subscriptionId,revokedImmediately:true}});
+        return reply(200,{status:'canceled',id:sub?.id||subscriptionId,appEntitlement});
       }
 
       return false;

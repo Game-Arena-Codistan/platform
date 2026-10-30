@@ -56,9 +56,11 @@ test('signed webhook is idempotent and authoritative reconciliation activates ac
   response=await fetch(`${f.base}/v1/webhooks/payments`,{method:'POST',headers:{'content-type':'application/json','x-payment-event':event.type,'x-payment-signature':signature},body:raw});assert.equal((await response.json()).duplicate,true);
 }finally{await f.close();}});
 
-test('cancel and unlink retain already-paid period but stop automatic renewal',async()=>{const f=await fixture();try{
+test('cancel revokes Game Arena+ immediately; unlink retains already-paid period',async()=>{const f=await fixture();try{
   const periodEnd=new Date(Date.now()+30*86400000).toISOString();f.upstream.state.wallet={status:'linked'};f.upstream.state.subscriptions=[{id:'22222222-2222-4222-8222-222222222222',plan_code:'monthly',status:'active',current_period_end:periodEnd,amount_minor:59900}];f.upstream.state.status={wallet_linked:true,subscription_status:'active',current_period_paid:true,next_due_at:periodEnd};
   await fetch(`${f.base}/v1/billing/status`,{headers:{cookie:f.authHeaders.cookie}});
-  let response=await fetch(`${f.base}/v1/billing/subscriptions/22222222-2222-4222-8222-222222222222/cancel`,{method:'POST',headers:f.authHeaders});assert.equal(response.status,200);let entitlement=f.store.getEntitlement(f.upstream.userId);assert.equal(entitlement.tier,'premium');assert.equal(entitlement.autoRenew,false);
+  let response=await fetch(`${f.base}/v1/billing/subscriptions/22222222-2222-4222-8222-222222222222/cancel`,{method:'POST',headers:f.authHeaders});assert.equal(response.status,200);let entitlement=f.store.getEntitlement(f.upstream.userId);assert.equal(entitlement.tier,'free');assert.equal(entitlement.autoRenew,false);
+  f.upstream.state.subscriptions=[{id:'22222222-2222-4222-8222-222222222222',plan_code:'monthly',status:'active',current_period_end:periodEnd,amount_minor:59900}];f.upstream.state.status={wallet_linked:true,subscription_status:'active',current_period_paid:true,next_due_at:periodEnd};
+  await fetch(`${f.base}/v1/billing/status`,{headers:{cookie:f.authHeaders.cookie}});
   response=await fetch(`${f.base}/v1/billing/wallets/unlink`,{method:'POST',headers:f.authHeaders});assert.equal(response.status,200);entitlement=f.store.getEntitlement(f.upstream.userId);assert.equal(entitlement.tier,'premium');assert.equal(entitlement.autoRenew,false);
 }finally{await f.close();}});

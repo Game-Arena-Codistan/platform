@@ -42,7 +42,7 @@ A successful first wallet link may create the first trial/subscription on the Pa
 - `active` with paid/current period: Premium active through authoritative period end.
 - `initiated`/pending: no invented paid access.
 - `past_due`: preserve only already-paid unexpired access supported by authoritative state.
-- `canceled`: stop future renewal; retain already-paid access through the known paid period.
+- `canceled` (user unsubscribe): stop future renewal and revoke Game Arena+ access immediately.
 - wallet `unlinked`: stop future debits; preserve only authoritative already-paid access.
 - `payment_failed` / `expired`: no new access is invented.
 - refund events trigger authoritative reconciliation; browser state never decides refund entitlement.

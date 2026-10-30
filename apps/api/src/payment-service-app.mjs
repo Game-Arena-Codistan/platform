@@ -50,6 +50,13 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
     const next={tier:'free',status:'active',origin:'system',sourceType,sourceId:subscription?.id||null,startsAt:now,expiresAt:null,autoRenew:false};
     if(!sameEntitlement(existing,next))return store.setEntitlement(userId,next);return existing;
   }
+  function revokePremiumImmediately(userId,sourceType,sourceId=null){
+    const now=clock();const existing=store.getEntitlement(userId,now);
+    if(existing?.tier==='premium')store.setEntitlement(userId,{...existing,id:randomUUID(),status:'cancelled',cancelledAt:now,sourceType:`${sourceType}:cancelled_period`,origin:existing.origin||'paid',autoRenew:false,cancelAtPeriodEnd:true});
+    const next={tier:'free',status:'active',origin:'system',sourceType,sourceId,startsAt:now,expiresAt:null,autoRenew:false};
+    if(!sameEntitlement(store.getEntitlement(userId,now),next))return store.setEntitlement(userId,next);
+    return store.getEntitlement(userId,now);
+  }
   function reconcileEntitlement(userId,status,{sourceType='payment_service_status'}={}){
     const now=clock();const subscription=subscriptionFrom(status);const remote=status?.status||{};const state=subscription?.status||remote.subscription_status||null;const paid=Boolean(remote.current_period_paid);const expiry=chooseExpiry(subscription,status);
     const existing=store.getEntitlement(userId,now);
@@ -63,7 +70,9 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
       const next={tier:'premium',status:'active',origin:'paid',purpose:existing?.tier==='premium'?'extension':'activation',planId:subscription?.plan_code||null,sourceType,sourceId:subscription?.id||null,startsAt:existing?.tier==='premium'&&existing?.startsAt?existing.startsAt:now,currentPeriodStartsAt:now,currentPeriodEndsAt:expiry,expiresAt:expiry,autoRenew:true};
       if(!sameEntitlement(existing,next))return store.setEntitlement(userId,next);return existing;
     }
-    if(state==='canceled'||state==='payment_failed'||state==='expired'||status?.wallet?.status==='unlinked')return preservePaidPeriod(userId,subscription,status,`${sourceType}:${state||'wallet_unlinked'}`);
+    if(status?.wallet?.status==='unlinked')return preservePaidPeriod(userId,subscription,status,`${sourceType}:wallet_unlinked`);
+    if(state==='canceled')return revokePremiumImmediately(userId,`${sourceType}:canceled`,subscription?.id||null);
+    if(state==='payment_failed'||state==='expired')return preservePaidPeriod(userId,subscription,status,`${sourceType}:${state}`);
     if(state==='past_due'){
       if(paid&&expiry&&expiry>now)return preservePaidPeriod(userId,subscription,status,`${sourceType}:past_due_paid_period`);
       const next={tier:'free',status:'active',origin:'system',sourceType:`${sourceType}:past_due`,sourceId:subscription?.id||null,startsAt:now,expiresAt:null,autoRenew:false};

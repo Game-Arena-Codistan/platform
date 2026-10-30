@@ -58,20 +58,21 @@ export function renderAccount(){
 }
 
 async function unsubscribeCurrentPlan(){
-  if(!confirm('Unsubscribe from your current Game Arena+ plan? Future renewals will stop. Paid access stays until the current period ends.'))return;
+  if(!confirm('Unsubscribe from Game Arena+ now? Access ends immediately and renewals stop.'))return;
   try{
     const status=await fetchBillingStatus();
     const id=(status.subscriptions||[])[0]?.id||status.appEntitlement?.sourceId||'current';
     const result=await cancelBillingSubscription(id);
-    const entitlement=result.appEntitlement||status.appEntitlement||{};
-    update({entitlement:{tier:entitlement.tier||'premium',status:entitlement.status||'active',expiresAt:entitlement.expiresAt||null,autoRenew:false}});
-    toast('Unsubscribed. Access continues until the paid period ends.');
+    const entitlement=result.appEntitlement||{};
+    update({entitlement:{tier:entitlement.tier||'free',status:entitlement.status||'active',expiresAt:entitlement.expiresAt||null,autoRenew:false}});
+    toast('Unsubscribed. Game Arena+ access has ended.');
     track('subscription_cancel',{subscriptionId:id});
     const plan=document.querySelector('#account-current-plan');
     const detail=document.querySelector('#account-plan-detail');
-    if(plan)plan.textContent=`${planLabel(getState())} · canceling`;
-    if(detail)detail.textContent='Future renewals stopped. Paid-period access is retained until it expires.';
+    if(plan)plan.textContent='Free';
+    if(detail)detail.textContent='Subscription canceled. Game Arena+ access was revoked immediately.';
     document.querySelector('#unsubscribe-plan')?.remove();
+    document.querySelector('.badge.premium')?.remove();
     await bindBillingPanel();
   }catch(error){toast(error.message||'Unable to unsubscribe right now.');}
 }

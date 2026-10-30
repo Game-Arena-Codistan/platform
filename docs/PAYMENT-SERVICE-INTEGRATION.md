@@ -55,7 +55,7 @@ Before real staging UAT, confirm the Payment Service product contains the approv
 - `active` + paid/current period: Premium active through `current_period_end`.
 - `initiated`: pending; no browser-side activation.
 - `past_due`: preserve only already-paid access still supported by authoritative state.
-- `canceled`: no future renewal; retain already-paid period through its authoritative end.
+- `canceled` (user unsubscribe): no future renewal; revoke Game Arena+ access immediately.
 - wallet `unlinked`: stop future debits; preserve only authoritative paid-period access.
 - `payment_failed` / `expired`: no new access.
 - refund events: trigger authoritative reconciliation; do not infer outcome from browser state.
