@@ -284,6 +284,20 @@ jobs:
           printf '%s\n' "$RELEASE_RUN_ID" > .deployed-release-run
           "${compose[@]}" ps
           docker image prune -f >/dev/null
+
+          # Recover the public edge if host nginx stopped accepting connections.
+          if command -v systemctl >/dev/null 2>&1; then
+            sudo -n systemctl restart nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
+            sudo -n systemctl is-active nginx >/dev/null 2>&1 || systemctl is-active nginx >/dev/null 2>&1 || true
+          fi
+          if command -v ss >/dev/null 2>&1; then
+            ss -lntp | grep -E ':(80|443|8095|18183)\s' || true
+          fi
+          curl --fail --silent --max-time 5 http://127.0.0.1:8095/healthz >/dev/null
+          curl --fail --silent --max-time 5 http://127.0.0.1:8095/admin/healthz >/dev/null
+          # Host edge (best-effort): prove the public reverse proxy is listening again.
+          curl --silent --max-time 5 -o /dev/null -w 'host_http=%{http_code}\n' http://127.0.0.1/healthz || true
+          curl --silent --max-time 8 -k -o /dev/null -w 'host_https=%{http_code}\n' https://127.0.0.1/healthz || true
           REMOTE
 
       - name: Staging deployment summary
