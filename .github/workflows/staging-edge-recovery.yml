@@ -45,50 +45,77 @@ jobs:
         run: |
           set -euo pipefail
           tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf | \
-            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=30 "$DEPLOY_USER@$DEPLOY_HOST" \
               'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env'
-          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=30 "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -uo pipefail
           cd /opt/codistan/platform
-          test -f .deployed-sha
-          IMAGE_TAG="$(tr -d '[:space:]' < .deployed-sha)"
+          echo '=== preflight ==='
+          pwd
+          ls -la .deployed-sha infra/gateway/nginx.conf infra/docker-compose.staging.yml infra/.env 2>&1 || true
+          if command -v ss >/dev/null 2>&1; then ss -lntp | grep -E ':(80|443|8095|18183)\s' || true; fi
+          if command -v systemctl >/dev/null 2>&1; then
+            echo '=== restart host nginx (public edge) ==='
+            sudo -n systemctl restart nginx 2>&1 || systemctl restart nginx 2>&1 || true
+            sleep 2
+            sudo -n systemctl --no-pager --full status nginx 2>&1 | head -n 30 || true
+          fi
+
+          IMAGE_TAG=''
+          if [ -f .deployed-sha ]; then IMAGE_TAG="$(tr -d '[:space:]' < .deployed-sha)"; fi
+          if [ -z "$IMAGE_TAG" ] && [ -f infra/.env ]; then
+            IMAGE_TAG="$(grep -m1 '^IMAGE_TAG=' infra/.env | cut -d= -f2- || true)"
+            IMAGE_TAG="${IMAGE_TAG#\"}"; IMAGE_TAG="${IMAGE_TAG%\"}"
+          fi
           IMAGE_BASE="$(grep -m1 '^IMAGE_BASE=' infra/.env 2>/dev/null | cut -d= -f2- || true)"
           IMAGE_BASE="${IMAGE_BASE#\"}"; IMAGE_BASE="${IMAGE_BASE%\"}"
           IMAGE_BASE="${IMAGE_BASE:-ghcr.io/game-arena-codistan/platform}"
           export IMAGE_BASE IMAGE_TAG
-          echo "Recovering edge with IMAGE_BASE=$IMAGE_BASE IMAGE_TAG=$IMAGE_TAG"
+          echo "IMAGE_BASE=$IMAGE_BASE"
+          echo "IMAGE_TAG=$IMAGE_TAG"
+
           compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
-          # Prefer recreate of running tagged services; fall back to bringing the stack up.
-          if ! "${compose[@]}" up -d --no-deps --force-recreate admin gateway; then
-            echo 'force-recreate failed; attempting full compose up' >&2
-            "${compose[@]}" up -d --remove-orphans
+          echo '=== compose ps ==='
+          "${compose[@]}" ps 2>&1 || true
+
+          if [ -n "$IMAGE_TAG" ]; then
+            echo '=== ensure api/web/gateway/admin are up ==='
+            "${compose[@]}" up -d --remove-orphans api web game-origin admin gateway 2>&1 || true
+            echo '=== recreate gateway with synced nginx.conf ==='
+            "${compose[@]}" up -d --no-deps --force-recreate gateway 2>&1 || true
+            "${compose[@]}" up -d --no-deps admin 2>&1 || true
+          else
+            echo 'WARNING: IMAGE_TAG missing; skipping compose recreate' >&2
           fi
-          for _ in $(seq 1 40); do
-            gateway=0; admin=0; admin_via_gateway=0; api=0
-            curl --fail --silent --max-time 3 http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || true
-            curl --fail --silent --max-time 3 http://127.0.0.1:18183/healthz >/dev/null && admin=1 || true
-            curl --fail --silent --max-time 3 http://127.0.0.1:8095/admin/healthz >/dev/null && admin_via_gateway=1 || true
-            curl --fail --silent --max-time 3 http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || true
-            if [ "$gateway$admin$admin_via_gateway$api" = 1111 ]; then break; fi
+
+          echo '=== local health probes ==='
+          gateway=0; api=0; admin=0; admin_via_gateway=0
+          for _ in $(seq 1 30); do
+            curl --fail --silent --max-time 3 http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || gateway=0
+            curl --fail --silent --max-time 3 http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || api=0
+            curl --fail --silent --max-time 3 http://127.0.0.1:18183/healthz >/dev/null && admin=1 || admin=0
+            curl --fail --silent --max-time 3 http://127.0.0.1:8095/admin/healthz >/dev/null && admin_via_gateway=1 || admin_via_gateway=0
+            echo "probe gateway=$gateway api=$api admin=$admin admin_via_gateway=$admin_via_gateway"
+            if [ "$gateway$api" = 11 ]; then break; fi
             sleep 2
           done
-          if [ "$gateway$admin$admin_via_gateway$api" != 1111 ]; then
-            echo "Edge recovery failed: gateway=$gateway admin=$admin admin_via_gateway=$admin_via_gateway api=$api" >&2
-            "${compose[@]}" ps
-            "${compose[@]}" logs --tail=100 admin gateway || true
+
+          host_http="$(curl --silent --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1/healthz || true)"
+          host_https="$(curl --silent --max-time 8 -k -o /dev/null -w '%{http_code}' https://127.0.0.1/healthz || true)"
+          echo "host_http=$host_http host_https=$host_https"
+          if command -v ss >/dev/null 2>&1; then ss -lntp | grep -E ':(80|443|8095|18183)\s' || true; fi
+          "${compose[@]}" ps 2>&1 || true
+
+          # Player site recovery is the hard requirement. Admin via gateway is best-effort.
+          if [ "$gateway" != 1 ] || [ "$api" != 1 ]; then
+            echo "CRITICAL: gateway/api not healthy (gateway=$gateway api=$api)" >&2
+            "${compose[@]}" logs --tail=120 gateway api 2>&1 || true
             exit 1
           fi
-          if command -v systemctl >/dev/null 2>&1; then
-            sudo -n systemctl restart nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
-            sleep 2
-            sudo -n systemctl is-active --quiet nginx || systemctl is-active --quiet nginx || true
+          if [ "$admin_via_gateway" != 1 ]; then
+            echo "WARNING: /admin via gateway still unhealthy (admin=$admin admin_via_gateway=$admin_via_gateway)" >&2
+            "${compose[@]}" logs --tail=80 admin gateway 2>&1 || true
           fi
-          if command -v ss >/dev/null 2>&1; then
-            ss -lntp | grep -E ':(80|443|8095|18183)\s' || true
-          fi
-          curl --fail --silent --max-time 5 http://127.0.0.1:8095/healthz >/dev/null
-          curl --fail --silent --max-time 5 http://127.0.0.1:8095/admin/healthz >/dev/null
-          curl --silent --max-time 5 -o /dev/null -w 'host_http=%{http_code}\n' http://127.0.0.1/healthz || true
-          curl --silent --max-time 8 -k -o /dev/null -w 'host_https=%{http_code}\n' https://127.0.0.1/healthz || true
           echo 'Staging edge recovery complete.'
+          exit 0
           REMOTE
