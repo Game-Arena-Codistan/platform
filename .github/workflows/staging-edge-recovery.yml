@@ -79,24 +79,33 @@ jobs:
           "${compose[@]}" ps 2>&1 || true
 
           if [ -n "$IMAGE_TAG" ]; then
-            echo '=== ensure api/web/gateway/admin are up ==='
-            "${compose[@]}" up -d --remove-orphans api web game-origin admin gateway 2>&1 || true
-            echo '=== recreate gateway with synced nginx.conf ==='
+            echo '=== bring admin up first (required for /admin) ==='
+            "${compose[@]}" up -d --no-deps --force-recreate admin 2>&1 || "${compose[@]}" up -d --no-deps admin 2>&1 || true
+            for _ in $(seq 1 40); do
+              if curl --fail --silent --max-time 3 http://127.0.0.1:18183/healthz >/dev/null; then
+                echo 'admin direct healthz ok'
+                break
+              fi
+              sleep 2
+            done
+            echo '=== ensure api/web/games/gateway are up ==='
+            "${compose[@]}" up -d --remove-orphans api web game-origin gateway 2>&1 || true
+            echo '=== recreate gateway after admin is reachable ==='
             "${compose[@]}" up -d --no-deps --force-recreate gateway 2>&1 || true
-            "${compose[@]}" up -d --no-deps admin 2>&1 || true
           else
             echo 'WARNING: IMAGE_TAG missing; skipping compose recreate' >&2
           fi
 
           echo '=== local health probes ==='
-          gateway=0; api=0; admin=0; admin_via_gateway=0
-          for _ in $(seq 1 30); do
+          gateway=0; api=0; admin=0; admin_via_gateway=0; admin_dns=0
+          for _ in $(seq 1 40); do
             curl --fail --silent --max-time 3 http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || gateway=0
             curl --fail --silent --max-time 3 http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || api=0
             curl --fail --silent --max-time 3 http://127.0.0.1:18183/healthz >/dev/null && admin=1 || admin=0
             curl --fail --silent --max-time 3 http://127.0.0.1:8095/admin/healthz >/dev/null && admin_via_gateway=1 || admin_via_gateway=0
-            echo "probe gateway=$gateway api=$api admin=$admin admin_via_gateway=$admin_via_gateway"
-            if [ "$gateway$api" = 11 ]; then break; fi
+            if "${compose[@]}" exec -T gateway wget -q -O - http://admin:8080/healthz >/dev/null 2>&1; then admin_dns=1; else admin_dns=0; fi
+            echo "probe gateway=$gateway api=$api admin=$admin admin_via_gateway=$admin_via_gateway admin_dns=$admin_dns"
+            if [ "$gateway$api$admin$admin_via_gateway" = 1111 ]; then break; fi
             sleep 2
           done
 
@@ -106,16 +115,17 @@ jobs:
           if command -v ss >/dev/null 2>&1; then ss -lntp | grep -E ':(80|443|8095|18183)\s' || true; fi
           "${compose[@]}" ps 2>&1 || true
 
-          # Player site recovery is the hard requirement. Admin via gateway is best-effort.
           if [ "$gateway" != 1 ] || [ "$api" != 1 ]; then
             echo "CRITICAL: gateway/api not healthy (gateway=$gateway api=$api)" >&2
             "${compose[@]}" logs --tail=120 gateway api 2>&1 || true
             exit 1
           fi
-          if [ "$admin_via_gateway" != 1 ]; then
-            echo "WARNING: /admin via gateway still unhealthy (admin=$admin admin_via_gateway=$admin_via_gateway)" >&2
-            "${compose[@]}" logs --tail=80 admin gateway 2>&1 || true
+          if [ "$admin" != 1 ] || [ "$admin_via_gateway" != 1 ]; then
+            echo "CRITICAL: /admin unhealthy (admin=$admin admin_via_gateway=$admin_via_gateway admin_dns=$admin_dns)" >&2
+            "${compose[@]}" logs --tail=120 admin gateway 2>&1 || true
+            "${compose[@]}" exec -T gateway getent hosts admin 2>&1 || true
+            exit 1
           fi
-          echo 'Staging edge recovery complete.'
+          echo 'Staging edge recovery complete (player + /admin).'
           exit 0
           REMOTE
