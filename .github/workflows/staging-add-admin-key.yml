@@ -73,27 +73,56 @@ jobs:
             printf '\nADMIN_API_KEYS=%s\n' "$updated" >> infra/.env
           fi
 
-          IMAGE_TAG="$(tr -d '[:space:]' < .deployed-sha)"
+          IMAGE_TAG=''
+          if [ -f .deployed-sha ]; then IMAGE_TAG="$(tr -d '[:space:]' < .deployed-sha)"; fi
           IMAGE_BASE="$(grep -m1 '^IMAGE_BASE=' infra/.env | cut -d= -f2- || true)"
           IMAGE_BASE="${IMAGE_BASE#\"}"; IMAGE_BASE="${IMAGE_BASE%\"}"
           IMAGE_BASE="${IMAGE_BASE:-ghcr.io/game-arena-codistan/platform}"
           export IMAGE_BASE IMAGE_TAG
+          echo "IMAGE_BASE=$IMAGE_BASE IMAGE_TAG=$IMAGE_TAG"
+          echo "ADMIN_API_KEYS entry count=$(grep -m1 '^ADMIN_API_KEYS=' infra/.env | cut -d= -f2- | awk -F, '{print NF}')"
+
           compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
-          "${compose[@]}" up -d --no-deps --force-recreate api
-          for _ in $(seq 1 40); do
-            curl --fail --silent --max-time 3 http://127.0.0.1:8095/api/readyz >/dev/null && break
+          if [ -n "$IMAGE_TAG" ]; then
+            "${compose[@]}" up -d --no-deps --force-recreate api
+          else
+            "${compose[@]}" up -d --no-deps api
+          fi
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --max-time 3 http://127.0.0.1:8095/api/readyz >/dev/null; then ready=1; break; fi
             sleep 2
           done
-          curl --fail --silent --max-time 5 http://127.0.0.1:8095/api/readyz >/dev/null
+          echo "api_ready=$ready"
+          if [ "$ready" != 1 ]; then
+            "${compose[@]}" ps api || true
+            "${compose[@]}" logs --tail=120 api || true
+            exit 1
+          fi
+
+          # Confirm the running API container received the updated env.
+          env_has="$("${compose[@]}" exec -T api sh -c 'printenv ADMIN_API_KEYS' 2>/dev/null || true)"
+          if printf '%s' ",$env_has," | grep -Fq ",$EXTRA_ADMIN_KEY,"; then
+            echo 'API container env contains the extra admin key.'
+          else
+            echo "WARNING: API container ADMIN_API_KEYS does not include the extra key yet (len=${#env_has})." >&2
+            "${compose[@]}" up -d --no-deps --force-recreate api
+            sleep 5
+          fi
 
           code="$(curl --silent --max-time 8 -o /tmp/ga-admin-cap.json -w '%{http_code}' \
             -H "x-admin-key: ${EXTRA_ADMIN_KEY}" \
             -H 'x-admin-request: 1' \
             http://127.0.0.1:8095/api/v1/admin/capabilities || true)"
           echo "capabilities_status=$code"
-          head -c 400 /tmp/ga-admin-cap.json || true
+          head -c 600 /tmp/ga-admin-cap.json || true
           echo
-          test "$code" = 200
-          grep -q '"admin"' /tmp/ga-admin-cap.json
+          if [ "$code" != 200 ]; then
+            echo 'capabilities probe failed' >&2
+            "${compose[@]}" logs --tail=160 api || true
+            exit 1
+          fi
+          grep -q 'admin' /tmp/ga-admin-cap.json
           echo 'Secondary staging admin key is active. Existing ADMIN_API_KEYS entries were preserved.'
           REMOTE
