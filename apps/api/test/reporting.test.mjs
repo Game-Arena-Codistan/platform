@@ -56,3 +56,22 @@ test('Pakistan-local date presets use UTC storage with exact boundaries',()=>{
 test('report and export capabilities are separate and server enforced',()=>{
   assert.equal(capabilitiesFor(['support']).includes('reports.read'),true);assert.equal(capabilitiesFor(['support']).includes('reports.export'),false);assert.throws(()=>requireCapability({roles:['support']},'reports.export'),error=>error.code==='admin_capability_forbidden');assert.doesNotThrow(()=>requireCapability({roles:['finance']},'reports.export'));
 });
+
+test('campaign attribution aggregates succeeded payments by utm package parameter',async()=>{
+  const f=fixture();const user=f.user('03005556666');
+  const transaction=await f.payments.checkout({userId:user.id,planId:'monthly',idempotencyKey:'campaign',attribution:{utm:'T',package:'1',parameter:'20percentoff',payment:'jazzcash',landing:'landing2'}});
+  f.paidEvent(transaction);
+  const omitted=await f.payments.checkout({userId:user.id,planId:'monthly',idempotencyKey:'omitted',attribution:{utm:'M',package:'1',parameter:'default',omitFromCampaignReport:true}});
+  f.paidEvent(omitted);
+  const report=f.reports.campaignAttribution(customFilters());
+  assert.equal(report.totals.subscriptions,1);
+  assert.equal(report.totals.amountMinor,59900);
+  assert.equal(report.basic[0].platform,'T');
+  assert.equal(report.basic[0].package,'1');
+  assert.equal(report.basic[0].parameter,'20percentoff');
+  assert.equal(report.detailed.platformByParameter[0].platform,'T');
+  assert.equal(report.daily[0].byPlatform.T,1);
+  const exported=f.reports.export('campaign-attribution',customFilters(),{actor:'admin:finance',roles:['finance']});
+  assert.match(exported.body,/platform_x_parameter|basic|daily/);
+  assert.match(exported.filename,/campaign-attribution/);
+});

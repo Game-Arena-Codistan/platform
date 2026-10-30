@@ -3,6 +3,7 @@ import {readJson,readPayload,send,problem,corsHeaders,redirect} from './lib/http
 import {assertCsrf,normalizeIdentifier,parseCookies,sha256} from './lib/security.mjs';
 import {PLAN_DEFINITIONS} from './services/payments.mjs';
 import {jazzCashRequestId,jazzCashTxnRefNo} from './adapters/jazzcash-orchestrator.mjs';
+import {sanitizeAttribution} from './lib/campaign-attribution.mjs';
 
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const msisdn=value=>{const phone=String(value||'').trim();if(!/^(\+92|0)?3\d{9}$/.test(phone.replace(/\s/g,'')))throw fail('JazzCash mobile number must be a valid Pakistani MSISDN (03XXXXXXXXX).',400,'invalid_body');const digits=phone.replace(/\D/g,'');return digits.startsWith('92')?`0${digits.slice(2)}`:digits.startsWith('0')?digits:`0${digits}`;};
@@ -125,7 +126,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     return normalized;
   }
 
-  async function chargeLinkedWallet(userId,planCodeValue){
+  async function chargeLinkedWallet(userId,planCodeValue,attributionRaw=null){
     ensureJazzCashState(store);
     const wallet=store.jazzcashWallets.get(userId);
     if(!wallet||wallet.status!=='linked')throw fail('Link a JazzCash wallet before subscribing.',409,'wallet_not_linked');
@@ -138,10 +139,16 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     const pay=await orchestrator.payViaToken({paymentToken:token,txnRefNo,amountMinor,billReference,description:`Game Arena+ ${planCodeValue}`});
     if(String(pay?.pp_ResponseCode)!=='000')throw fail(String(pay?.pp_ResponseMessage||'JazzCash payment failed.'),402,'payment_failed');
     const now=clock();const expiresAt=now+plan.durationDays*86400000;
-    const sub={id:randomUUID(),planCode:planCodeValue,status:'active',amountMinor,txnRefNo,billReference,activatedAt:new Date(now).toISOString()};
+    const attribution=sanitizeAttribution(attributionRaw);
+    const paidAt=new Date(now).toISOString();
+    const priorPaid=[...store.transactions.values()].some(item=>item.userId===userId&&item.kind==='membership'&&item.status==='paid');
+    const purpose=priorPaid?'extension':'activation';
+    const sub={id:randomUUID(),planCode:planCodeValue,status:'active',amountMinor,txnRefNo,billReference,activatedAt:paidAt,attribution};
     store.jazzcashSubscriptions.set(userId,sub);
-    store.setEntitlement(userId,{tier:'premium',status:'active',origin:'paid',purpose:'activation',planId:planCodeValue,sourceType:'jazzcash_orchestrator',sourceId:sub.id,startsAt:now,currentPeriodStartsAt:now,currentPeriodEndsAt:expiresAt,expiresAt:expiresAt,autoRenew:true});
-    store.audit.write({actor:userId,action:'jazzcash.subscription_activated',targetType:'user',targetId:userId,metadata:{planCode:planCodeValue,txnRefNo}});
+    const planSnapshot={id:plan.id,name:plan.name,version:`${plan.id}-launch-v1`,pricePkr:plan.pricePkr,currency:plan.currency,durationDays:plan.durationDays,durationMs:plan.durationMs,billingMode:plan.billingMode||'single',benefitsVersion:plan.benefitsVersion||'launch-v1'};
+    store.createTransaction({id:sub.id,kind:'membership',purpose,userId,provider:'JazzCash',planId:planCodeValue,planSnapshot,listAmountPkr:plan.pricePkr,amountPkr:plan.pricePkr,discountPkr:0,currency:plan.currency||'PKR',status:'paid',providerStatus:'paid',providerReference:txnRefNo,subscriptionPeriodId:sub.id,attribution,createdAt:paidAt,initiatedAt:paidAt,paidAt,completedAt:paidAt,updatedAt:paidAt,attempts:1});
+    store.setEntitlement(userId,{tier:'premium',status:'active',origin:'paid',purpose,planId:planCodeValue,planSnapshot,sourceType:'jazzcash_orchestrator',sourceId:sub.id,startsAt:now,currentPeriodStartsAt:now,currentPeriodEndsAt:expiresAt,expiresAt:expiresAt,autoRenew:true});
+    store.audit.write({actor:userId,action:'jazzcash.subscription_activated',targetType:'user',targetId:userId,metadata:{planCode:planCodeValue,txnRefNo,purpose,attribution:attribution||null}});
     return sub;
   }
 
@@ -170,7 +177,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         try{
           await completeWalletLink(userId,fields);
           const planCodeValue=intent?.planCode||'monthly';
-          const sub=await chargeLinkedWallet(userId,planCodeValue);
+          const sub=await chargeLinkedWallet(userId,planCodeValue,intent?.attribution);
           return redirect(res,303,`${config.publicOrigin}/#/home?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
         }catch(error){
           store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
@@ -194,7 +201,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         // (e.g. 03123456789) must be able to re-link without already_linked 409s.
         const requestIdValue=jazzCashRequestId();
         const returnPath=safeReturnPath(value.returnPath||value.landingPath);
-        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,attribution:value.attribution||null});
+        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,attribution:sanitizeAttribution(value.attribution)});
         const form=orchestrator.createLinkWalletForm({msisdn:phone,requestId:requestIdValue});
         store.audit.write({actor:user.id,action:'jazzcash.wallet_link_started',targetType:'user',targetId:user.id,metadata:{requestId:requestIdValue,planCode:selectedPlan,guest:!authContext(req)}});
         return reply(201,{requestId:requestIdValue,portalUrl:form.portalUrl,actionUrl:form.actionUrl,method:form.method,fields:form.fields});
@@ -225,7 +232,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
 
       if(method==='POST'&&path==='/v1/billing/subscriptions'){
         const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,8192);
-        const sub=await chargeLinkedWallet(user.id,planCode(value.planCode||'monthly'));
+        const sub=await chargeLinkedWallet(user.id,planCode(value.planCode||'monthly'),value.attribution);
         return reply(201,sub);
       }
 

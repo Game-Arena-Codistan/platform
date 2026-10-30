@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {sanitizeAttribution} from '../lib/campaign-attribution.mjs';
 
 const DAY_MS=86400000;
 const PLAN_DEFINITIONS={
@@ -25,9 +26,9 @@ export class PaymentService{
   membershipPurpose(userId){const prior=[...this.store.transactions.values()].some(item=>item.userId===userId&&item.kind==='membership'&&item.status==='paid');return prior?'extension':'activation';}
   planSnapshot(plan){return{id:plan.id,name:plan.name,version:plan.version||`${plan.id}-launch-v1`,pricePkr:plan.pricePkr,currency:plan.currency,durationDays:plan.durationDays??Math.round(plan.durationMs/DAY_MS),durationMs:plan.durationMs,billingMode:plan.billingMode||'single',benefitsVersion:plan.benefitsVersion||'launch-v1'};}
   safeStoredProvider(provider={}){return{providerReference:provider.providerReference,expected:provider.expected?{merchantId:provider.expected.merchantId,billReference:provider.expected.billReference,amountMinor:provider.expected.amountMinor,currency:provider.expected.currency}:undefined};}
-  async checkout({userId,planId,idempotencyKey}){
+  async checkout({userId,planId,idempotencyKey,attribution=null}){
     const plan=this.plan(planId);const purpose=this.membershipPurpose(userId);const purchaseFingerprint=fingerprint({kind:'membership',planId,amountPkr:plan.pricePkr});const key=this.scopedKey({userId,kind:'membership',productId:planId,key:idempotencyKey});const prior=this.existing(key,{userId,kind:'membership',purchaseFingerprint});if(prior)return prior;
-    const now=this.clock();const transaction={id:randomUUID(),kind:'membership',purpose,userId,provider:'JazzCash',planId,planSnapshot:this.planSnapshot(plan),listAmountPkr:plan.pricePkr,amountPkr:plan.pricePkr,discountPkr:0,currency:plan.currency,status:'pending',providerStatus:'pending',idempotencyKey:key,purchaseFingerprint,createdAt:iso(now),initiatedAt:iso(now),updatedAt:iso(now),attempts:1};
+    const now=this.clock();const transaction={id:randomUUID(),kind:'membership',purpose,userId,provider:'JazzCash',planId,planSnapshot:this.planSnapshot(plan),listAmountPkr:plan.pricePkr,amountPkr:plan.pricePkr,discountPkr:0,currency:plan.currency,status:'pending',providerStatus:'pending',idempotencyKey:key,purchaseFingerprint,attribution:sanitizeAttribution(attribution),createdAt:iso(now),initiatedAt:iso(now),updatedAt:iso(now),attempts:1};
     const provider=await this.provider.createCheckout({transactionId:transaction.id,referenceType:'membership',referenceId:planId,amountPkr:plan.pricePkr,description:`Game Arena+ ${planId}`});Object.assign(transaction,this.safeStoredProvider(provider));this.store.createTransaction(transaction);this.store.audit.write({actor:userId,action:'payment.checkout_created',targetType:'transaction',targetId:transaction.id,metadata:{kind:'membership',purpose,planId,amountPkr:plan.pricePkr,currency:plan.currency}});return{...transaction,checkout:provider.checkout};
   }
   async checkoutTopup({userId,offer,idempotencyKey,isPremium=false}){

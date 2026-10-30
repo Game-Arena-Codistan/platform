@@ -61,11 +61,15 @@ export function createPostgresReportApp({config,pool}){
         const principal=admin(req,['admin','finance','support','operator']);requireCapability(principal,'reports.read');
         return reply(200,await reports.benefitCosts(parseReportFilters(url.searchParams)));
       }
+      if(path==='/v1/admin/reports/campaign-attribution'||path==='/v1/admin/reports/premium/campaign-attribution'){
+        const principal=admin(req,['admin','finance','support','operator','security']);requireCapability(principal,'reports.read');
+        return reply(200,await reports.campaignAttribution(parseReportFilters(url.searchParams)));
+      }
       if(path==='/v1/admin/reports/exports'){
         const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');
         return reply(200,await reports.exportHistory(parseReportFilters(url.searchParams)));
       }
-      const exportMatch=path.match(/^\/v1\/admin\/reports\/exports\/(summary|payments|subscriptions|recurring-customers|reconciliation|benefit-costs)$/);
+      const exportMatch=path.match(/^\/v1\/admin\/reports\/exports\/(summary|payments|subscriptions|recurring-customers|reconciliation|benefit-costs|campaign-attribution|campaign_attribution)$/);
       if(exportMatch){
         const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');
         return sendCsv(res,await reports.export(exportMatch[1],parseReportFilters(url.searchParams),principal),cors);

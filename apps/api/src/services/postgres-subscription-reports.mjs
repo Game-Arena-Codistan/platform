@@ -100,8 +100,8 @@ export class PostgresSubscriptionReportService{
     snapshot.benefitLedger=[];snapshot.reportExports=[];snapshot.planVersions=await this.plans();
 
     let transactions=[];let subscriptions=[];
-    if(['summary','payments','subscriptions','recurring-customers'].includes(type)){
-      transactions=await this.transactions(filters,{membershipOnly:type==='summary'||type==='subscriptions'||type==='recurring-customers',extensionsOnly:type==='recurring-customers'});
+    if(['summary','payments','subscriptions','recurring-customers','campaign-attribution','campaign_attribution'].includes(type)){
+      transactions=await this.transactions(filters,{membershipOnly:type==='summary'||type==='subscriptions'||type==='recurring-customers'||type==='campaign-attribution'||type==='campaign_attribution',extensionsOnly:type==='recurring-customers'});
     }
     if(['summary','subscriptions','recurring-customers'].includes(type))subscriptions=await this.subscriptions(filters);
     if((type==='subscriptions'||type==='recurring-customers')&&subscriptions.length){
@@ -140,6 +140,7 @@ export class PostgresSubscriptionReportService{
   async recurringCustomers(filters){return response((await this.calculator(filters,'recurring-customers')).recurringCustomers(filters));}
   async reconciliation(filters){return response((await this.calculator(filters,'reconciliation')).reconciliation(filters));}
   async benefitCosts(filters){return response((await this.calculator(filters,'benefit-costs')).benefitCosts(filters));}
+  async campaignAttribution(filters){return response((await this.calculator(filters,'campaign-attribution')).campaignAttribution(filters));}
   async exportHistory(filters){return response((await this.calculator(filters,'exports')).exportHistory(filters));}
 
   async export(type,filters,principal){

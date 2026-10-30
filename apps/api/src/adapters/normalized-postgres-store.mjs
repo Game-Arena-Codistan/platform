@@ -54,6 +54,7 @@ const safeTransaction=item=>({
   discountPkr:item.discountPkr,refundAmountPkr:item.refundAmountPkr,currency:item.currency,
   status:item.status,providerStatus:item.providerStatus,provider:item.provider,
   providerReference:item.providerReference,subscriptionPeriodId:item.subscriptionPeriodId,
+  attribution:item.attribution||null,paidAt:item.paidAt||item.completedAt||null,
   createdAt:item.createdAt,initiatedAt:item.initiatedAt,completedAt:item.completedAt||item.paidAt,
   failedAt:item.failedAt,cancelledAt:item.cancelledAt,refundedAt:item.refundedAt,updatedAt:item.updatedAt
 });
