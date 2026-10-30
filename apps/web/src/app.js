@@ -20,16 +20,11 @@ if(bootLandingIfNeeded()){
 const routes={home:[renderHome,bindHome],feed:[renderFeed,bindFeed],library:[renderLibrary,bindLibrary],compete:[renderCompete,bindCompete],rewards:[renderRewards,bindRewards],premium:[renderPremium,bindPremium],account:[renderAccount,bindAccount],support:[renderSupport,bindSupport]};
 const app=document.querySelector('#app');const balance=document.querySelector('#coin-balance');const network=document.querySelector('#network-status');let current='';
 function route(){const name=location.hash.replace(/^#\//,'').split(/[/?]/)[0]||'home';return routes[name]?name:'home';}
-function hasPendingSubscription(){
-  try{return Boolean(JSON.parse(sessionStorage.getItem('game-arena:pending-subscription')||'null'));}catch{return false;}
-}
-function syncLibraryNavVisibility(state=getState()){
+function syncLibraryNavVisibility(){
   const library=document.querySelector('[data-route="library"]');
   if(!library)return;
-  const hide=!state.user&&(hasPendingSubscription()||state.entitlement==='premium'||state.entitlement?.tier==='premium');
-  library.hidden=hide;
-  library.setAttribute('aria-hidden',hide?'true':'false');
-  if(hide&&location.hash.startsWith('#/library'))location.hash='#/home';
+  library.hidden=false;
+  library.setAttribute('aria-hidden','false');
 }
 function paymentBanner(){
   const params=new URLSearchParams(location.hash.includes('?')?location.hash.split('?')[1]:'');
@@ -84,7 +79,7 @@ function render(force=false){
     }
     const premium=document.querySelector('#premium-button');
     if(premium)premium.hidden=state.entitlement==='premium'||state.entitlement?.tier==='premium';
-    syncLibraryNavVisibility(state);
+    syncLibraryNavVisibility();
     document.documentElement.classList.toggle('reduce-motion',state.settings.reducedMotion);
   }catch(error){
     console.error('render failed',error);

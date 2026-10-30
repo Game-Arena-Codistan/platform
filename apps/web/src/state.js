@@ -16,5 +16,10 @@ export function setSetting(name,value){update(current=>({settings:{...current.se
 export function toggleFavourite(id){update(current=>({favourites:current.favourites.includes(id)?current.favourites.filter(item=>item!==id):[...current.favourites,id]}));}
 export function addRecent(id){update(current=>({recent:[id,...current.recent.filter(item=>item!==id)].slice(0,20)}));}
 export function isPremium(){const value=state.entitlement;return value==='premium'||value?.tier==='premium'||value?.status==='active'&&value?.tier!=='free';}
+export function hasPendingGuestPremium(){
+  if(state.user)return false;
+  try{if(JSON.parse(sessionStorage.getItem('game-arena:pending-subscription')||'null'))return true;}catch{/* ignore */}
+  return state.entitlement==='premium'||state.entitlement?.tier==='premium';
+}
 export function telemetryEnabled(){return Boolean(state.settings.analytics);}
 export function resetSession(){update({user:null,entitlement:'free',continuation:null,rewardsLoaded:false,liveChallenges:[],liveTournaments:[],walletLoaded:false,walletEntries:[],roomsLoaded:false,rooms:[],leaderboardLoaded:false,leaderboard:[]});}

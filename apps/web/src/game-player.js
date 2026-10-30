@@ -1,11 +1,16 @@
-import {getState,isPremium,addRecent,update} from './state.js';
+import {getState,isPremium,hasPendingGuestPremium,addRecent,update} from './state.js';
 import {completePlay,gameUrl,startPlay,mode} from './api.js';
-import {escapeHtml,modal,requireAuth,toast} from './ui.js';
+import {escapeHtml,modal,openAuth,requireAuth,toast} from './ui.js';
 import {GameBridge} from './game-bridge.js';
 import {track} from './analytics.js';
 
 export async function openGame(game){
   if(!game)return;
+  if(game.tier==='premium'&&!getState().user&&(isPremium()||hasPendingGuestPremium())){
+    track('auth_required',{source:'premium_game',gameId:game.id});
+    update({continuation:{type:'game',gameId:game.id}});
+    if(!await openAuth('signup')||!getState().user)return;
+  }
   if(game.tier==='premium'&&!isPremium()){
     track('upgrade_view',{source:'locked_game',gameId:game.id});
     location.assign('/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash');

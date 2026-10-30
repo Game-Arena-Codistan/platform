@@ -229,6 +229,28 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         return reply(201,sub);
       }
 
+      const cancelMatch=path.match(/^\/v1\/billing\/subscriptions\/([^/]+)\/cancel$/);
+      if(method==='POST'&&cancelMatch){
+        const {user}=requireUser(req);mutation(req);
+        ensureJazzCashState(store);
+        const subscriptionId=decodeURIComponent(cancelMatch[1]);
+        const sub=store.jazzcashSubscriptions.get(user.id);
+        const entitlement=store.getEntitlement(user.id,clock());
+        const matchesSub=sub&&(sub.id===subscriptionId||entitlement?.sourceId===subscriptionId);
+        const matchesEntitlement=!sub&&entitlement?.tier==='premium'&&(entitlement.sourceId===subscriptionId||subscriptionId==='current');
+        if(!matchesSub&&!matchesEntitlement)throw fail('Subscription not found.',404,'not_found');
+        if(sub){
+          sub.status='canceled';
+          sub.canceledAt=new Date(clock()).toISOString();
+          store.jazzcashSubscriptions.set(user.id,sub);
+        }
+        if(entitlement?.tier==='premium'){
+          store.setEntitlement(user.id,{...entitlement,autoRenew:false,cancelAtPeriodEnd:true});
+        }
+        store.audit.write({actor:user.id,action:'jazzcash.subscription_canceled',targetType:'user',targetId:user.id,metadata:{subscriptionId}});
+        return reply(200,{status:'canceled',id:sub?.id||subscriptionId,appEntitlement:store.getEntitlement(user.id,clock())});
+      }
+
       return false;
     }catch(error){problem(res,error,requestId);return true;}
   };
