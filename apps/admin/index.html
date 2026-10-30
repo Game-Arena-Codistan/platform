@@ -14,8 +14,8 @@
 <main>
   <section id="auth" class="panel">
     <h1>Operations access</h1>
-    <p>Production access is provided by the approved MFA/SSO gateway. A local key is supported only in isolated development and test environments; roles and capabilities are always assigned by the API.</p>
-    <form id="local-auth"><label>Local administrator key<input name="key" type="password" autocomplete="off"></label><button type="submit">Use local credentials</button></form>
+    <p>Enter an authorized administrator key to open the console. Roles and capabilities are enforced by the API; the browser UI is not a security boundary.</p>
+    <form id="local-auth"><label>Administrator key<input name="key" type="password" autocomplete="current-password"></label><button type="submit">Sign in</button></form>
     <p id="auth-status" class="error"></p>
   </section>
   <section id="console" hidden>

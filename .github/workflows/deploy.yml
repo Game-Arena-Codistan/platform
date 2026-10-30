@@ -115,11 +115,12 @@ jobs:
           JAZZCASH_MERCHANT_ID: ${{ secrets.JAZZCASH_MERCHANT_ID }}
           JAZZCASH_PASSWORD: ${{ secrets.JAZZCASH_PASSWORD }}
           JAZZCASH_INTEGRITY_SALT: ${{ secrets.JAZZCASH_INTEGRITY_SALT }}
+          STAGING_ADMIN_API_KEY: ${{ secrets.STAGING_ADMIN_API_KEY }}
           APPLY_JAZZCASH_ORCHESTRATOR: ${{ vars.APPLY_JAZZCASH_ORCHESTRATOR || 'true' }}
         run: |
           set -euo pipefail
           ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' RELEASE_RUN_ID='$RELEASE_RUN_ID' APPLY_JAZZCASH_ORCHESTRATOR='$APPLY_JAZZCASH_ORCHESTRATOR' JAZZCASH_MERCHANT_ID='$JAZZCASH_MERCHANT_ID' JAZZCASH_PASSWORD='$JAZZCASH_PASSWORD' JAZZCASH_INTEGRITY_SALT='$JAZZCASH_INTEGRITY_SALT' bash -s" <<'REMOTE'
+            "IMAGE_BASE='$IMAGE_BASE' IMAGE_TAG='$IMAGE_TAG' RELEASE_RUN_ID='$RELEASE_RUN_ID' APPLY_JAZZCASH_ORCHESTRATOR='$APPLY_JAZZCASH_ORCHESTRATOR' JAZZCASH_MERCHANT_ID='$JAZZCASH_MERCHANT_ID' JAZZCASH_PASSWORD='$JAZZCASH_PASSWORD' JAZZCASH_INTEGRITY_SALT='$JAZZCASH_INTEGRITY_SALT' STAGING_ADMIN_API_KEY='$STAGING_ADMIN_API_KEY' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /opt/codistan/platform
 
@@ -149,6 +150,14 @@ jobs:
             fi
           }
           ensure_runtime_secret ADMIN_PROXY_SECRET
+          # Browser login for https://gsmarena-play.codistan.org/admin (staging only; not logged).
+          ensure_runtime_secret ADMIN_API_KEYS
+          if [ -n "${STAGING_ADMIN_API_KEY:-}" ]; then
+            upsert_env ADMIN_API_KEYS "$STAGING_ADMIN_API_KEY"
+            echo 'Applied STAGING_ADMIN_API_KEY from protected deploy secret (value not logged).'
+          else
+            echo 'ADMIN_API_KEYS is present for /admin browser login (generated or existing; value not logged).'
+          fi
 
           # JazzCash 2026 MWallet orchestrator staging defaults (non-secret).
           upsert_env JAZZCASH_RETURN_URL 'https://gsmarena-play.codistan.org/callback'

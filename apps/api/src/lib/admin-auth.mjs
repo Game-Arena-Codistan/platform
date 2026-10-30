@@ -16,7 +16,7 @@ function authorize(principal,allowedRoles){
 }
 
 function localPrincipal(req,config){
-  if(config.nodeEnv==='production'||config.adminAuthMode!=='local-key')throw fail('Local administrator keys are disabled.');
+  if(config.nodeEnv==='production')throw fail('Local administrator keys are disabled.');
   const key=String(req.headers['x-admin-key']||'');
   if(!key)throw fail('Administrative authentication required.');
   const principal=config.adminPrincipals.find(item=>safeEqual(item.key,key));
@@ -40,9 +40,20 @@ function signedPrincipal(req,config){
   return{id:sha256(identity).slice(0,24),roles:effective};
 }
 
+function hasSignedAssertion(req){
+  return Boolean(String(req.headers['x-admin-identity']||'').trim()||String(req.headers['x-admin-signature']||'').trim());
+}
+
 export function authenticateAdmin(req,config,allowedRoles=['admin']){
-  const principal=config.adminAuthMode==='signed-headers'?signedPrincipal(req,config):localPrincipal(req,config);
-  return authorize(principal,allowedRoles);
+  // Staging/dev signed-header deployments may also accept a local admin key so the
+  // public /admin console can authenticate browsers without an SSO signing proxy.
+  if(config.adminAuthMode==='signed-headers'){
+    if(hasSignedAssertion(req))return authorize(signedPrincipal(req,config),allowedRoles);
+    if(config.nodeEnv!=='production'&&String(req.headers['x-admin-key']||''))return authorize(localPrincipal(req,config),allowedRoles);
+    return authorize(signedPrincipal(req,config),allowedRoles);
+  }
+  if(config.adminAuthMode!=='local-key')throw fail('Administrative authentication required.');
+  return authorize(localPrincipal(req,config),allowedRoles);
 }
 
 export function signAdminAssertion({identity,roles,issuedAt=Date.now(),secret}){

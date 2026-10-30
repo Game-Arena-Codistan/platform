@@ -8,13 +8,15 @@ Do not provision AWS, EKS, S3, RDS, Route 53 or AWS IAM roles for the current la
 
 Current staging URL: `https://gsmarena-play.codistan.org`
 
+Operations console: `https://gsmarena-play.codistan.org/admin` (requires an administrator key from staging `ADMIN_API_KEYS`, or signed admin headers used by certification).
+
 Current runtime stack:
 
 - `postgres` — persistent PostgreSQL data volume;
 - `migrate` — exact-release migration runner;
 - `api` — Game Arena modular-monolith API/BFF;
 - `web` — player PWA;
-- `admin` — private operations console, bound locally on the server;
+- `admin` — operations console at `/admin` on the public staging host (API admin auth required; also bound locally on `127.0.0.1:18183`);
 - `game-origin` — controlled game origin with persistent host-mounted game content;
 - `gateway` — public reverse-proxy entry point.
 
