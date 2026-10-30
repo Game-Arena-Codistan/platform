@@ -50,19 +50,30 @@ jobs:
           ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           cd /opt/codistan/platform
+          test -f .deployed-sha
+          IMAGE_TAG="$(tr -d '[:space:]' < .deployed-sha)"
+          IMAGE_BASE="$(grep -m1 '^IMAGE_BASE=' infra/.env 2>/dev/null | cut -d= -f2- || true)"
+          IMAGE_BASE="${IMAGE_BASE#\"}"; IMAGE_BASE="${IMAGE_BASE%\"}"
+          IMAGE_BASE="${IMAGE_BASE:-ghcr.io/game-arena-codistan/platform}"
+          export IMAGE_BASE IMAGE_TAG
+          echo "Recovering edge with IMAGE_BASE=$IMAGE_BASE IMAGE_TAG=$IMAGE_TAG"
           compose=(docker compose -f infra/docker-compose.staging.yml --env-file infra/.env)
-          # Keep currently deployed image tags; only repair routing/edge.
-          "${compose[@]}" up -d --no-deps --force-recreate admin gateway || "${compose[@]}" up -d --remove-orphans
+          # Prefer recreate of running tagged services; fall back to bringing the stack up.
+          if ! "${compose[@]}" up -d --no-deps --force-recreate admin gateway; then
+            echo 'force-recreate failed; attempting full compose up' >&2
+            "${compose[@]}" up -d --remove-orphans
+          fi
           for _ in $(seq 1 40); do
-            gateway=0; admin=0; admin_via_gateway=0
+            gateway=0; admin=0; admin_via_gateway=0; api=0
             curl --fail --silent --max-time 3 http://127.0.0.1:8095/healthz >/dev/null && gateway=1 || true
             curl --fail --silent --max-time 3 http://127.0.0.1:18183/healthz >/dev/null && admin=1 || true
             curl --fail --silent --max-time 3 http://127.0.0.1:8095/admin/healthz >/dev/null && admin_via_gateway=1 || true
-            if [ "$gateway$admin$admin_via_gateway" = 111 ]; then break; fi
+            curl --fail --silent --max-time 3 http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || true
+            if [ "$gateway$admin$admin_via_gateway$api" = 1111 ]; then break; fi
             sleep 2
           done
-          if [ "$gateway$admin$admin_via_gateway" != 111 ]; then
-            echo "Edge recovery failed: gateway=$gateway admin=$admin admin_via_gateway=$admin_via_gateway" >&2
+          if [ "$gateway$admin$admin_via_gateway$api" != 1111 ]; then
+            echo "Edge recovery failed: gateway=$gateway admin=$admin admin_via_gateway=$admin_via_gateway api=$api" >&2
             "${compose[@]}" ps
             "${compose[@]}" logs --tail=100 admin gateway || true
             exit 1
