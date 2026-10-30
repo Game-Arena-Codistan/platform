@@ -14,7 +14,42 @@ export function renderAccount(){
   const state=getState();
   const subscribed=isPremium();
   const membershipLabel=subscribed?'Subscribed · Game Arena+':'Free member';
-  return `<section class="page"><header class="page-head"><div><span class="eyebrow">Account</span><h1>${state.user?state.user.displayName||'Player':'Guest player'}</h1><p>${state.user?membershipLabel:'Browse freely and sign in only when an action needs an account.'}</p>${subscribed?'<span class="badge premium">Subscribed</span>':''}</div>${!state.user?'<button class="button primary" id="sign-in" type="button">Sign in</button>':''}</header>${!state.onboardingComplete?`<section class="card onboarding-card"><div><span class="eyebrow">Getting started</span><h2>Your Arena in three steps</h2><p>Browse a game, sign in with your mobile number when needed, then activate premium only when you choose.</p></div><div class="step-mini"><span>1. Discover</span><span>2. Sign in</span><span>3. Play or upgrade</span></div><button class="button secondary" id="finish-onboarding" type="button">Got it</button></section>`:''}<div class="split wide"><article class="card account-card"><h2>Membership</h2>${state.user?`<p class="muted">Current plan: <b id="account-current-plan">${planLabel(state)}</b></p><p class="muted">${subscribed?'Full catalogue and premium rewards are active.':'You can browse and play selected free games.'}</p>`:`<p class="muted">Sign in to see your current plan.</p>`}<div class="hero-actions">${!subscribed?'<a class="button gold" href="/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash">Upgrade to Arena+</a>':''}${state.user?'<button class="button danger" id="sign-out" type="button">Sign out</button><button class="button secondary" id="sign-out-all" type="button">Sign out other devices</button>':''}</div></article></div>${state.user?renderBillingPanel():''}<section class="card card-body"><h2>Privacy and support</h2><p class="muted">Download a portable copy of your account data or request account deletion.</p><div class="hero-actions"><a class="button secondary" href="/legal/privacy.html">Privacy</a><a class="button secondary" href="/legal/terms.html">Terms</a><a class="button secondary" href="/legal/rewards.html">Reward rules</a><a class="button secondary" href="#/support">Contact support</a>${state.user?'<button class="button secondary" id="export-account" type="button">Export data</button><button class="button danger" id="delete-account" type="button">Delete account</button>':''}</div></section></section>`;
+  return `<section class="page account-page">
+  <header class="page-head">
+    <div>
+      <span class="eyebrow">Account</span>
+      <h1>${state.user?state.user.displayName||'Player':'Guest player'}</h1>
+      <p>${state.user?membershipLabel:'Browse freely and sign in only when an action needs an account.'}</p>
+      ${subscribed?'<span class="badge premium">Subscribed</span>':''}
+    </div>
+    ${!state.user?'<button class="button primary" id="sign-in" type="button">Sign in</button>':''}
+  </header>
+  ${!state.onboardingComplete?`<section class="card onboarding-card"><div><span class="eyebrow">Getting started</span><h2>Your Arena in three steps</h2><p>Browse a game, sign in with your mobile number when needed, then activate premium only when you choose.</p></div><div class="step-mini"><span>1. Discover</span><span>2. Sign in</span><span>3. Play or upgrade</span></div><button class="button secondary" id="finish-onboarding" type="button">Got it</button></section>`:''}
+  <div class="account-stack">
+    <article class="card account-card card-body">
+      <h2>Membership</h2>
+      ${state.user
+        ?`<p class="muted">Current plan: <b id="account-current-plan">${planLabel(state)}</b></p><p class="muted">${subscribed?'Full catalogue and premium rewards are active.':'You can browse and play selected free games.'}</p>`
+        :`<p class="muted">Sign in to see your current plan.</p>`}
+      <div class="hero-actions">
+        ${!subscribed?'<a class="button gold" href="/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash">Upgrade to Arena+</a>':''}
+        ${state.user?'<button class="button danger" id="sign-out" type="button">Sign out</button><button class="button secondary" id="sign-out-all" type="button">Sign out other devices</button>':''}
+      </div>
+    </article>
+    ${state.user?renderBillingPanel():''}
+    <section class="card card-body account-privacy">
+      <h2>Privacy and support</h2>
+      <p class="muted">Download a portable copy of your account data or request account deletion.</p>
+      <div class="hero-actions">
+        <a class="button secondary" href="/legal/privacy.html">Privacy</a>
+        <a class="button secondary" href="/legal/terms.html">Terms</a>
+        <a class="button secondary" href="/legal/rewards.html">Reward rules</a>
+        <a class="button secondary" href="#/support">Contact support</a>
+        ${state.user?'<button class="button secondary" id="export-account" type="button">Export data</button><button class="button danger" id="delete-account" type="button">Delete account</button>':''}
+      </div>
+    </section>
+  </div>
+</section>`;
 }
 
 export function bindAccount(){

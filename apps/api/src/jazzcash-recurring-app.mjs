@@ -190,11 +190,8 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         if(!plan||plan.status==='coming_soon')throw fail('This plan is coming soon.',409,'plan_unavailable');
         ensureJazzCashState(store);
         const user=resolveCheckoutUser(req,phone);
-        const existing=store.jazzcashWallets.get(user.id);
-        if(existing?.status==='linked'){
-          const entitlement=store.getEntitlement(user.id,clock());
-          if(entitlement?.tier==='premium'&&entitlement?.status==='active')throw fail('Wallet already linked.',409,'already_linked');
-        }
+        // Always start a fresh JazzCash link portal. Shared staging wallets
+        // (e.g. 03123456789) must be able to re-link without already_linked 409s.
         const requestIdValue=jazzCashRequestId();
         const returnPath=safeReturnPath(value.returnPath||value.landingPath);
         store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,attribution:value.attribution||null});

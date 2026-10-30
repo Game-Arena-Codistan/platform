@@ -63,7 +63,7 @@ test('live catalogue runtime and rewards wallet empty copy are wired for staging
   assert.match(rewardsSource,/Loading wallet activity/);
   assert.match(rewardsSource,/No wallet activity yet/);
   assert.match(rewardsSource,/walletEmptyCopy\(state\)/);
-  assert.match(apiSource,/game\.version&&game\.version!=='external'&&!game\.internalDemo/);
+  assert.match(apiSource,/crossOriginAllowlisted|versionInPath/);
   assert.match(rewardsSource,/getState\(\)\.user&&!getState\(\)\.walletLoaded/);
 });
 
@@ -93,6 +93,9 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(uiSource,/auth-password|Create account|data-auth-mode/);
   assert.match(apiSource,/registerAccount|loginAccount/);
   assert.match(landingSource,/landing-msisdn|Enter Your JazzCash Number/);
+  assert.match(landingSource,/landing-css-ready/);
+  assert.match(landingSource,/ensureLandingStyles\(\)\.then/);
+  assert.match(accountSource,/account-stack/);
   assert.doesNotMatch(`${billingApiSource}\n${premiumSource}\n${accountSource}\n${landingSource}`,/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
   assert.doesNotMatch(billingApiSource,/amountMinor\s*:/);
   assert.doesNotMatch(premiumSource,/pp_PaymentToken|pp_Password|pp_SecureHash/);

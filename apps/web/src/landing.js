@@ -40,6 +40,14 @@ function fitLandingAboveFold(){
   const above=document.querySelector('.ga-lp-above');
   const img=document.querySelector('.ga-lp-banner');
   if(!fit||!above)return;
+  // Never measure/scale until landing.css has applied — otherwise the first
+  // paint uses unconstrained image HTML width/height and scale shrinks the UI.
+  if(!document.documentElement.classList.contains('landing-css-ready')){
+    above.style.transform='none';
+    fit.style.height='auto';
+    fit.dataset.scale='pending';
+    return;
+  }
   above.style.transform='none';
   fit.style.height='auto';
   // Mobile: never scale — scaling leaves white side gutters. Keep full-bleed banner.
@@ -51,6 +59,8 @@ function fitLandingAboveFold(){
     }
     return;
   }
+  // Force layout with CSS constraints applied before measuring.
+  void above.offsetHeight;
   const natural=above.scrollHeight||above.offsetHeight;
   const available=Math.max(320,window.innerHeight-8);
   const scale=natural>available?Math.min(1,available/natural):1;
@@ -199,19 +209,34 @@ function handleLandingReturn(campaign,landing){
 }
 
 function ensureLandingStyles(){
-  if(document.querySelector('link[data-landing-styles]'))return;
-  const link=document.createElement('link');
-  link.rel='stylesheet';
-  const release=encodeURIComponent(window.GAME_ARENA_CONFIG?.releaseSha||'dev');
-  link.href=`/styles/landing.css?v=${release}`;
-  link.dataset.landingStyles='true';
-  document.head.append(link);
+  return new Promise((resolve)=>{
+    const markReady=()=>{
+      document.documentElement.classList.add('landing-css-ready');
+      resolve();
+    };
+    const existing=document.querySelector('link[data-landing-styles]');
+    if(existing){
+      if(existing.sheet||existing.dataset.loaded==='1'){markReady();return;}
+      existing.addEventListener('load',()=>{existing.dataset.loaded='1';markReady();},{once:true});
+      existing.addEventListener('error',markReady,{once:true});
+      // Cached stylesheet may already be applied without a load event.
+      requestAnimationFrame(()=>{if(existing.sheet){existing.dataset.loaded='1';markReady();}});
+      return;
+    }
+    const link=document.createElement('link');
+    link.rel='stylesheet';
+    const release=encodeURIComponent(window.GAME_ARENA_CONFIG?.releaseSha||'dev');
+    link.href=`/styles/landing.css?v=${release}`;
+    link.dataset.landingStyles='true';
+    link.addEventListener('load',()=>{link.dataset.loaded='1';markReady();},{once:true});
+    link.addEventListener('error',markReady,{once:true});
+    document.head.append(link);
+  });
 }
 
 export function bootLandingIfNeeded(){
   const landing=detectLanding();
   if(!landing)return false;
-  ensureLandingStyles();
   const campaign=campaignFromSearchParams(location.search,landing);
   const commerce=commerceForCampaign(campaign);
   document.body.classList.add('landing-mode');
@@ -224,9 +249,21 @@ export function bootLandingIfNeeded(){
   handleLandingReturn(campaign,landing);
   document.querySelector('#landing-subscribe')?.addEventListener('submit',event=>{event.preventDefault();startCheckout({landing,campaign,commerce});});
   const runFit=()=>fitLandingAboveFold();
-  runFit();
-  requestAnimationFrame(runFit);
+  const scheduleFit=()=>{
+    runFit();
+    requestAnimationFrame(()=>{
+      runFit();
+      requestAnimationFrame(runFit);
+    });
+  };
+  ensureLandingStyles().then(scheduleFit);
   addEventListener('resize',runFit);
   addEventListener('orientationchange',()=>setTimeout(runFit,120));
+  if(document.fonts?.ready)document.fonts.ready.then(scheduleFit).catch(()=>{});
+  const above=document.querySelector('.ga-lp-above');
+  if(above&&typeof ResizeObserver==='function'){
+    const observer=new ResizeObserver(()=>runFit());
+    observer.observe(above);
+  }
   return true;
 }
