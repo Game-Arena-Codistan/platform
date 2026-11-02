@@ -40,15 +40,31 @@ test('catalogue contains active imported games and a playable preview',()=>{
 });
 
 test('library card art prefers CSP-safe game snaps over sprite sheets',async()=>{
-  const {localReleaseBase,resolveCardArt}=await import('../src/game-card-art.js');
+  const {localReleaseBase,packagedIconPath,resolveCardArt}=await import('../src/game-card-art.js');
   assert.equal(localReleaseBase('/games/balloon-paradise/1.0.0/index.html'),'/games/balloon-paradise/1.0.0');
-  const hosted=resolveCardArt({gameUrl:'/games/balloon-paradise/1.0.0/index.html',bannerUrl:'https://games.codistan.org/balloon-paradise/images/shared-0-sheet0.png'},0);
+  assert.equal(localReleaseBase('/demo-games/arena-dash/index.html'),'/demo-games/arena-dash');
+  assert.equal(packagedIconPath({id:'balloon-paradise',slug:'balloon-paradise',version:'1.0.0'}),'/games/balloon-paradise/1.0.0/icons/icon-256.png');
+  assert.equal(packagedIconPath({id:'candy-super-lines',version:'1.0.0'}),'/games/candy-super-lines/1.0.0/icon-256.png');
+  // Prefer packaged icon over 404-prone catalogue banners even when gameUrl was rewritten to the portfolio CDN.
+  const hosted=resolveCardArt({
+    id:'balloon-paradise',
+    slug:'balloon-paradise',
+    version:'1.0.0',
+    gameUrl:'https://gamesbundle.codistan.org/Balloon-Paradise/index.html',
+    bannerUrl:'https://gamesbundle.codistan.org/Balloon-Paradise/images/baloon%20paradaise.webp',
+    iconUrl:'https://gamesbundle.codistan.org/Balloon-Paradise/icons/icon-256.png'
+  },0);
   assert.match(hosted,/url\('\/games\/balloon-paradise\/1\.0\.0\/icons\/icon-256\.png'\)/);
+  assert.doesNotMatch(hosted,/baloon%20paradaise\.webp/);
   assert.doesNotMatch(hosted,/url\("/);
   assert.match(hosted,/rgba\(4,3,10/);
   const sheetSkipped=resolveCardArt({gameUrl:'https://games.codistan.org/touchball/',bannerUrl:'https://games.codistan.org/touchball/images/shared-0-sheet0.png',iconUrl:'https://games.codistan.org/touchball/icons/icon-256.png'},1);
   assert.match(sheetSkipped,/icon-256\.png/);
   assert.doesNotMatch(sheetSkipped,/shared-0-sheet0/);
+  const curated=resolveCardArt({id:'arena-dash',preview:true,internalDemo:true,gameUrl:'/demo-games/arena-dash/index.html',version:'demo'},0);
+  assert.match(curated,/\/assets\/card-art\/arena-dash\.jpg/);
+  const carPhysics=resolveCardArt({id:'car-physics',slug:'car-physics',version:'1.0.0',gameUrl:'/games/car-physics/1.0.0/index.html',iconUrl:'https://gamesbundle.codistan.org/Car-Physics/icons/icon-256.png'},2);
+  assert.match(carPhysics,/\/assets\/card-art\/car-physics\.jpg/);
 });
 
 test('MVP surfaces have launch-safe data contracts',()=>{
