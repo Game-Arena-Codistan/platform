@@ -56,5 +56,6 @@ export function resolveCardArt(game={},index=0){
   }
   const safe=cssSafeUrl(image);
   if(!safe)return fallbackArt(index);
-  return `linear-gradient(180deg,rgba(4,3,10,.55) 0%,rgba(4,3,10,.22) 34%,rgba(4,3,10,.88) 72%,rgba(4,3,10,.97) 100%),url("${safe}") center/cover no-repeat`;
+  // Use single-quoted url() so style="--art:..." is not truncated by double quotes.
+  return `linear-gradient(180deg,rgba(4,3,10,.28) 0%,rgba(4,3,10,.12) 42%,rgba(4,3,10,.82) 78%,rgba(4,3,10,.96) 100%),url('${safe}') center/cover no-repeat`;
 }

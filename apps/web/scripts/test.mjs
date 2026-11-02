@@ -43,7 +43,8 @@ test('library card art prefers CSP-safe game snaps over sprite sheets',async()=>
   const {localReleaseBase,resolveCardArt}=await import('../src/game-card-art.js');
   assert.equal(localReleaseBase('/games/balloon-paradise/1.0.0/index.html'),'/games/balloon-paradise/1.0.0');
   const hosted=resolveCardArt({gameUrl:'/games/balloon-paradise/1.0.0/index.html',bannerUrl:'https://games.codistan.org/balloon-paradise/images/shared-0-sheet0.png'},0);
-  assert.match(hosted,/url\("\/games\/balloon-paradise\/1\.0\.0\/icons\/icon-256\.png"\)/);
+  assert.match(hosted,/url\('\/games\/balloon-paradise\/1\.0\.0\/icons\/icon-256\.png'\)/);
+  assert.doesNotMatch(hosted,/url\("/);
   assert.match(hosted,/rgba\(4,3,10/);
   const sheetSkipped=resolveCardArt({gameUrl:'https://games.codistan.org/touchball/',bannerUrl:'https://games.codistan.org/touchball/images/shared-0-sheet0.png',iconUrl:'https://games.codistan.org/touchball/icons/icon-256.png'},1);
   assert.match(sheetSkipped,/icon-256\.png/);
@@ -115,12 +116,12 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
 
 test('Vercel preview mocks match contract 1.0.0',()=>{
   assert.equal(contract.contractVersion,'1.0.0');
-  assert.equal(contract.examples.otpRequested.debugCode,'1234');
+  assert.equal(contract.examples.otpRequested.debugCode,'123456');
   assert.equal(contract.examples.otpVerified.entitlement,'free');
   assert.equal(contract.examples.wallet.balance,120);
   assert.equal(contract.examples.topups.offers.length,mockTopups.length);
   assert.deepEqual(contract.examples.topups.offers.map(item=>item.coins),mockTopups.map(item=>item.coins));
-  assert.match(apiSource,/code!=='1234'/);
+  assert.match(apiSource,/code!=='123456'/);
   assert.ok(apiSource.includes("mode:'mock'"));
   for(const game of contract.examples.catalogue.games.filter(item=>item.version==='1.0.0-pilot.1')){
     assert.equal(game.status,'paused');
