@@ -35,6 +35,35 @@ function detectLanding(){
   return null;
 }
 
+function bindBannerFit(img){
+  if(!img||img.dataset.fitBound)return;
+  img.dataset.fitBound='1';
+  img.addEventListener('load',fitLandingAboveFold,{once:true});
+}
+
+function resetLandingFitStyles(fit,above,img){
+  above.style.transform='none';
+  above.style.width='';
+  above.style.maxWidth='';
+  above.style.flex='';
+  above.style.marginLeft='';
+  above.style.marginRight='';
+  above.style.transformOrigin='';
+  above.style.height='';
+  above.style.minHeight='';
+  fit.style.height='';
+  fit.style.minHeight='';
+  if(img){
+    img.style.height='';
+    img.style.maxHeight='';
+    img.style.objectFit='';
+  }
+}
+
+/**
+ * Keep the full banner visible (never crop) and fit the fold to one screen
+ * by scaling the whole above-the-fold stack on laptop and mobile.
+ */
 function fitLandingAboveFold(){
   const fit=document.querySelector('.ga-lp-fit');
   const above=document.querySelector('.ga-lp-above');
@@ -43,34 +72,47 @@ function fitLandingAboveFold(){
   // Never measure/scale until landing.css has applied — otherwise the first
   // paint uses unconstrained image HTML width/height and scale shrinks the UI.
   if(!document.documentElement.classList.contains('landing-css-ready')){
-    above.style.transform='none';
-    fit.style.height='auto';
+    resetLandingFitStyles(fit,above,img);
     fit.dataset.scale='pending';
     return;
   }
-  above.style.transform='none';
-  fit.style.height='auto';
-  // Mobile: never scale — scaling leaves white side gutters. Keep full-bleed banner.
-  if(window.matchMedia('(max-width:720px)').matches){
-    fit.dataset.scale='1';
-    if(img&&!img.dataset.fitBound){
-      img.dataset.fitBound='1';
-      img.addEventListener('load',fitLandingAboveFold,{once:true});
-    }
+
+  resetLandingFitStyles(fit,above,img);
+  const viewport=Math.max(320,window.innerHeight);
+  void above.offsetHeight;
+  // Wait for banner decode so natural height includes the full uncropped image.
+  if(img&&!img.complete){
+    bindBannerFit(img);
     return;
   }
-  // Force layout with CSS constraints applied before measuring.
-  void above.offsetHeight;
-  const natural=above.scrollHeight||above.offsetHeight;
-  const available=Math.max(320,window.innerHeight-8);
-  const scale=natural>available?Math.min(1,available/natural):1;
-  above.style.transform=`scale(${scale})`;
-  fit.style.height=`${Math.ceil(natural*scale)}px`;
-  fit.dataset.scale=String(scale);
-  if(img&&!img.dataset.fitBound){
-    img.dataset.fitBound='1';
-    img.addEventListener('load',fitLandingAboveFold,{once:true});
+
+  // Only scale down when the full uncropped stack is taller than the screen.
+  // Never scale up — that clips banner sides. Leftover height stays white.
+  // When scaling down, widen layout by 1/scale so the visual width stays full-bleed.
+  let scale=1;
+  for(let pass=0;pass<3;pass+=1){
+    above.style.transform='none';
+    above.style.maxWidth='none';
+    above.style.flex='0 0 auto';
+    above.style.width=scale<0.999?`${100/scale}%`:'100%';
+    void above.offsetHeight;
+    const natural=Math.max(1,above.scrollHeight||above.offsetHeight||viewport);
+    const next=natural>viewport?Math.max(0.55,viewport/natural):1;
+    if(Math.abs(next-scale)<0.002){scale=next;break;}
+    scale=next;
   }
+  above.style.maxWidth='none';
+  above.style.flex='0 0 auto';
+  above.style.width=scale<0.999?`${100/scale}%`:'100%';
+  // Top-left origin + wider layout => full-bleed after scale (no side gutters).
+  above.style.marginLeft='0';
+  above.style.marginRight='0';
+  above.style.transformOrigin='top left';
+  above.style.transform=scale<0.999?`scale(${scale})`:'none';
+  fit.style.height=`${viewport}px`;
+  fit.style.minHeight=`${viewport}px`;
+  fit.dataset.scale=String(scale);
+  bindBannerFit(img);
 }
 
 function benefitsFooter(){
@@ -105,7 +147,7 @@ function renderLanding(landing,commerce){
     <section class="ga-lp-hero" aria-label="Game Arena+ offer">
       <div class="ga-lp-banner-swap">
         <picture>
-          <source media="(min-width:720px)" srcset="${banner.web}">
+          <source media="(min-width:1101px), ((min-width:721px) and (orientation: landscape))" srcset="${banner.web}">
           <img class="ga-lp-banner" src="${banner.mobile}" alt="${banner.alt}" width="1600" height="900" decoding="async">
         </picture>
       </div>
@@ -136,14 +178,14 @@ function renderLanding(landing,commerce){
         <span class="ga-lp-notice-stripes" aria-hidden="true"></span>
       </div>
     </section>
+    <section class="ga-lp-trust" aria-label="Trust signals">
+      <div><b>Secure Payments</b><small>Powered by JazzCash</small></div>
+      <div><b>Aapka data safe hai</b><small>100% Secure</small></div>
+      <div><b>Help jab chahiye</b><small>24/7 Support</small></div>
+    </section>
+    <p class="ga-lp-legal">Jari rakhne se aap Game Arena ki <a href="/legal/terms.html" target="_blank" rel="noopener">Terms and Conditions</a> se raazi hoon. Already paid? <a href="/#/account">Sign in</a>.</p>
   </div>
   </div>
-  <section class="ga-lp-trust" aria-label="Trust signals">
-    <div><b>Secure Payments</b><small>Powered by JazzCash</small></div>
-    <div><b>Aapka data safe hai</b><small>100% Secure</small></div>
-    <div><b>Help jab chahiye</b><small>24/7 Support</small></div>
-  </section>
-  <p class="ga-lp-legal">Jari rakhne se aap Game Arena ki <a href="/legal/terms.html" target="_blank" rel="noopener">Terms and Conditions</a> se raazi hoon. Already paid? <a href="/#/account">Sign in</a>.</p>
   ${benefitsFooter()}
 </main>`;
 }

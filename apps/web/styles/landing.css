@@ -1,12 +1,12 @@
-/* Match SkillUp mainLanding above-the-fold sizing at 100% browser zoom:
-   full banner + full JazzCash card visible together; trust/legal below. */
+/* Above-the-fold at 100% zoom: banner + JazzCash card + trust + legal line.
+   Premium Benefits footer starts only after the user scrolls. */
 html.landing-mode{
-  background:#f3f4f8;
+  background:#fff;
   color:#171238;
   overflow-x:hidden;
 }
 body.landing-mode{
-  background:#f3f4f8;
+  background:#fff;
   font-family:Arial,Helvetica,sans-serif;
   margin:0;
   min-height:100%;
@@ -16,14 +16,14 @@ body.landing-mode .topbar,
 body.landing-mode .bottom-nav{display:none!important}
 body.landing-mode .shell{
   min-height:100dvh;
-  background:#f3f4f8;
+  background:#fff;
 }
 body.landing-mode #app{
   padding:0;
   max-width:none;
   margin:0;
   min-height:100dvh;
-  background:#f3f4f8;
+  background:#fff;
 }
 
 .ga-lp{
@@ -31,25 +31,32 @@ body.landing-mode #app{
   --purple:#6b46c1;
   --purple-deep:#5b3aad;
   --purple-soft:#f3effc;
-  --cream:#f7f5fb;
+  --cream:#fff;
   --muted:#6b6578;
   --line:#e4e1ea;
-  /* Banner + JazzCash share this width */
+  /* Banner + JazzCash share this width; widens on 1920-class desktops */
   --ga-panel-w:calc(100% - 48px);
-  width:min(100%,900px);
+  width:min(100%,960px);
   margin:0 auto;
-  background:var(--cream);
+  background:#fff;
   color:var(--ink);
   overflow:visible;
 }
+@media (min-width:1600px){
+  .ga-lp{width:min(100%,1120px)}
+}
 .ga-lp button,.ga-lp input{font:inherit}
 
-/* Banner is never cropped. JS scales .ga-lp-above to fit the viewport. */
+/* First viewport is one screen. Banner stays fully visible (never cropped);
+   JS scales the whole above-the-fold stack to fit laptop/mobile heights. */
 .ga-lp-fit{
   width:100%;
-  display:flex;
-  justify-content:center;
-  overflow:visible;
+  min-height:100dvh;
+  height:100dvh;
+  display:block;
+  overflow:hidden;
+  box-sizing:border-box;
+  background:#fff;
 }
 .ga-lp-above{
   box-sizing:border-box;
@@ -60,13 +67,14 @@ body.landing-mode #app{
   width:100%;
   height:auto;
   max-height:none;
-  padding-top:.35rem;
-  padding-bottom:.65rem;
+  padding-top:.45rem;
+  padding-bottom:.75rem;
   overflow:visible;
-  transform-origin:top center;
+  transform-origin:top left;
+  background:#fff;
 }
 .ga-lp-hero{
-  background:#0b1630;
+  background:#fff;
   width:var(--ga-panel-w);
   max-width:var(--ga-panel-w);
   margin:0 auto;
@@ -74,24 +82,25 @@ body.landing-mode #app{
   line-height:0;
   position:relative;
   overflow:visible;
-  flex:none;
+  flex:0 0 auto;
   border-radius:18px;
   box-shadow:0 10px 28px #3c1e7814;
 }
 .ga-lp-banner-swap{
   width:100%;
+  height:auto;
   margin:0;
   line-height:0;
-  background:#0b1630;
+  background:#fff;
   border-radius:18px;
   overflow:hidden;
 }
 .ga-lp-banner{
-  /* Full graphic, same width as JazzCash — no crop/omit */
   display:block;
   width:100%;
   height:auto;
   max-width:100%;
+  /* Intrinsic ratio — never crop the creative on web or mobile. */
   object-fit:contain;
   object-position:center top;
 }
@@ -101,11 +110,11 @@ body.landing-mode #app{
   background:#fff;
   border:1px solid #e8e4f2;
   border-radius:22px;
-  flex:none;
+  flex:0 0 auto;
   width:var(--ga-panel-w);
   max-width:var(--ga-panel-w);
-  margin:12px auto 0;
-  padding:18px 28px 16px;
+  margin:10px auto 0;
+  padding:16px 28px 14px;
   position:relative;
   box-shadow:0 10px 28px #3c1e7814;
   box-sizing:border-box;
@@ -259,7 +268,8 @@ body.landing-mode #app{
   display:grid;
   overflow:hidden;
   width:var(--ga-panel-w);
-  margin:16px auto 0;
+  margin:14px auto 0;
+  flex:none;
 }
 .ga-lp-trust>div{
   border-right:1px solid #e4e2e9;
@@ -276,11 +286,12 @@ body.landing-mode #app{
 .ga-lp-trust small{color:#625f6a;margin-top:2px;font-size:10px}
 .ga-lp-legal{
   width:var(--ga-panel-w);
-  margin:14px auto 18px;
+  margin:12px auto 0;
   color:var(--muted);
   font-size:12px;
   line-height:1.45;
   text-align:center;
+  flex:none;
 }
 .ga-lp-legal a{color:var(--purple);font-weight:700;text-decoration:underline}
 
@@ -288,7 +299,7 @@ body.landing-mode #app{
   width:100%;
   background:#f4f5f7;
   border-top:1px solid #e4e2e9;
-  margin-top:8px;
+  margin-top:0;
   padding:28px 0 36px;
 }
 .ga-lp-benefits-inner{
@@ -359,14 +370,14 @@ body.landing-mode #app{
 .ga-lp-benefit h3{margin:0 0 .2rem;font-size:.98rem;color:#171238}
 .ga-lp-benefit p{margin:0;color:#6b6578;font-size:.84rem;line-height:1.4}
 
-@media (max-width:720px){
-  /* Full-bleed banner on mobile — no side gutters, no crop. */
-  html.landing-mode,body.landing-mode,body.landing-mode .shell,body.landing-mode #app{background:#0b1630}
-  .ga-lp{width:100vw;max-width:100vw;--ga-panel-w:100%;background:#0b1630;margin:0}
-  .ga-lp-fit,.ga-lp-above{width:100%;max-width:100%;transform:none!important;height:auto!important}
-  .ga-lp-above{padding-top:0;padding-bottom:0;background:#0b1630}
-  .ga-lp-hero{background:#0b1630;border-radius:0;width:100%;max-width:100%;box-shadow:none;margin:0}
-  .ga-lp-banner-swap{background:#0b1630;border-radius:0;width:100%}
+/* Phones + 1080x1920-class portrait: full-bleed uncropped banner, white chrome. */
+@media (max-width:720px),((max-width:1100px) and (orientation:portrait)){
+  html.landing-mode,body.landing-mode,body.landing-mode .shell,body.landing-mode #app{background:#fff}
+  .ga-lp{width:100%;max-width:100%;--ga-panel-w:100%;background:#fff;margin:0}
+  .ga-lp-fit{width:100%;max-width:100%;min-height:100dvh;overflow:hidden;background:#fff}
+  .ga-lp-above{width:100%;max-width:none;padding-top:0;padding-bottom:12px;background:#fff;overflow:visible}
+  .ga-lp-hero{background:#fff;border-radius:0;width:100%;max-width:100%;box-shadow:none;margin:0;flex:0 0 auto;overflow:visible}
+  .ga-lp-banner-swap{background:#fff;border-radius:0;width:100%;height:auto}
   .ga-lp-banner{width:100%;height:auto;object-fit:contain;object-position:center top;display:block}
   .ga-lp-card{width:calc(100% - 20px);max-width:calc(100% - 20px);border-radius:16px;margin:10px auto 0;padding:12px 12px 10px;background:#fff}
   .ga-lp-trust,.ga-lp-legal{width:calc(100% - 20px);max-width:calc(100% - 20px);background:#fff}

@@ -123,6 +123,8 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(landingSource,/landing-msisdn|Enter Your JazzCash Number/);
   assert.match(landingSource,/landing-css-ready/);
   assert.match(landingSource,/ensureLandingStyles\(\)\.then/);
+  assert.match(landingSource,/ga-lp-above[\s\S]*ga-lp-trust[\s\S]*ga-lp-legal[\s\S]*<\/div>\s*<\/div>\s*\$\{benefitsFooter\(\)\}/);
+  assert.match(landingSource,/minHeight|100dvh|Premium Benefits stays below the fold/);
   assert.match(accountSource,/account-stack/);
   assert.doesNotMatch(`${billingApiSource}\n${premiumSource}\n${accountSource}\n${landingSource}`,/PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|x-api-key/i);
   assert.doesNotMatch(billingApiSource,/amountMinor\s*:/);
