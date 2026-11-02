@@ -17,7 +17,7 @@ function headers(cookie,csrf='demo-csrf'){
 async function signIn(base){
   const otp=await fetch(`${base}/v1/auth/otp`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({identifier:'03009998877'})});
   const challenge=await otp.json();
-  const verify=await fetch(`${base}/v1/auth/otp/verify`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challengeId:challenge.challengeId,code:challenge.debugCode||'123456'})});
+  const verify=await fetch(`${base}/v1/auth/otp/verify`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({challengeId:challenge.challengeId,code:challenge.debugCode||'1234'})});
   const body=await verify.json();
   const cookie=verify.headers.getSetCookie?.().map(line=>line.split(';')[0]).join('; ')||'';
   return{cookie,csrf:body.csrfToken||'demo-csrf'};
@@ -73,5 +73,69 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
     assert.equal(after.subscriptions?.[0]?.status,'canceled');
     assert.equal(after.appEntitlement.tier,'free');
     assert.equal(after.appEntitlement.autoRenew,false);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+test('orchestrator billing accepts both configured origins and returns to the request origin',async()=>{
+  const liveOrigin='https://gsmarena-play.com';
+  const stagingOrigin='https://gsmarena-play.codistan.org';
+  const store=new MemoryStore();
+  const config=loadConfig({
+    nodeEnv:'test',
+    port:1,
+    publicOrigin:liveOrigin,
+    allowedOrigins:[liveOrigin,stagingOrigin],
+    allowDebugOtp:true,
+    jazzcashMode:'orchestrator',
+    jazzcashMerchantId:'MC990983',
+    jazzcashPassword:'pw',
+    jazzcashIntegritySalt:'salt',
+    jazzcashReturnUrl:`${liveOrigin}/callback`,
+    jazzcashWebhookSecret:'test-secret'
+  });
+  const fetchImpl=async(url)=>{
+    if(String(url).includes('/payments/m-wallet'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA456'})};
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const orchestrator=new JazzCashOrchestratorAdapter(config,{fetchImpl});
+  const jazzcash=new JazzCashAdapter({...config,jazzcashMode:'mock'});
+  const recurring=createJazzCashRecurringApp({config,store,orchestrator});
+  const primary=createApp({config,store,jazzcash,otpDelivery:new OtpDeliveryRouter({providers:[new MockOtpProvider()],audit:store.audit,metrics:store.metrics}),payments:new PaymentService({store,provider:jazzcash})});
+  const server=createServer(async(req,res)=>{if(await recurring(req,res)!==false)return;await primary(req,res);});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base=`http://127.0.0.1:${server.address().port}`;
+  try{
+    const blocked=await fetch(`${base}/v1/billing/wallets/link`,{
+      method:'POST',
+      headers:{'content-type':'application/json',origin:'https://evil.example'},
+      body:JSON.stringify({msisdn:'03001234567',planCode:'monthly',consentToAutoPay:true,returnPath:'/mainLanding'})
+    });
+    assert.equal(blocked.status,403);
+    assert.equal((await blocked.json()).error.code,'origin_rejected');
+
+    const cases=[[liveOrigin,'03001234567'],[stagingOrigin,'03001234568']];
+    for(const [origin,phone] of cases){
+      const response=await fetch(`${base}/v1/billing/wallets/link`,{
+        method:'POST',
+        headers:{'content-type':'application/json',origin},
+        body:JSON.stringify({msisdn:phone,planCode:'monthly',consentToAutoPay:true,returnPath:'/mainLanding'})
+      });
+      assert.equal(response.status,201);
+      assert.equal(response.headers.get('access-control-allow-origin'),origin);
+      const link=await response.json();
+      const intent=store.jazzcashLinkIntents.get(link.requestId);
+      assert.equal(intent.returnOrigin,origin);
+
+      const returnFields={pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_PaymentToken:`token-${phone}`,pp_RequestID:link.requestId,pp_MerchantID:'MC990983',pp_MSISDN:phone};
+      returnFields.pp_SecureHash=jazzCashSecureHash(returnFields,'salt');
+      const callback=await fetch(`${base}/v1/jazzcash/wallet/callback`,{
+        method:'POST',
+        headers:{'content-type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams(returnFields).toString(),
+        redirect:'manual'
+      });
+      assert.equal(callback.status,303);
+      assert.match(callback.headers.get('location')||'',new RegExp(`^${origin.replaceAll('.','\\.')}/#/home\\?payment=succeeded`));
+    }
   }finally{await new Promise(resolve=>server.close(resolve));}
 });

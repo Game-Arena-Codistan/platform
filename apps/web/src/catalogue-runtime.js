@@ -1,8 +1,6 @@
 import {games as fallbackGames,genres as fallbackGenres,previewGame} from './data.js';
 import {fetchCatalogue,mode} from './api.js';
-
-const palettes=[['#7c3aed','#22d3ee'],['#db2777','#f97316'],['#0f766e','#84cc16'],['#1d4ed8','#a855f7'],['#b45309','#ef4444'],['#0369a1','#14b8a6']];
-const fallbackArt=(index)=>`linear-gradient(135deg,${palettes[index%palettes.length][0]},${palettes[index%palettes.length][1]})`;
+import {localReleaseBase,resolveCardArt} from './game-card-art.js';
 
 let liveGames=null;
 let liveGenres=null;
@@ -11,6 +9,9 @@ let loading=null;
 function enrich(game,index){
   const gameUrl=game.gameUrl||'';
   const downloadUrl=game.downloadUrl||(game.tier==='free'&&gameUrl.startsWith('/')?gameUrl:'');
+  const base=localReleaseBase(gameUrl);
+  const icon=game.iconUrl||game.icon||(base?`${base}/icons/icon-256.png`:'');
+  const banner=game.bannerUrl||game.banner||'';
   return{
     ...game,
     genre:game.genre||'Unclassified',
@@ -19,9 +20,9 @@ function enrich(game,index){
     multiplayer:Boolean(game.multiplayer),
     internalDemo:Boolean(game.internalDemo),
     preview:Boolean(game.preview||game.internalDemo),
-    icon:game.iconUrl||game.icon||'',
-    banner:game.bannerUrl||game.banner||'',
-    art:game.bannerUrl?`linear-gradient(180deg,rgba(3,2,8,.08),rgba(3,2,8,.76)),url("${game.bannerUrl}") center/cover`:fallbackArt(index),
+    icon,
+    banner,
+    art:resolveCardArt({...game,icon,banner,iconUrl:icon,bannerUrl:banner},index),
     downloadUrl,
     permissions:game.permissions||{}
   };

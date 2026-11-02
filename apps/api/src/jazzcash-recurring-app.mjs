@@ -9,6 +9,19 @@ const fail=(message,status=400,code='invalid_request',details)=>Object.assign(ne
 const msisdn=value=>{const phone=String(value||'').trim();if(!/^(\+92|0)?3\d{9}$/.test(phone.replace(/\s/g,'')))throw fail('JazzCash mobile number must be a valid Pakistani MSISDN (03XXXXXXXXX).',400,'invalid_body');const digits=phone.replace(/\D/g,'');return digits.startsWith('92')?`0${digits.slice(2)}`:digits.startsWith('0')?digits:`0${digits}`;};
 const planCode=value=>{const code=String(value||'').trim();if(!/^[A-Za-z0-9._-]{1,64}$/.test(code))throw fail('A valid planCode is required.',400,'invalid_body');return code;};
 const safeReturnPath=value=>{const raw=String(value||'/mainLanding').trim();if(raw.startsWith('/mainLanding')||raw.startsWith('/landing2'))return raw.split('#')[0].slice(0,200);return '/mainLanding';};
+function resolveAppOrigin(req,config){
+  const allowed=config.allowedOrigins||[];
+  const origin=req.headers.origin;
+  if(origin&&allowed.includes(origin))return origin;
+  const referer=String(req.headers.referer||'');
+  if(referer){
+    try{
+      const refOrigin=new URL(referer).origin;
+      if(allowed.includes(refOrigin))return refOrigin;
+    }catch{/* ignore */}
+  }
+  return config.publicOrigin;
+}
 
 function ensureJazzCashState(store){
   if(!store.jazzcashLinkIntents)store.jazzcashLinkIntents=new Map();
@@ -171,17 +184,18 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         ensureJazzCashState(store);
         const intent=store.jazzcashLinkIntents.get(intentId);
         const returnPath=safeReturnPath(intent?.returnPath);
+        const appOrigin=(intent?.returnOrigin&&config.allowedOrigins.includes(intent.returnOrigin))?intent.returnOrigin:config.publicOrigin;
         let userId=intent?.userId||null;
         if(!userId){const session=authContext(req);userId=session?.user?.id||null;}
-        if(!userId)return redirect(res,303,`${config.publicOrigin}${returnPath}?payment=failed`);
+        if(!userId)return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);
         try{
           await completeWalletLink(userId,fields);
           const planCodeValue=intent?.planCode||'monthly';
           const sub=await chargeLinkedWallet(userId,planCodeValue,intent?.attribution);
-          return redirect(res,303,`${config.publicOrigin}/#/home?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
+          return redirect(res,303,`${appOrigin}/#/home?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
         }catch(error){
           store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
-          return redirect(res,303,`${config.publicOrigin}${returnPath}?payment=failed`);
+          return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);
         }
       }
 
@@ -201,9 +215,10 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         // (e.g. 03123456789) must be able to re-link without already_linked 409s.
         const requestIdValue=jazzCashRequestId();
         const returnPath=safeReturnPath(value.returnPath||value.landingPath);
-        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,attribution:sanitizeAttribution(value.attribution)});
+        const returnOrigin=resolveAppOrigin(req,config);
+        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,returnOrigin,attribution:sanitizeAttribution(value.attribution)});
         const form=orchestrator.createLinkWalletForm({msisdn:phone,requestId:requestIdValue});
-        store.audit.write({actor:user.id,action:'jazzcash.wallet_link_started',targetType:'user',targetId:user.id,metadata:{requestId:requestIdValue,planCode:selectedPlan,guest:!authContext(req)}});
+        store.audit.write({actor:user.id,action:'jazzcash.wallet_link_started',targetType:'user',targetId:user.id,metadata:{requestId:requestIdValue,planCode:selectedPlan,returnOrigin,guest:!authContext(req)}});
         return reply(201,{requestId:requestIdValue,portalUrl:form.portalUrl,actionUrl:form.actionUrl,method:form.method,fields:form.fields});
       }
 

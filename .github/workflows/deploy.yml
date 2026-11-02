@@ -160,6 +160,8 @@ jobs:
           fi
 
           # JazzCash 2026 MWallet orchestrator staging defaults (non-secret).
+          # Allow both live and staging frontends against the shared API host.
+          upsert_env ALLOWED_ORIGINS 'https://gsmarena-play.com,https://gsmarena-play.codistan.org'
           upsert_env JAZZCASH_RETURN_URL 'https://gsmarena-play.codistan.org/callback'
           upsert_env JAZZCASH_ORCHESTRATOR_BASE_URL 'https://onlinepayments.jazzcash.com.pk'
           upsert_env JAZZCASH_TIMEOUT_MS '8000'
