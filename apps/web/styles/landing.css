@@ -227,12 +227,13 @@ body.landing-mode #app{
 
 .ga-lp-status{min-height:1.1em;margin:10px 0 0;color:var(--purple);font-size:13px;font-weight:700}
 .ga-lp-notice{
-  background:var(--purple-soft);
-  border-radius:14px;
+  background:linear-gradient(90deg,#f6f2ff,#efe8ff);
+  border:1px solid #ddd2f5;
+  border-radius:12px;
   align-items:center;
   gap:12px;
   margin-top:14px;
-  padding:12px 16px;
+  padding:14px 18px;
   display:flex;
   position:relative;
   overflow:hidden;
@@ -246,13 +247,25 @@ body.landing-mode #app{
   width:40px;
   height:40px;
   display:grid;
+  box-shadow:0 4px 10px #6b46c140;
 }
 .ga-lp-notice-icon svg{width:20px;height:20px}
-.ga-lp-notice p{color:#2f2a38;max-width:34rem;margin:0;font-size:12px;line-height:1.4;padding-right:2rem}
+.ga-lp-notice p{
+  color:#2a2140;
+  max-width:none;
+  margin:0;
+  font-size:15px;
+  font-weight:700;
+  line-height:1.25;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  padding-right:2.25rem;
+}
 .ga-lp-notice-stripes{
-  opacity:.7;
+  opacity:.55;
   pointer-events:none;
-  background:repeating-linear-gradient(-45deg,transparent 0 6px,#6b46c159 6px 10px);
+  background:repeating-linear-gradient(-45deg,transparent 0 6px,#6b46c140 6px 10px);
   width:54px;
   height:54px;
   position:absolute;
@@ -263,27 +276,28 @@ body.landing-mode #app{
 .ga-lp-trust{
   background:#fff;
   border:1px solid #e4e2e9;
-  border-radius:10px;
+  border-radius:14px;
   grid-template-columns:repeat(3,1fr);
   display:grid;
   overflow:hidden;
   width:var(--ga-panel-w);
-  margin:14px auto 0;
+  margin:16px auto 0;
   flex:none;
+  box-shadow:0 6px 18px #1712380a;
 }
 .ga-lp-trust>div{
   border-right:1px solid #e4e2e9;
   justify-content:center;
   align-items:center;
-  gap:9px;
-  padding:12px 10px;
+  gap:6px;
+  padding:14px 12px;
   display:flex;
   flex-direction:column;
   text-align:center;
 }
 .ga-lp-trust>div:last-child{border-right:0}
-.ga-lp-trust b{color:#1a1530;font-size:12px}
-.ga-lp-trust small{color:#625f6a;margin-top:2px;font-size:10px}
+.ga-lp-trust b{color:#1a1530;font-size:13px;letter-spacing:.01em}
+.ga-lp-trust small{color:#625f6a;margin-top:2px;font-size:11px}
 .ga-lp-legal{
   width:var(--ga-panel-w);
   margin:12px auto 0;
@@ -297,44 +311,46 @@ body.landing-mode #app{
 
 .ga-lp-benefits{
   width:100%;
-  background:#f4f5f7;
-  border-top:1px solid #e4e2e9;
+  background:#fff;
+  border-top:0;
   margin-top:0;
-  padding:28px 0 36px;
+  padding:36px 0 44px;
 }
 .ga-lp-benefits-inner{
   width:var(--ga-panel-w);
-  max-width:900px;
+  max-width:920px;
   margin:0 auto;
 }
 .ga-lp-benefits-head{
   text-align:center;
-  margin-bottom:22px;
+  margin-bottom:28px;
 }
 .ga-lp-benefits-head h2{
   margin:0;
-  font-size:clamp(1.15rem,2.4vw,1.55rem);
+  font-size:clamp(1.25rem,2.6vw,1.7rem);
   color:#171238;
   letter-spacing:.01em;
   display:flex;
   align-items:center;
   justify-content:center;
-  gap:.55rem;
+  gap:.65rem;
   flex-wrap:wrap;
 }
 .ga-lp-benefits-head h2::before,
 .ga-lp-benefits-head h2::after{
   content:"";
   height:1px;
-  width:clamp(28px,8vw,72px);
-  background:#c9c5d4;
+  width:clamp(36px,9vw,88px);
+  background:linear-gradient(90deg,transparent,#c9c5d4);
 }
+.ga-lp-benefits-head h2::after{background:linear-gradient(90deg,#c9c5d4,transparent)}
 .ga-lp-benefits-head h2 span{color:#5b4bd6}
 .ga-lp-benefits-head p{
-  margin:.55rem 0 0;
+  margin:.65rem 0 0;
   color:#6b6578;
-  font-size:.92rem;
-  font-style:italic;
+  font-size:.95rem;
+  font-style:normal;
+  font-weight:500;
 }
 .ga-lp-benefits-grid{
   list-style:none;
@@ -342,13 +358,18 @@ body.landing-mode #app{
   padding:0;
   display:grid;
   grid-template-columns:1fr 1fr;
-  gap:16px 28px;
+  gap:18px 32px;
 }
 .ga-lp-benefit{
   display:grid;
   grid-template-columns:48px 1fr;
   gap:12px;
   align-items:start;
+  background:#fff;
+  border:1px solid #ebe8f1;
+  border-radius:14px;
+  padding:14px 14px 14px 12px;
+  box-shadow:0 4px 14px #17123808;
 }
 .ga-lp-benefit-icon{
   width:48px;
@@ -367,8 +388,8 @@ body.landing-mode #app{
 .ga-lp-benefit[data-icon="rewards"] .ga-lp-benefit-icon{background-color:#e8f0ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23256<object' stroke-width='1.8'%3E%3Cpath d='M12 3l2.2 4.5L19 8.2l-3.5 3.4.8 4.9L12 14.8 7.7 16.5l.8-4.9L5 8.2l4.8-.7L12 3z'/%3E%3C/svg%3E")}
 .ga-lp-benefit[data-icon="community"] .ga-lp-benefit-icon{background-color:#efe8ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b46c1' stroke-width='1.8'%3E%3Ccircle cx='9' cy='8' r='3'/%3E%3Ccircle cx='17' cy='9' r='2.5'/%3E%3Cpath d='M3.5 18c.8-2.8 2.9-4 5.5-4s4.7 1.2 5.5 4M14 14c2 .2 3.6 1.2 4.3 3.5'/%3E%3C/svg%3E")}
 .ga-lp-benefit[data-icon="experience"] .ga-lp-benefit-icon{background-color:#e7f1ff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b6cb0' stroke-width='1.8'%3E%3Crect x='7' y='2.5' width='10' height='19' rx='2'/%3E%3Cpath d='M11 18h2'/%3E%3C/svg%3E")}
-.ga-lp-benefit h3{margin:0 0 .2rem;font-size:.98rem;color:#171238}
-.ga-lp-benefit p{margin:0;color:#6b6578;font-size:.84rem;line-height:1.4}
+.ga-lp-benefit h3{margin:0 0 .25rem;font-size:1rem;color:#171238}
+.ga-lp-benefit p{margin:0;color:#6b6578;font-size:.86rem;line-height:1.45}
 
 /* Phones + 1080x1920-class portrait: full-bleed uncropped banner, white chrome. */
 @media (max-width:720px),((max-width:1100px) and (orientation:portrait)){
@@ -391,14 +412,14 @@ body.landing-mode #app{
   .ga-lp-check{width:16px;height:16px;font-size:10px}
   .ga-lp-pay{height:46px;font-size:17px}
   .ga-lp-pay-arrow{right:12px}
-  .ga-lp-notice{border-radius:10px;gap:8px;margin-top:8px;padding:10px 12px}
+  .ga-lp-notice{border-radius:10px;gap:8px;margin-top:8px;padding:11px 12px}
   .ga-lp-notice-icon{width:34px;height:34px}
   .ga-lp-notice-icon svg{width:16px;height:16px}
-  .ga-lp-notice p{font-size:11px}
+  .ga-lp-notice p{font-size:13px;font-weight:700;white-space:nowrap}
   .ga-lp-trust{grid-template-columns:1fr}
   .ga-lp-trust>div{border-right:0;border-bottom:1px solid #e4e2e9;align-items:flex-start;text-align:left}
   .ga-lp-trust>div:last-child{border-bottom:0}
-  .ga-lp-benefits{background:#f4f5f7;padding:22px 14px 28px;margin-top:12px}
+  .ga-lp-benefits{background:#fff;padding:22px 14px 28px;margin-top:12px}
   .ga-lp-benefits-inner{width:100%;max-width:100%}
   .ga-lp-benefits-grid{grid-template-columns:1fr;gap:14px}
   .ga-lp-benefits-head h2::before,.ga-lp-benefits-head h2::after{width:24px}

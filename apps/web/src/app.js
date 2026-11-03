@@ -1,4 +1,4 @@
-import {getState,subscribe,update} from './state.js';
+import {getState,goArenaPlus,subscribe,update} from './state.js';
 import {observeVitals,observeErrors,track} from './analytics.js';
 import {getSession,refreshEntitlement,paymentStatus,fetchWallet,releaseSha} from './api.js';
 import {ensureCatalogue} from './catalogue-runtime.js';
@@ -98,7 +98,7 @@ addEventListener('online',setNetwork);addEventListener('offline',setNetwork);
 addEventListener('beforeinstallprompt',event=>{event.preventDefault();window.__GAME_ARENA_INSTALL_PROMPT=event;update({installPromptAvailable:true});});
 document.querySelector('#profile-button')?.addEventListener('click',()=>{if(getState().user)location.hash='#/account';else openAuth('signup');});
 document.querySelector('#coins-button')?.addEventListener('click',()=>location.hash='#/rewards');
-document.querySelector('#premium-button')?.addEventListener('click',()=>location.assign('/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash'));
+document.querySelector('#premium-button')?.addEventListener('click',()=>goArenaPlus());
 subscribe(()=>render(true));
 observeVitals();observeErrors();setNetwork();
 // Paint the shell immediately so a slow/hung catalogue fetch cannot leave every tab blank.

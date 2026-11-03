@@ -36,7 +36,7 @@ export function renderAccount(){
           ?`<p class="muted">Current plan: <b>Game Arena+ · pending sign-in</b></p><p class="muted">Sign in with your JazzCash number to attach this purchase.</p>`
           :`<p class="muted">Sign in to see your current plan.</p>`}
       <div class="hero-actions">
-        ${!subscribed&&!pending?'<a class="button gold" href="/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash">Upgrade to Arena+</a>':''}
+        ${!subscribed&&!pending?'<a class="button gold" href="#/library">Upgrade to Arena+</a>':''}
         ${state.user&&subscribed?'<button class="button danger" id="unsubscribe-plan" type="button">Unsubscribe</button>':''}
         ${state.user?'<button class="button danger" id="sign-out" type="button">Sign out</button><button class="button secondary" id="sign-out-all" type="button">Sign out other devices</button>':''}
       </div>

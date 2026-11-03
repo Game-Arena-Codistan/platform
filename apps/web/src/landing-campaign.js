@@ -54,8 +54,8 @@ export function commerceForCampaign(campaign){
     comingSoon:planCode==='yearly',
     promotion:monthly10k?'Win PKR 10,000 JazzCash Credit Every Month':null,
     offerNote:monthly10k
-      ?'Subscribe Now click kertay he Rs. 1 kat lia jae ga. Ye limited TikTok offer sirf aj k din k liye valid hai. Us k bad PKR 599/m lago hun gay.'
-      :'Subscribe Now click kertay he Rs. 1 kat lia jae ga. Ye limited offer sirf aj k din k liye valid hai. Us k bad PKR 599/m lago hun gay.'
+      ?'Subscribe Now pe Rs. 1 katay ga — limited TikTok offer sirf aaj. Us ke baad PKR 599/m.'
+      :'Subscribe Now pe Rs. 1 katay ga — limited offer sirf aaj. Us ke baad PKR 599/m.'
   };
 }
 

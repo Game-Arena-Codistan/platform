@@ -84,11 +84,12 @@ function withArtOverlay(imageUrl){
  * Catalogue banners often 404 on the portfolio CDN — never prefer them over working icons.
  */
 export function resolveCardArt(game={},index=0){
-  if((game.preview||game.internalDemo)&&game.art&&!String(game.art).includes('url('))return game.art;
-
   const id=String(game.id||game.slug||'').trim();
   const curated=CARD_ART_OVERRIDES[id]||'';
+  // Curated snaps win first so demos like Arena Dash still show real card art.
   if(curated)return withArtOverlay(curated);
+
+  if((game.preview||game.internalDemo)&&game.art&&!String(game.art).includes('url('))return game.art;
 
   const base=localReleaseBase(game.gameUrl);
   const localIcon=base&&!base.startsWith('/demo-games/')?`${base}/icons/icon-256.png`:'';

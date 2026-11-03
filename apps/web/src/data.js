@@ -13,7 +13,8 @@ const enriched=source.map((game,index)=>{
   const banner=media.banner||'';
   return{...game,icon,banner,art:resolveCardArt({...game,icon,banner,iconUrl:icon,bannerUrl:banner},index),downloadUrl:game.downloadUrl||'',multiplayer:Boolean(game.multiplayer),internalDemo:false};
 });
-export const previewGame={id:'arena-dash',title:'Arena Dash',genre:'Arcade',tier:'free',orientation:'portrait',description:'Dodge neon gates, build a streak and finish a complete reward-enabled run in the browser.',reward:20,gameUrl:'/games/arena-dash/index.html',multiplayer:false,internalDemo:true,preview:true,downloadUrl:'/games/arena-dash/index.html',art:'radial-gradient(circle at 70% 15%,rgba(255,255,255,.28),transparent 22%),linear-gradient(145deg,#5b21b6,#0891b2 55%,#0f172a)'};
+const previewBase={id:'arena-dash',title:'Arena Dash',genre:'Arcade',tier:'free',orientation:'portrait',description:'Dodge neon gates, build a streak and finish a complete reward-enabled run in the browser.',reward:20,gameUrl:'/demo-games/arena-dash/index.html',multiplayer:false,internalDemo:true,preview:true,downloadUrl:'/demo-games/arena-dash/index.html'};
+export const previewGame={...previewBase,art:resolveCardArt(previewBase,0)};
 export const games=[previewGame,...enriched];
 export const genres=['All',...new Set(games.map(game=>game.genre))];
 export const plans=[

@@ -13,7 +13,7 @@ export async function openGame(game){
   }
   if(game.tier==='premium'&&!isPremium()){
     track('upgrade_view',{source:'locked_game',gameId:game.id});
-    location.assign('/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash');
+    location.hash='#/library';
     return;
   }
   const guestFree=game.tier==='free'&&!getState().user;
