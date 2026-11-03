@@ -21,6 +21,16 @@ function fixBrokenProtocol(url){
   return String(url||'').trim().replace(/^https\/\//i,'https://').replace(/^http\/\//i,'http://');
 }
 
+/** games.codistan.org icon hosts often 400; portfolio CDN uses Title-Case folders. */
+function rewriteDeadGamesHost(url=''){
+  const raw=String(url||'').trim();
+  const match=raw.match(/^https:\/\/games\.codistan\.org\/([A-Za-z0-9._-]+)(\/.*)?$/i);
+  if(!match)return raw;
+  const folder=match[1].split(/[-_]/).filter(Boolean).map(part=>part.charAt(0).toUpperCase()+part.slice(1).toLowerCase()).join('-');
+  const rest=match[2]||'/icons/icon-256.png';
+  return `https://gamesbundle.codistan.org/${folder}${rest.startsWith('/')?rest:`/${rest}`}`;
+}
+
 function isSpriteSheet(url){
   return /(?:^|\/)(?:shared-\d+-sheet|background[-_]?sheet|gamebackground-sheet|ground\d*-sheet|groundroad[^/]*-sheet)/i.test(url)
     || /sheet\d*\.(?:png|jpe?g|webp)$/i.test(url);
@@ -94,13 +104,16 @@ export function resolveCardArt(game={},index=0){
   const base=localReleaseBase(game.gameUrl);
   const localIcon=base&&!base.startsWith('/demo-games/')?`${base}/icons/icon-256.png`:'';
   const packaged=packagedIconPath(game);
-  const banner=fixBrokenProtocol(game.bannerUrl||game.banner||'');
-  const icon=fixBrokenProtocol(game.iconUrl||game.icon||'');
+  const banner=rewriteDeadGamesHost(fixBrokenProtocol(game.bannerUrl||game.banner||''));
+  const icon=rewriteDeadGamesHost(fixBrokenProtocol(game.iconUrl||game.icon||''));
+  // Mock catalogue gameUrls are on games.codistan.org — derive a portfolio icon when none is packaged.
+  const portfolioFromGameUrl=rewriteDeadGamesHost(fixBrokenProtocol(game.gameUrl||'').replace(/\/?$/,'/icons/icon-256.png'));
 
   let image='';
   if(packaged)image=packaged;
   else if(localIcon)image=localIcon;
   else if(isLikelyIcon(icon)&&(/^https:\/\//i.test(icon)||icon.startsWith('/')))image=icon;
+  else if(isLikelyIcon(portfolioFromGameUrl)&&/^https:\/\//i.test(portfolioFromGameUrl))image=portfolioFromGameUrl;
   else if(banner.startsWith('/')&&isUsefulBanner(banner))image=banner;
   else if(isUsefulBanner(banner)&&/^https:\/\//i.test(banner))image=banner;
   else if(icon.startsWith('/')||/^https:\/\//i.test(icon))image=icon;
@@ -111,5 +124,5 @@ export function resolveCardArt(game={},index=0){
     }
     return fallbackArt(index);
   }
-  return withArtOverlay(image)||fallbackArt(index);
+  return withArtOverlay(rewriteDeadGamesHost(image))||fallbackArt(index);
 }

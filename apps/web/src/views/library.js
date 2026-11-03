@@ -37,7 +37,7 @@ function card(game){
   const saved=getState().favourites.includes(game.id);
   const offlineEligible=game.tier==='free'&&Boolean(game.downloadUrl);
   const actionLabel=needsAuth?'Sign in':needsPurchase?'Unlock':'Play';
-  return `<article class="card game-card" style="--art:${game.art}"><div class="game-card-shade"></div><div class="game-card-content"><div class="badge-row"><span class="badge ${game.tier==='premium'?'premium':''}">${game.tier==='premium'?'Arena+':'Free'}</span>${game.multiplayer?'<span class="badge">Multiplayer</span>':''}</div><h2>${escapeHtml(game.title)}</h2><p>${escapeHtml(game.description)}</p><div class="game-actions"><button class="button ${locked?'gold':'primary'}" data-play="${game.id}" type="button">${actionLabel}</button><button class="button secondary" data-save="${game.id}" aria-pressed="${saved}" type="button">${saved?'★':'☆'}</button>${offlineEligible?`<button class="button secondary" data-download="${game.id}" type="button" aria-label="Save ${escapeHtml(game.title)} for offline access">↓</button>`:''}</div></div></article>`;
+  return `<article class="card game-card" style="--art:${game.art}"><div class="game-card-shade"></div><div class="badge-row game-card-badges"><span class="badge ${game.tier==='premium'?'premium':''}">${game.tier==='premium'?'Arena+':'Free'}</span>${game.multiplayer?'<span class="badge">Multiplayer</span>':''}</div><div class="game-card-content"><h2>${escapeHtml(game.title)}</h2><button class="text-link game-card-see-more" type="button" data-see-more="${escapeHtml(game.id)}" aria-expanded="false">See more...</button><p class="game-card-desc" data-desc-for="${escapeHtml(game.id)}" hidden>${escapeHtml(game.description)}</p><div class="game-actions"><button class="button ${locked?'gold':'primary'}" data-play="${game.id}" type="button">${actionLabel}</button><button class="button secondary" data-save="${game.id}" aria-pressed="${saved}" type="button">${saved?'★':'☆'}</button>${offlineEligible?`<button class="button secondary" data-download="${game.id}" type="button" aria-label="Save ${escapeHtml(game.title)} for offline access">↓</button>`:''}</div></div></article>`;
 }
 
 function planCard(plan){
@@ -92,6 +92,18 @@ export function bindLibrary(){
   document.querySelector('#game-search')?.addEventListener('input',event=>{query=event.target.value;repaint();});
   root.querySelectorAll('[data-genre]').forEach(button=>button.addEventListener('click',()=>{genre=button.dataset.genre;repaint();}));
   root.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{tab=button.dataset.tab;repaint();}));
+  root.querySelectorAll('[data-see-more]').forEach(button=>button.addEventListener('click',event=>{
+    event.stopPropagation();
+    const card=button.closest('.game-card');
+    const desc=card?.querySelector('.game-card-desc');
+    if(!card||!desc)return;
+    const open=desc.hasAttribute('hidden');
+    if(open)desc.removeAttribute('hidden');
+    else desc.setAttribute('hidden','');
+    card.classList.toggle('is-desc-open',open);
+    button.setAttribute('aria-expanded',String(open));
+    button.textContent=open?'See less':'See more...';
+  }));
   root.querySelectorAll('[data-save]').forEach(button=>button.addEventListener('click',()=>{toggleFavourite(button.dataset.save);repaint();}));
   root.querySelectorAll('[data-play]').forEach(button=>button.addEventListener('click',()=>openGame(games.find(item=>item.id===button.dataset.play))));
   root.querySelectorAll('[data-download]').forEach(button=>button.addEventListener('click',async()=>{
