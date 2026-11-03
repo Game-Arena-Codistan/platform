@@ -230,6 +230,10 @@ export class PostgresStore extends MemoryStore{
 
   async commit(){
     const changes=this.collectChanges();if(!changes.length)return;
+    // Soft-delete renamed keys before inserting replacements. Auth sessions are Map-keyed by
+    // token hash but uniquely indexed on record.id — rotating a session renames the key and
+    // must delete the old row first or PostgreSQL raises ga_runtime_sessions_id_uq (23505).
+    changes.sort((left,right)=>Number(right.deleted)-Number(left.deleted));
     const client=await this.pool.connect();const committed=[];
     try{
       await client.query('BEGIN');

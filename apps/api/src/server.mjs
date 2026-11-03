@@ -114,8 +114,9 @@ function durableResponse(res){
     }).catch(error=>{
       console.error(JSON.stringify({level:'error',message:'PostgreSQL commit before response failed',error:error.message,code:error.code}));
       for(const name of res.getHeaderNames())res.removeHeader(name);
-      originalWriteHead(error.code==='persistence_conflict'?409:503,{'content-type':'application/json','cache-control':'no-store'});
-      originalEnd(JSON.stringify({error:{code:error.code==='persistence_conflict'?'persistence_conflict':'persistence_unavailable',message:error.code==='persistence_conflict'?'The record changed concurrently. Retry the request.':'The request could not be committed. Please retry.'}}),done);
+      const conflict=error.code==='persistence_conflict'||error.code==='23505';
+      originalWriteHead(conflict?409:503,{'content-type':'application/json','cache-control':'no-store'});
+      originalEnd(JSON.stringify({error:{code:conflict?'persistence_conflict':'persistence_unavailable',message:conflict?'The record changed concurrently. Retry the request.':'The request could not be committed. Please retry.'}}),done);
     });
     return res;
   };
@@ -171,7 +172,8 @@ const retentionTimer=setInterval(retention,3600000);
 retentionTimer.unref();
 await retention();
 
-if(config.nodeEnv!=='production'){
+// Local/dev QA only — never rewrite every staging account password on each container boot.
+if(config.nodeEnv==='development'||config.nodeEnv==='test'){
   try{
     const passwordHash=await hashPassword('Abc@123');
     const now=new Date().toISOString();
