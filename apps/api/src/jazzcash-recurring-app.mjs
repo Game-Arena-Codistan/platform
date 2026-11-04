@@ -192,7 +192,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
           await completeWalletLink(userId,fields);
           const planCodeValue=intent?.planCode||'monthly';
           const sub=await chargeLinkedWallet(userId,planCodeValue,intent?.attribution);
-          return redirect(res,303,`${appOrigin}/#/home?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
+          return redirect(res,303,`${appOrigin}/?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
         }catch(error){
           store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
           return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);

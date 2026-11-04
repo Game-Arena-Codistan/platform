@@ -215,7 +215,7 @@ async function startCheckout({landing,campaign,commerce}){
       try{sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:commerce.planCode,landing,at:Date.now()}));}catch{/* ignore */}
       update({entitlement:'premium',selectedPlan:commerce.planCode==='yearly'?'yearly':'monthly'});
       status.textContent='Premium Features Unlocked. Redirecting…';
-      location.assign('/#/home?payment=succeeded');
+      location.assign('/?payment=succeeded');
       return;
     }
     status.textContent='Redirecting to JazzCash…';
@@ -246,7 +246,7 @@ function handleLandingReturn(campaign,landing){
       sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:planCodeForPackage(campaign.package),landing,at:Date.now()}));
     }catch{/* ignore */}
     if(status)status.textContent='Premium Features Unlocked. Redirecting…';
-    setTimeout(()=>location.assign('/#/home?payment=succeeded'),900);
+    setTimeout(()=>location.assign('/?payment=succeeded'),900);
   }
 }
 

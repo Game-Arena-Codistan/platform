@@ -20,6 +20,21 @@ if(bootLandingIfNeeded()){
 const routes={home:[renderHome,bindHome],feed:[renderFeed,bindFeed],library:[renderLibrary,bindLibrary],compete:[renderCompete,bindCompete],rewards:[renderRewards,bindRewards],premium:[renderPremium,bindPremium],account:[renderAccount,bindAccount],support:[renderSupport,bindSupport]};
 const app=document.querySelector('#app');const balance=document.querySelector('#coin-balance');const network=document.querySelector('#network-status');let current='';
 function route(){const name=location.hash.replace(/^#\//,'').split(/[/?]/)[0]||'home';return routes[name]?name:'home';}
+/** Keep the home screen at `/` instead of `/#/home` (preserve payment query if present). */
+function canonicalizeHomeUrl(){
+  const hash=location.hash||'';
+  if(!hash||hash==='#'||hash==='#/'){
+    if(hash)history.replaceState(null,'',`${location.pathname}${location.search}`);
+    return;
+  }
+  const match=hash.match(/^#\/home(?:\?(.*))?$/);
+  if(!match)return;
+  const fromHash=match[1]?new URLSearchParams(match[1]):null;
+  const search=new URLSearchParams(location.search);
+  if(fromHash)for(const [key,value] of fromHash)if(!search.has(key))search.set(key,value);
+  const query=search.toString();
+  history.replaceState(null,'',`${location.pathname}${query?`?${query}`:''}`);
+}
 function syncLibraryNavVisibility(){
   const library=document.querySelector('[data-route="library"]');
   if(!library)return;
@@ -27,7 +42,8 @@ function syncLibraryNavVisibility(){
   library.setAttribute('aria-hidden','false');
 }
 function paymentBanner(){
-  const params=new URLSearchParams(location.hash.includes('?')?location.hash.split('?')[1]:'');
+  const hashQuery=location.hash.includes('?')?location.hash.split('?')[1]:'';
+  const params=new URLSearchParams(hashQuery||location.search);
   if(params.get('payment')!=='succeeded')return;
   const txn=params.get('orderId')||params.get('txn')||'';
   if(txn)trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
@@ -93,7 +109,11 @@ async function hydrate(){
 }
 async function reconcilePayment(){const match=location.hash.match(/payment-return\?(.+)$/);const pending=JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null');const query=match?new URLSearchParams(match[1]):null;const transactionId=query?.get('transactionId')||pending?.transactionId;if(!transactionId)return;const kind=query?.get('kind')||pending?.kind||'membership';try{if(kind==='topup'){for(let attempt=0;attempt<12;attempt++){const result=await paymentStatus(transactionId);if(result.status==='paid'){const wallet=await fetchWallet();update({coins:wallet.balance,walletEntries:wallet.entries||[],walletLoaded:true});sessionStorage.removeItem('game-arena:pending-payment');toast(`+${result.coins||pending?.coins||0} Arena Coins`);location.hash='#/rewards';return;}if(['failed','refunded','voided'].includes(result.status))throw new Error(`Payment ${result.status}.`);await new Promise(resolve=>setTimeout(resolve,2000));}toast('Top-up payment is pending confirmation.');location.hash='#/rewards';return;}const entitlement=await refreshEntitlement(transactionId,{attempts:15,intervalMs:2000});if(entitlement.status==='active'){update({entitlement:entitlement.entitlement,selectedPlan:pending?.planId||getState().selectedPlan});sessionStorage.removeItem('game-arena:pending-payment');track('checkout_complete',{planId:pending?.planId});toast('Game Arena+ is active');location.hash='#/account';}else{toast('Payment is pending confirmation.');location.hash='#/premium';}}catch(error){toast(error.message);location.hash=kind==='topup'?'#/rewards':'#/premium';}}
 function registerServiceWorker(){navigator.serviceWorker.register(`/sw.js?release=${encodeURIComponent(releaseSha())}`,{updateViaCache:'none'}).catch(()=>{});}
-addEventListener('hashchange',()=>{if(location.hash.startsWith('#/payment-return'))reconcilePayment();else render();});
+addEventListener('hashchange',()=>{
+  canonicalizeHomeUrl();
+  if(location.hash.startsWith('#/payment-return'))reconcilePayment();
+  else render();
+});
 addEventListener('online',setNetwork);addEventListener('offline',setNetwork);
 addEventListener('beforeinstallprompt',event=>{event.preventDefault();window.__GAME_ARENA_INSTALL_PROMPT=event;update({installPromptAvailable:true});});
 document.querySelector('#profile-button')?.addEventListener('click',()=>{if(getState().user)location.hash='#/account';else openAuth('signup');});
@@ -102,8 +122,8 @@ document.querySelector('#premium-button')?.addEventListener('click',()=>goArenaP
 subscribe(()=>render(true));
 observeVitals();observeErrors();setNetwork();
 // Paint the shell immediately so a slow/hung catalogue fetch cannot leave every tab blank.
-if(!location.hash)location.replace('#/home');
-else if(location.hash.startsWith('#/payment-return'))reconcilePayment();
+canonicalizeHomeUrl();
+if(location.hash.startsWith('#/payment-return'))reconcilePayment();
 else render();
 await hydrate();
 render(true);

@@ -135,7 +135,7 @@ test('orchestrator billing accepts both configured origins and returns to the re
         redirect:'manual'
       });
       assert.equal(callback.status,303);
-      assert.match(callback.headers.get('location')||'',new RegExp(`^${origin.replaceAll('.','\\.')}/#/home\\?payment=succeeded`));
+      assert.match(callback.headers.get('location')||'',new RegExp(`^${origin.replaceAll('.','\\.')}/\\?payment=succeeded`));
     }
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
