@@ -1,4 +1,4 @@
-import {getState,resetSession,isPremium,hasPendingGuestPremium,update} from '../state.js';
+import {getState,resetSession,isPremium,hasPendingGuestPremium,revokePremiumLocally,update} from '../state.js';
 import {deleteAccount,exportAccount,logout,logoutAll} from '../api.js';
 import {renderBillingPanel,bindBillingPanel} from '../billing-account.js';
 import {cancelBillingSubscription,fetchBillingStatus} from '../billing-api.js';
@@ -57,32 +57,27 @@ export function renderAccount(){
 </section>`;
 }
 
-async function unsubscribeCurrentPlan(){
+async function unsubscribeCurrentPlan(button){
   if(!confirm('Unsubscribe from Game Arena+ now? Access ends immediately and renewals stop.'))return;
+  if(button)button.disabled=true;
   try{
     const status=await fetchBillingStatus();
     const id=(status.subscriptions||[])[0]?.id||status.appEntitlement?.sourceId||'current';
-    const result=await cancelBillingSubscription(id);
-    const entitlement=result.appEntitlement||{};
-    try{sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
-    // State update re-renders Account + shell (Arena+ pill). Library reads isPremium() on next visit.
-    update({
-      entitlement:{
-        tier:entitlement.tier||'free',
-        status:entitlement.status||'active',
-        expiresAt:entitlement.expiresAt||null,
-        autoRenew:false
-      }
-    });
+    await cancelBillingSubscription(id);
+    // Force free immediately so Account + Premium Games re-render before any stale billing poll.
+    revokePremiumLocally();
     toast('Unsubscribed. Game Arena+ access has ended.');
     track('subscription_cancel',{subscriptionId:id});
-  }catch(error){toast(error.message||'Unable to unsubscribe right now.');}
+  }catch(error){
+    if(button)button.disabled=false;
+    toast(error.message||'Unable to unsubscribe right now.');
+  }
 }
 
 export function bindAccount(){
   document.querySelector('#finish-onboarding')?.addEventListener('click',()=>{update({onboardingComplete:true});track('onboarding_complete');});
   document.querySelector('#sign-in')?.addEventListener('click',()=>requireAuth({type:'account'}));
-  document.querySelector('#unsubscribe-plan')?.addEventListener('click',()=>unsubscribeCurrentPlan());
+  document.querySelector('#unsubscribe-plan')?.addEventListener('click',event=>unsubscribeCurrentPlan(event.currentTarget));
   document.querySelector('#sign-out')?.addEventListener('click',async()=>{try{await logout();}finally{resetSession();toast('Signed out');}});
   document.querySelector('#sign-out-all')?.addEventListener('click',async()=>{const result=await logoutAll();toast(`${result.revoked} other session${result.revoked===1?'':'s'} signed out.`);});
   document.querySelector('#export-account')?.addEventListener('click',async()=>{try{const data=await exportAccount();const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='game-arena-account.json';link.click();URL.revokeObjectURL(url);track('account_export');}catch(error){toast(error.message);}});

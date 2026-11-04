@@ -121,12 +121,14 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(accountSource,/renderBillingPanel/);
   assert.match(accountSource,/Subscribed/);
   assert.match(accountSource,/subscription_cancel/);
-  assert.match(accountSource,/pending-subscription/);
+  assert.match(accountSource,/revokePremiumLocally/);
   assert.match(stateSource,/export function entitlementTier/);
+  assert.match(stateSource,/export function revokePremiumLocally/);
   assert.match(stateSource,/entitlementTier\(\)==='premium'/);
   assert.doesNotMatch(stateSource,/status==='active'&&value\?\.tier!=='free'/);
   assert.match(billingAccountSource,/syncEntitlementTier/);
-  assert.match(billingAccountSource,/entitlementTier\(\)===tier/);
+  assert.match(billingAccountSource,/revokePremiumLocally/);
+  assert.match(billingAccountSource,/premiumRevokedAt/);
   assert.doesNotMatch(billingAccountSource,/getState\(\)\.entitlement!==status\.appEntitlement\.tier/);
   assert.match(uiSource,/auth-password|Create account|data-auth-mode/);
   assert.match(apiSource,/registerAccount|loginAccount/);

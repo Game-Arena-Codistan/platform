@@ -56,15 +56,24 @@ function subscriptionStatus(userId,store,clock){
   const sub=store.jazzcashSubscriptions.get(userId);
   const entitlement=store.getEntitlement(userId,clock());
   if(entitlement?.tier==='premium'&&entitlement?.status==='active'){
+    // Never invent a random id — cancel clients must be able to address this row stably.
     return{
-      id:sub?.id||entitlement.sourceId||randomUUID(),
+      id:sub?.id||entitlement.sourceId||'current',
       plan_code:sub?.planCode||entitlement.planId||'monthly',
-      status:sub?.status||'active',
+      status:(sub?.status&&sub.status!=='canceled'&&sub.status!=='cancelled')?sub.status:'active',
       current_period_end:entitlement.expiresAt?new Date(entitlement.expiresAt).toISOString():null,
       amount_minor:sub?.amountMinor||null
     };
   }
-  return sub||null;
+  if(!sub)return null;
+  return{
+    id:sub.id||entitlement?.sourceId||'current',
+    plan_code:sub.planCode||entitlement?.planId||'monthly',
+    status:sub.status||'canceled',
+    current_period_end:sub.currentPeriodEnd||(entitlement?.expiresAt?new Date(entitlement.expiresAt).toISOString():null),
+    amount_minor:sub.amountMinor||null,
+    canceledAt:sub.canceledAt||null
+  };
 }
 
 function billingStatusPayload(userId,store,clock){
@@ -258,9 +267,9 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         const subscriptionId=decodeURIComponent(cancelMatch[1]);
         const sub=store.jazzcashSubscriptions.get(user.id);
         const entitlement=store.getEntitlement(user.id,clock());
-        const matchesSub=sub&&(sub.id===subscriptionId||entitlement?.sourceId===subscriptionId);
-        const matchesEntitlement=!sub&&entitlement?.tier==='premium'&&(entitlement.sourceId===subscriptionId||subscriptionId==='current');
-        if(!matchesSub&&!matchesEntitlement)throw fail('Subscription not found.',404,'not_found');
+        // Cancel is always scoped to the authenticated user — accept current/sub/source ids or any token while they still have Arena+.
+        const canCancel=Boolean(sub)||entitlement?.tier==='premium';
+        if(!canCancel)throw fail('Subscription not found.',404,'not_found');
         if(sub){
           sub.status='canceled';
           sub.canceledAt=new Date(clock()).toISOString();
@@ -270,9 +279,9 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         if(entitlement?.tier==='premium'){
           store.setEntitlement(user.id,{...entitlement,id:randomUUID(),status:'cancelled',cancelledAt:now,sourceType:'user_cancel',origin:entitlement.origin||'paid',autoRenew:false,cancelAtPeriodEnd:true});
         }
-        const appEntitlement=store.setEntitlement(user.id,{tier:'free',status:'active',origin:'system',sourceType:'user_cancel',sourceId:sub?.id||subscriptionId,startsAt:now,expiresAt:null,autoRenew:false});
+        const appEntitlement=store.setEntitlement(user.id,{tier:'free',status:'active',origin:'system',sourceType:'user_cancel',sourceId:sub?.id||entitlement?.sourceId||subscriptionId,startsAt:now,expiresAt:null,autoRenew:false});
         store.audit.write({actor:user.id,action:'jazzcash.subscription_canceled',targetType:'user',targetId:user.id,metadata:{subscriptionId,revokedImmediately:true}});
-        return reply(200,{status:'canceled',id:sub?.id||subscriptionId,appEntitlement});
+        return reply(200,{status:'canceled',id:sub?.id||entitlement?.sourceId||subscriptionId,appEntitlement:{tier:appEntitlement.tier,status:appEntitlement.status,expiresAt:appEntitlement.expiresAt||null,autoRenew:false}});
       }
 
       return false;

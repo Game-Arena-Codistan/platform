@@ -22,6 +22,11 @@ export function entitlementTier(value=state.entitlement){
   return value.tier||'free';
 }
 export function isPremium(){return entitlementTier()==='premium';}
+/** Drop Game Arena+ locally after a successful unsubscribe (blocks stale billing polls from restoring it). */
+export function revokePremiumLocally(){
+  try{sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
+  return update({entitlement:'free',premiumRevokedAt:Date.now()});
+}
 /** Arena+/Explore/Upgrade CTAs: library shows plans when locked, full catalogue when entitled. */
 export function goArenaPlus(){location.hash='#/library';}
 export function hasPendingGuestPremium(){
