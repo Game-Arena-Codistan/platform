@@ -1,4 +1,4 @@
-import {getState,goArenaPlus,subscribe,update} from './state.js';
+import {getState,goArenaPlus,isPremium,subscribe,update} from './state.js';
 import {observeVitals,observeErrors,track} from './analytics.js';
 import {getSession,refreshEntitlement,paymentStatus,fetchWallet,releaseSha} from './api.js';
 import {ensureCatalogue} from './catalogue-runtime.js';
@@ -94,7 +94,7 @@ function render(force=false){
       }
     }
     const premium=document.querySelector('#premium-button');
-    if(premium)premium.hidden=state.entitlement==='premium'||state.entitlement?.tier==='premium';
+    if(premium)premium.hidden=isPremium();
     syncLibraryNavVisibility();
     document.documentElement.classList.toggle('reduce-motion',state.settings.reducedMotion);
   }catch(error){

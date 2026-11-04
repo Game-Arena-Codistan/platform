@@ -13,6 +13,8 @@ const accountSource=await readFile(new URL('../src/views/account.js',import.meta
 const librarySource=await readFile(new URL('../src/views/library.js',import.meta.url),'utf8');
 const competeSource=await readFile(new URL('../src/views/compete.js',import.meta.url),'utf8');
 const landingSource=await readFile(new URL('../src/landing.js',import.meta.url),'utf8');
+const stateSource=await readFile(new URL('../src/state.js',import.meta.url),'utf8');
+const billingAccountSource=await readFile(new URL('../src/billing-account.js',import.meta.url),'utf8');
 
 test('commercial baseline matches approved legacy fallback plan',()=>{
   assert.equal(plans.find(plan=>plan.id==='monthly').price,599);
@@ -118,6 +120,14 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(librarySource,/10 free games for guests|Unlock with JazzCash/);
   assert.match(accountSource,/renderBillingPanel/);
   assert.match(accountSource,/Subscribed/);
+  assert.match(accountSource,/subscription_cancel/);
+  assert.match(accountSource,/pending-subscription/);
+  assert.match(stateSource,/export function entitlementTier/);
+  assert.match(stateSource,/entitlementTier\(\)==='premium'/);
+  assert.doesNotMatch(stateSource,/status==='active'&&value\?\.tier!=='free'/);
+  assert.match(billingAccountSource,/syncEntitlementTier/);
+  assert.match(billingAccountSource,/entitlementTier\(\)===tier/);
+  assert.doesNotMatch(billingAccountSource,/getState\(\)\.entitlement!==status\.appEntitlement\.tier/);
   assert.match(uiSource,/auth-password|Create account|data-auth-mode/);
   assert.match(apiSource,/registerAccount|loginAccount/);
   assert.match(landingSource,/landing-msisdn|Enter Your JazzCash Number/);

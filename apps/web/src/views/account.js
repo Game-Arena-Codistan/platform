@@ -64,16 +64,18 @@ async function unsubscribeCurrentPlan(){
     const id=(status.subscriptions||[])[0]?.id||status.appEntitlement?.sourceId||'current';
     const result=await cancelBillingSubscription(id);
     const entitlement=result.appEntitlement||{};
-    update({entitlement:{tier:entitlement.tier||'free',status:entitlement.status||'active',expiresAt:entitlement.expiresAt||null,autoRenew:false}});
+    try{sessionStorage.removeItem('game-arena:pending-subscription');}catch{/* ignore */}
+    // State update re-renders Account + shell (Arena+ pill). Library reads isPremium() on next visit.
+    update({
+      entitlement:{
+        tier:entitlement.tier||'free',
+        status:entitlement.status||'active',
+        expiresAt:entitlement.expiresAt||null,
+        autoRenew:false
+      }
+    });
     toast('Unsubscribed. Game Arena+ access has ended.');
     track('subscription_cancel',{subscriptionId:id});
-    const plan=document.querySelector('#account-current-plan');
-    const detail=document.querySelector('#account-plan-detail');
-    if(plan)plan.textContent='Free';
-    if(detail)detail.textContent='Subscription canceled. Game Arena+ access was revoked immediately.';
-    document.querySelector('#unsubscribe-plan')?.remove();
-    document.querySelector('.badge.premium')?.remove();
-    await bindBillingPanel();
   }catch(error){toast(error.message||'Unable to unsubscribe right now.');}
 }
 
