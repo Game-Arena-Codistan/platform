@@ -87,6 +87,8 @@ When `JAZZCASH_MODE=orchestrator`, Game Arena+ billing uses the JazzCash payment
 
 - `POST /v1/billing/wallets/link` → signed LinkWallet form (`actionUrl` + `fields`)
 - JazzCash return URL → `https://<PUBLIC_ORIGIN>/callback` (gateway proxies to `/v1/jazzcash/wallet/callback`)
+- JazzCash IPN → `https://<PUBLIC_ORIGIN>/jazzcash/ipn` (alias `/account/jazzcash-ipn` → `/v1/jazzcash/ipn`)
+- Status Inquiry BFF → `POST /v1/billing/jazzcash/inquiry` proxies JazzCash `.../status/inquiry` (**no** `pp_Version`)
 - Server-side Pay via Token, Token Inquiry, Delete Token, Status Inquiry
 
 Keep `PAYMENT_SERVICE_MODE=disabled` when using direct orchestrator mode, or use `PAYMENT_SERVICE_MODE=external` when a separate Payment Service implements the same contract.

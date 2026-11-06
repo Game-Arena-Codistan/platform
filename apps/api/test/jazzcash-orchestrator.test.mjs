@@ -36,6 +36,7 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
   const config=loadConfig({nodeEnv:'test',port:1,publicOrigin:'http://localhost:8080',allowedOrigins:['http://localhost:8080'],allowDebugOtp:true,jazzcashMode:'orchestrator',jazzcashMerchantId:'MC990983',jazzcashPassword:'pw',jazzcashIntegritySalt:'salt',jazzcashReturnUrl:'http://localhost:8080/callback',jazzcashWebhookSecret:'test-secret'});
   const fetchImpl=async(url)=>{
     if(String(url).includes('/payments/m-wallet'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA123'})};
+    if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'59900'})};
     throw new Error(`unexpected fetch ${url}`);
   };
   const orchestrator=new JazzCashOrchestratorAdapter(config,{fetchImpl});
@@ -62,6 +63,23 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
     assert.equal(status.appEntitlement.tier,'premium');
     const subscriptionId=status.subscriptions?.[0]?.id;
     assert.ok(subscriptionId);
+    const paidTxn=[...store.transactions.values()].find(item=>item.kind==='membership'&&item.status==='paid');
+    assert.ok(paidTxn?.providerReference);
+    response=await fetch(`${base}/v1/billing/jazzcash/inquiry`,{method:'POST',headers:headers(auth.cookie,auth.csrf),body:JSON.stringify({txnRefNo:paidTxn.providerReference})});
+    assert.equal(response.status,200);
+    const inquiry=await response.json();
+    assert.equal(inquiry.txnRefNo,paidTxn.providerReference);
+    assert.equal(inquiry.responseCode,'000');
+    response=await fetch(`${base}/v1/jazzcash/ipn`);
+    assert.equal(response.status,200);
+    assert.match(await response.text(),/JazzCash IPN ready/);
+    const ipnFields={pp_TxnRefNo:paidTxn.providerReference,pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_MerchantID:'MC990983'};
+    ipnFields.pp_SecureHash=jazzCashSecureHash(ipnFields,'salt');
+    response=await fetch(`${base}/v1/jazzcash/ipn`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(ipnFields).toString()});
+    assert.equal(response.status,200);
+    const ipn=await response.json();
+    assert.equal(ipn.accepted,true);
+    assert.equal(ipn.txnRefNo,paidTxn.providerReference);
     response=await fetch(`${base}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,{method:'POST',headers:headers(auth.cookie,auth.csrf)});
     assert.equal(response.status,200);
     const canceled=await response.json();

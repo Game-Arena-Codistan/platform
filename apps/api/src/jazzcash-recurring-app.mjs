@@ -174,17 +174,84 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     return sub;
   }
 
+  function findTxnByRef(txnRefNo){
+    const ref=String(txnRefNo||'').trim();
+    if(!ref)return null;
+    return[...store.transactions.values()].find(item=>item.providerReference===ref||item.id===ref)||null;
+  }
+
+  function findSubByTxnRef(txnRefNo){
+    const ref=String(txnRefNo||'').trim();
+    if(!ref)return null;
+    ensureJazzCashState(store);
+    for(const [userId,sub] of store.jazzcashSubscriptions.entries()){
+      if(sub?.txnRefNo===ref)return{userId,sub};
+    }
+    return null;
+  }
+
+  /** Idempotent ack for JazzCash async payment notifications (IPN / inquiry settle). */
+  function acknowledgeProviderPayment(fields={}){
+    const txnRefNo=String(fields.pp_TxnRefNo||fields.txnRefNo||'').trim();
+    const responseCode=String(fields.pp_ResponseCode||'').trim();
+    const paid=responseCode==='000'||responseCode==='121';
+    if(!txnRefNo)return{accepted:true,ignored:true,reason:'missing_txn_ref'};
+    const transaction=findTxnByRef(txnRefNo);
+    const linked=findSubByTxnRef(txnRefNo);
+    const providerEventId=`jazzcash-ipn:${txnRefNo}:${responseCode||'none'}`;
+    if(transaction){
+      const recorded=store.addPaymentEvent({transactionId:transaction.id,providerEventId,signatureValid:true,kind:paid?'paid':'provider_notice',providerStatus:responseCode||null,payload:fields});
+      if(recorded.duplicate)return{accepted:true,duplicate:true,txnRefNo,transactionId:transaction.id};
+      if(paid&&transaction.status!=='paid'){
+        transaction.status='paid';
+        transaction.providerStatus='paid';
+        transaction.providerReference=txnRefNo;
+        transaction.paidAt=transaction.paidAt||new Date(clock()).toISOString();
+        transaction.completedAt=transaction.completedAt||transaction.paidAt;
+        store.saveTransaction(transaction);
+      }
+      store.audit.write({actor:'jazzcash',action:'jazzcash.ipn_received',targetType:'transaction',targetId:transaction.id,metadata:{txnRefNo,responseCode,paid}});
+      return{accepted:true,duplicate:false,txnRefNo,transactionId:transaction.id,paid};
+    }
+    if(linked){
+      store.audit.write({actor:'jazzcash',action:'jazzcash.ipn_received',targetType:'user',targetId:linked.userId,metadata:{txnRefNo,responseCode,paid,subscriptionId:linked.sub.id}});
+      return{accepted:true,duplicate:false,txnRefNo,subscriptionId:linked.sub.id,paid};
+    }
+    store.audit.write({actor:'jazzcash',action:'jazzcash.ipn_unmatched',targetType:'provider_reference',targetId:txnRefNo.slice(0,64),metadata:{responseCode}});
+    return{accepted:true,ignored:true,reason:'unknown_txn_ref',txnRefNo};
+  }
+
   return async function jazzCashRecurringApp(req,res){
     const url=new URL(req.url,'http://localhost');const path=url.pathname;const method=req.method??'GET';
     const billing=path.startsWith('/v1/billing/');
     const callback=path==='/v1/jazzcash/wallet/callback';
-    if(!billing&&!callback)return false;
+    const ipn=path==='/v1/jazzcash/ipn';
+    if(!billing&&!callback&&!ipn)return false;
     const requestId=String(req.headers['x-request-id']||randomUUID()).slice(0,80);
     const origin=req.headers.origin;const cors=corsHeaders(origin,config.allowedOrigins);
     const reply=(status,payload,headers={})=>send(res,status,payload,{...cors,'cache-control':'no-store',...headers});
 
     try{
       if(method==='OPTIONS'&&origin&&config.allowedOrigins.includes(origin)&&billing)return reply(204,null,{'access-control-allow-methods':'GET,POST,OPTIONS','access-control-allow-headers':'content-type,x-csrf-token,x-request-id','access-control-max-age':'600'});
+
+      // JazzCash IPN — no Trusted Origin / CSRF (provider is the caller).
+      if(ipn){
+        if(method==='GET'){
+          res.writeHead(200,{'content-type':'text/plain; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});
+          res.end('JazzCash IPN ready');
+          return true;
+        }
+        if(method!=='POST')throw fail('Method not allowed.',405,'method_not_allowed');
+        const {value}=await readPayload(req,65536);
+        const fields={...Object.fromEntries(url.searchParams.entries()),...(value&&typeof value==='object'?value:{})};
+        if(!Object.keys(fields).length)return reply(200,{accepted:true,ignored:true,reason:'empty'});
+        if(!orchestrator.verifyReturnFields(fields)&&Object.keys(fields).some(key=>key.startsWith('pp_'))){
+          // Soft-fail unknown/unsigned payloads as accepted ignore so JazzCash stops endless retries on probes.
+          if(fields.pp_SecureHash)throw fail('JazzCash IPN signature is invalid.',401,'invalid_signature');
+          return reply(200,{accepted:true,ignored:true,reason:'unsigned'});
+        }
+        return reply(200,acknowledgeProviderPayment(fields));
+      }
 
       if(callback&&(method==='GET'||method==='POST')){
         const {value}=await readPayload(req,65536);
@@ -209,6 +276,35 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
       }
 
       if(method==='GET'&&path==='/v1/billing/plans')return reply(200,{enabled:true,mode:'jazzcash_orchestrator',plans:planCatalog()});
+
+      // Proxies JazzCash Status Inquiry (no pp_Version). Frontend never calls JazzCash directly.
+      if(method==='POST'&&path==='/v1/billing/jazzcash/inquiry'){
+        const {user}=requireUser(req);mutation(req);
+        const {value}=await readJson(req,8192);
+        const txnRefNo=String(value.txnRefNo||value.pp_TxnRefNo||'').trim();
+        if(!txnRefNo)throw fail('txnRefNo is required.',400,'invalid_body');
+        const owned=findTxnByRef(txnRefNo);
+        const linked=findSubByTxnRef(txnRefNo);
+        if(owned&&owned.userId!==user.id)throw fail('Transaction not found.',404,'not_found');
+        if(!owned&&linked&&linked.userId!==user.id)throw fail('Transaction not found.',404,'not_found');
+        if(!owned&&!linked)throw fail('Transaction not found.',404,'not_found');
+        const inquiry=await orchestrator.statusInquiry({txnRefNo});
+        const settled=acknowledgeProviderPayment({
+          pp_TxnRefNo:txnRefNo,
+          pp_ResponseCode:inquiry?.pp_ResponseCode,
+          pp_ResponseMessage:inquiry?.pp_ResponseMessage,
+          pp_Amount:inquiry?.pp_Amount
+        });
+        store.audit.write({actor:user.id,action:'jazzcash.status_inquiry',targetType:'provider_reference',targetId:txnRefNo.slice(0,64),metadata:{responseCode:inquiry?.pp_ResponseCode||null}});
+        return reply(200,{
+          txnRefNo,
+          responseCode:inquiry?.pp_ResponseCode||null,
+          responseMessage:inquiry?.pp_ResponseMessage||null,
+          amount:inquiry?.pp_Amount||null,
+          settled,
+          raw:{pp_ResponseCode:inquiry?.pp_ResponseCode,pp_ResponseMessage:inquiry?.pp_ResponseMessage,pp_TxnRefNo:inquiry?.pp_TxnRefNo,pp_Amount:inquiry?.pp_Amount}
+        });
+      }
 
       if(method==='POST'&&path==='/v1/billing/wallets/link'){
         mutation(req,{allowGuest:true});
