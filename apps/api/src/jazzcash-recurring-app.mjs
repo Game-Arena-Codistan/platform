@@ -160,18 +160,63 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     const billReference=randomUUID();
     const pay=await orchestrator.payViaToken({paymentToken:token,txnRefNo,amountMinor,billReference,description:`Game Arena+ ${planCodeValue}`});
     if(String(pay?.pp_ResponseCode)!=='000')throw fail(String(pay?.pp_ResponseMessage||'JazzCash payment failed.'),402,'payment_failed');
+    // Reconcile with Status Inquiry (no pp_Version). PayViaToken 000 remains authoritative if inquiry is unavailable.
+    let inquiry=null;
+    try{inquiry=await orchestrator.statusInquiry({txnRefNo});}catch(error){
+      store.audit.write({actor:userId,action:'jazzcash.status_inquiry_failed',targetType:'provider_reference',targetId:txnRefNo,metadata:{message:String(error.message||error).slice(0,180)}});
+    }
+    const inquiryCode=inquiry?String(inquiry.pp_ResponseCode||''):'';
+    if(inquiry&&!['000','121'].includes(inquiryCode)){
+      store.audit.write({actor:userId,action:'jazzcash.status_inquiry_mismatch',targetType:'provider_reference',targetId:txnRefNo,metadata:{payCode:pay?.pp_ResponseCode,inquiryCode,inquiryMessage:String(inquiry.pp_ResponseMessage||'').slice(0,180)}});
+    }
     const now=clock();const expiresAt=now+plan.durationDays*86400000;
     const attribution=sanitizeAttribution(attributionRaw);
     const paidAt=new Date(now).toISOString();
     const priorPaid=[...store.transactions.values()].some(item=>item.userId===userId&&item.kind==='membership'&&item.status==='paid');
     const purpose=priorPaid?'extension':'activation';
-    const sub={id:randomUUID(),planCode:planCodeValue,status:'active',amountMinor,txnRefNo,billReference,activatedAt:paidAt,attribution};
+    const sub={id:randomUUID(),planCode:planCodeValue,status:'active',amountMinor,txnRefNo,billReference,activatedAt:paidAt,attribution,inquiryCode:inquiryCode||null};
     store.jazzcashSubscriptions.set(userId,sub);
     const planSnapshot={id:plan.id,name:plan.name,version:`${plan.id}-launch-v1`,pricePkr:plan.pricePkr,currency:plan.currency,durationDays:plan.durationDays,durationMs:plan.durationMs,billingMode:plan.billingMode||'single',benefitsVersion:plan.benefitsVersion||'launch-v1'};
-    store.createTransaction({id:sub.id,kind:'membership',purpose,userId,provider:'JazzCash',planId:planCodeValue,planSnapshot,listAmountPkr:plan.pricePkr,amountPkr:plan.pricePkr,discountPkr:0,currency:plan.currency||'PKR',status:'paid',providerStatus:'paid',providerReference:txnRefNo,subscriptionPeriodId:sub.id,attribution,createdAt:paidAt,initiatedAt:paidAt,paidAt,completedAt:paidAt,updatedAt:paidAt,attempts:1});
+    store.createTransaction({id:sub.id,kind:'membership',purpose,userId,provider:'JazzCash',planId:planCodeValue,planSnapshot,listAmountPkr:plan.pricePkr,amountPkr:plan.pricePkr,discountPkr:0,currency:plan.currency||'PKR',status:'paid',providerStatus:inquiryCode||'paid',providerReference:txnRefNo,subscriptionPeriodId:sub.id,attribution,createdAt:paidAt,initiatedAt:paidAt,paidAt,completedAt:paidAt,updatedAt:paidAt,attempts:1});
     store.setEntitlement(userId,{tier:'premium',status:'active',origin:'paid',purpose,planId:planCodeValue,planSnapshot,sourceType:'jazzcash_orchestrator',sourceId:sub.id,startsAt:now,currentPeriodStartsAt:now,currentPeriodEndsAt:expiresAt,expiresAt:expiresAt,autoRenew:true});
-    store.audit.write({actor:userId,action:'jazzcash.subscription_activated',targetType:'user',targetId:userId,metadata:{planCode:planCodeValue,txnRefNo,purpose,attribution:attribution||null}});
+    store.audit.write({actor:userId,action:'jazzcash.subscription_activated',targetType:'user',targetId:userId,metadata:{planCode:planCodeValue,txnRefNo,purpose,inquiryCode:inquiryCode||null,attribution:attribution||null}});
     return sub;
+  }
+
+  /** Delete Token + Token Inquiry (expect 999) + clear local wallet seal. */
+  async function clearJazzCashPaymentToken(userId){
+    ensureJazzCashState(store);
+    const wallet=store.jazzcashWallets.get(userId);
+    const msisdnValue=wallet?.msisdn||'';
+    const token=wallet?.status==='linked'?openToken(wallet.paymentTokenSeal):'';
+    let deleteResult=null;
+    let inquiryResult=null;
+    if(token){
+      try{deleteResult=await orchestrator.deleteToken({requestId:jazzCashRequestId(),paymentToken:token});}
+      catch(error){deleteResult={pp_ResponseCode:'error',pp_ResponseMessage:String(error.message||error).slice(0,180)};}
+      if(msisdnValue&&orchestrator.mockClearedMobiles)orchestrator.mockClearedMobiles.add(msisdnValue);
+    }
+    if(msisdnValue){
+      try{inquiryResult=await orchestrator.tokenInquiry({requestId:jazzCashRequestId(),mobileNumber:msisdnValue});}
+      catch(error){inquiryResult={pp_ResponseCode:'error',pp_ResponseMessage:String(error.message||error).slice(0,180)};}
+    }
+    store.jazzcashWallets.set(userId,{status:'unlinked',msisdn:msisdnValue||null,unlinkedAt:new Date(clock()).toISOString()});
+    const tokenCleared=String(inquiryResult?.pp_ResponseCode||'')==='999';
+    store.audit.write({actor:userId,action:'jazzcash.token_cleared',targetType:'user',targetId:userId,metadata:{
+      deleteCode:deleteResult?.pp_ResponseCode||null,
+      inquiryCode:inquiryResult?.pp_ResponseCode||null,
+      tokenCleared
+    }});
+    return{deleteResult,inquiryResult,tokenCleared};
+  }
+
+  function revokePremiumToFree(userId,sourceType,sourceId=null){
+    const now=clock();
+    const entitlement=store.getEntitlement(userId,now);
+    if(entitlement?.tier==='premium'){
+      store.setEntitlement(userId,{...entitlement,id:randomUUID(),status:'cancelled',cancelledAt:now,sourceType:`${sourceType}:cancelled_period`,origin:entitlement.origin||'paid',autoRenew:false,cancelAtPeriodEnd:true});
+    }
+    return store.setEntitlement(userId,{tier:'free',status:'active',origin:'system',sourceType,sourceId,startsAt:now,expiresAt:null,autoRenew:false});
   }
 
   function findTxnByRef(txnRefNo){
@@ -338,16 +383,15 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
       if(method==='POST'&&path==='/v1/billing/wallets/unlink'){
         const {user}=requireUser(req);mutation(req);
         ensureJazzCashState(store);
-        const wallet=store.jazzcashWallets.get(user.id);
-        if(wallet?.status==='linked'){
-          const token=openToken(wallet.paymentTokenSeal);
-          if(token)await orchestrator.deleteToken({requestId:jazzCashRequestId(),paymentToken:token}).catch(()=>null);
-        }
-        store.jazzcashWallets.set(user.id,{status:'unlinked',unlinkedAt:new Date(clock()).toISOString()});
-        const entitlement=store.getEntitlement(user.id,clock());
-        if(entitlement?.tier==='premium')store.setEntitlement(user.id,{...entitlement,autoRenew:false,cancelAtPeriodEnd:true});
-        store.audit.write({actor:user.id,action:'jazzcash.wallet_unlinked',targetType:'user',targetId:user.id});
-        return reply(200,{status:'unlinked',appEntitlement:store.getEntitlement(user.id,clock())});
+        const tokenLifecycle=await clearJazzCashPaymentToken(user.id);
+        const appEntitlement=revokePremiumToFree(user.id,'jazzcash_wallet_unlink');
+        store.audit.write({actor:user.id,action:'jazzcash.wallet_unlinked',targetType:'user',targetId:user.id,metadata:{tokenCleared:tokenLifecycle.tokenCleared}});
+        return reply(200,{
+          status:'unlinked',
+          tokenCleared:tokenLifecycle.tokenCleared,
+          tokenInquiryCode:tokenLifecycle.inquiryResult?.pp_ResponseCode||null,
+          appEntitlement:{tier:appEntitlement.tier,status:appEntitlement.status,expiresAt:appEntitlement.expiresAt||null,autoRenew:false}
+        });
       }
 
       if(method==='POST'&&path==='/v1/billing/subscriptions'){
@@ -371,13 +415,16 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
           sub.canceledAt=new Date(clock()).toISOString();
           store.jazzcashSubscriptions.set(user.id,sub);
         }
-        const now=clock();
-        if(entitlement?.tier==='premium'){
-          store.setEntitlement(user.id,{...entitlement,id:randomUUID(),status:'cancelled',cancelledAt:now,sourceType:'user_cancel',origin:entitlement.origin||'paid',autoRenew:false,cancelAtPeriodEnd:true});
-        }
-        const appEntitlement=store.setEntitlement(user.id,{tier:'free',status:'active',origin:'system',sourceType:'user_cancel',sourceId:sub?.id||entitlement?.sourceId||subscriptionId,startsAt:now,expiresAt:null,autoRenew:false});
-        store.audit.write({actor:user.id,action:'jazzcash.subscription_canceled',targetType:'user',targetId:user.id,metadata:{subscriptionId,revokedImmediately:true}});
-        return reply(200,{status:'canceled',id:sub?.id||entitlement?.sourceId||subscriptionId,appEntitlement:{tier:appEntitlement.tier,status:appEntitlement.status,expiresAt:appEntitlement.expiresAt||null,autoRenew:false}});
+        const tokenLifecycle=await clearJazzCashPaymentToken(user.id);
+        const appEntitlement=revokePremiumToFree(user.id,'user_cancel',sub?.id||entitlement?.sourceId||subscriptionId);
+        store.audit.write({actor:user.id,action:'jazzcash.subscription_canceled',targetType:'user',targetId:user.id,metadata:{subscriptionId,revokedImmediately:true,tokenCleared:tokenLifecycle.tokenCleared}});
+        return reply(200,{
+          status:'canceled',
+          id:sub?.id||entitlement?.sourceId||subscriptionId,
+          tokenCleared:tokenLifecycle.tokenCleared,
+          tokenInquiryCode:tokenLifecycle.inquiryResult?.pp_ResponseCode||null,
+          appEntitlement:{tier:appEntitlement.tier,status:appEntitlement.status,expiresAt:appEntitlement.expiresAt||null,autoRenew:false}
+        });
       }
 
       return false;

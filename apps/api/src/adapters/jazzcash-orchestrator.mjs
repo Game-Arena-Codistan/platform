@@ -34,6 +34,10 @@ export class JazzCashOrchestratorAdapter{
     this.returnUrl=config.jazzcashReturnUrl||`${config.publicOrigin.replace(/\/$/,'')}/api/v1/jazzcash/wallet/callback`;
     this.timeoutMs=Number(config.jazzcashTimeoutMs||8000);
     this.fetchImpl=fetchImpl;
+    /** @type {Set<string>} mock-only: payment tokens removed via Delete Token */
+    this.mockDeletedTokens=new Set();
+    /** @type {Set<string>} mock-only: mobiles cleared after Delete Token */
+    this.mockClearedMobiles=new Set();
   }
 
   assertConfigured(){
@@ -107,6 +111,20 @@ export class JazzCashOrchestratorAdapter{
   async postJson(path,fields){
     this.assertConfigured();
     if(this.mode==='mock'){
+      if(String(path).includes('mobile-tokens/delete')){
+        const token=String(fields.pp_PaymentToken||'');
+        if(token)this.mockDeletedTokens.add(token);
+        return{pp_ResponseCode:'000',pp_ResponseMessage:'Success'};
+      }
+      if(String(path).includes('mobile-tokens/inquiry')){
+        const mobile=String(fields.pp_MobileNumber||'');
+        const cleared=this.mockClearedMobiles.has(mobile)||this.mockDeletedTokens.size>0;
+        if(cleared){
+          if(mobile)this.mockClearedMobiles.add(mobile);
+          return{pp_ResponseCode:'999',pp_ResponseMessage:'No Payment Token exists against the provided pp_MobileNumber.'};
+        }
+        return{pp_ResponseCode:'000',pp_ResponseMessage:'Success'};
+      }
       const code=String(fields.pp_TxnRefNo||'').includes('fail')?'999':'000';
       return{pp_ResponseCode:code,pp_ResponseMessage:code==='000'?'Success':'Mock failure',pp_TxnRefNo:fields.pp_TxnRefNo,pp_Amount:fields.pp_Amount};
     }

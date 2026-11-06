@@ -34,9 +34,12 @@ test('jazzCashSecureHash uses ASCII sort and excludes empty pp_ fields',()=>{
 test('orchestrator billing BFF starts LinkWallet and completes callback with pay-via-token',async()=>{
   const store=new MemoryStore();
   const config=loadConfig({nodeEnv:'test',port:1,publicOrigin:'http://localhost:8080',allowedOrigins:['http://localhost:8080'],allowDebugOtp:true,jazzcashMode:'orchestrator',jazzcashMerchantId:'MC990983',jazzcashPassword:'pw',jazzcashIntegritySalt:'salt',jazzcashReturnUrl:'http://localhost:8080/callback',jazzcashWebhookSecret:'test-secret'});
+  let tokenDeleted=false;
   const fetchImpl=async(url)=>{
     if(String(url).includes('/payments/m-wallet'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA123'})};
     if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'59900'})};
+    if(String(url).includes('mobile-tokens/delete')){tokenDeleted=true;return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success'})};}
+    if(String(url).includes('mobile-tokens/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:tokenDeleted?'999':'000',pp_ResponseMessage:tokenDeleted?'No Payment Token exists against the provided pp_MobileNumber.':'Success'})};
     throw new Error(`unexpected fetch ${url}`);
   };
   const orchestrator=new JazzCashOrchestratorAdapter(config,{fetchImpl});
@@ -86,11 +89,15 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
     assert.equal(canceled.status,'canceled');
     assert.equal(canceled.appEntitlement.tier,'free');
     assert.equal(canceled.appEntitlement.autoRenew,false);
+    assert.equal(canceled.tokenCleared,true);
+    assert.equal(canceled.tokenInquiryCode,'999');
+    assert.equal(tokenDeleted,true);
     response=await fetch(`${base}/v1/billing/status`,{headers:{cookie:auth.cookie}});
     const after=await response.json();
     assert.equal(after.subscriptions?.[0]?.status,'canceled');
     assert.equal(after.appEntitlement.tier,'free');
     assert.equal(after.appEntitlement.autoRenew,false);
+    assert.equal(after.wallet.status,'none');
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
 
