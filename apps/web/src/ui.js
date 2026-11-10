@@ -18,8 +18,9 @@ function authMarkup(mode='signin'){
   const isSignUp=mode==='signup';
   const seeded=landingMsisdn();
   const phoneAttrs=seeded?` value="${escapeHtml(seeded)}" readonly`:'';
+  const pendingPremium=(()=>{try{return Boolean(JSON.parse(sessionStorage.getItem('game-arena:pending-subscription')||'null'));}catch{return false;}})();
   return `<form id="auth-form" class="stack" data-mode="${mode}">
-    <p class="muted">${isSignUp?'Create an account with your mobile number.':'Sign in with your mobile number and password.'}${seeded?' Your JazzCash number is locked until you finish sign-in.':''}</p>
+    <p class="muted">${pendingPremium?'Your JazzCash plan is active. ' :''}${isSignUp?'Create an account with your mobile number.':'Sign in with your mobile number and password.'}${seeded?' Your JazzCash number is locked until you finish sign-in.':''}</p>
     <div class="field"><label for="auth-msisdn">Phone number</label><input id="auth-msisdn" name="msisdn" inputmode="tel" autocomplete="tel" required pattern="(\\+92|0)?3\\d{9}" placeholder="03XX XXXXXXX"${phoneAttrs}></div>
     ${isSignUp?'<div class="field"><label for="auth-name">Name</label><input id="auth-name" name="name" autocomplete="name" required maxlength="80" placeholder="Your name"></div>':''}
     <div class="field"><label for="auth-password">Password</label><input id="auth-password" name="password" type="password" autocomplete="${isSignUp?'new-password':'current-password'}" required minlength="6" placeholder="At least 6 characters"></div>

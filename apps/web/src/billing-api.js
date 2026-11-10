@@ -4,8 +4,24 @@ function cookie(name){return document.cookie.split(';').map(item=>item.trim()).f
 async function request(path,options={}){
   const method=options.method||'GET';const headers={'content-type':'application/json',...(options.headers||{})};
   if(!['GET','HEAD','OPTIONS'].includes(method))headers['x-csrf-token']=decodeURIComponent(cookie('ga_csrf'));
-  const response=await fetch(`${config.apiBaseUrl}${path}`,{credentials:'include',...options,headers});const data=response.status===204?null:await response.json().catch(()=>null);
-  if(!response.ok){const error=new Error(data?.error?.message||data?.message||`Billing request failed: ${response.status}`);error.code=data?.error?.code||data?.error;error.status=response.status;error.details=data?.error?.details;throw error;}return data;
+  const response=await fetch(`${config.apiBaseUrl}${path}`,{credentials:'include',...options,headers});
+  const raw=response.status===204?null:await response.text();
+  let data=null;
+  if(raw){
+    try{data=JSON.parse(raw);}
+    catch{
+      const error=new Error(response.ok?'Billing API returned a non-JSON response. Is the API running?':`Billing request failed: ${response.status}`);
+      error.status=response.status;
+      throw error;
+    }
+  }
+  if(!response.ok){const error=new Error(data?.error?.message||data?.message||`Billing request failed: ${response.status}`);error.code=data?.error?.code||data?.error;error.status=response.status;error.details=data?.error?.details;throw error;}
+  return data;
+}
+function maskMsisdn(value){
+  const digits=String(value||'').replace(/\D/g,'');
+  if(digits.length<4)return'****';
+  return`${'*'.repeat(Math.max(0,digits.length-4))}${digits.slice(-4)}`;
 }
 export const fetchBillingPlans=()=>config.mode==='live'?request('/v1/billing/plans'):Promise.resolve({enabled:true,plans:[{code:'monthly',fullAmountMinor:59900,interval:'month',recommended:true},{code:'yearly',fullAmountMinor:499900,interval:'year',comingSoon:true,status:'coming_soon'}]});
 export async function linkBillingWallet({msisdn,planCode,consentToAutoPay=true,returnPath,attribution}){
@@ -20,8 +36,23 @@ export const unlinkBillingWallet=()=>request('/v1/billing/wallets/unlink',{metho
 export const fetchBillingStatus=()=>request('/v1/billing/status');
 export const createBillingSubscription=({planCode,skipTrial=false})=>request('/v1/billing/subscriptions',{method:'POST',body:JSON.stringify({planCode,skipTrial})});
 export const cancelBillingSubscription=id=>request(`/v1/billing/subscriptions/${encodeURIComponent(id)}/cancel`,{method:'POST'});
-export const lookupUnsubscribe=msisdn=>request('/v1/billing/unsubscribe/lookup',{method:'POST',body:JSON.stringify({msisdn})});
-export const unsubscribeByMsisdn=({msisdn,confirm=true})=>request('/v1/billing/unsubscribe',{method:'POST',body:JSON.stringify({msisdn,confirm})});
+export async function lookupUnsubscribe(msisdn){
+  if(config.mode!=='live'){
+    await wait(250);
+    return{hasActiveSubscription:false,msisdnMasked:maskMsisdn(msisdn),planCode:null,plansPath:'/#/library'};
+  }
+  return request('/v1/billing/unsubscribe/lookup',{method:'POST',body:JSON.stringify({msisdn})});
+}
+export async function unsubscribeByMsisdn({msisdn,confirm=true}){
+  if(config.mode!=='live'){
+    await wait(250);
+    const error=new Error("You don't have any active subscription.");
+    error.code='no_active_subscription';
+    error.status=404;
+    throw error;
+  }
+  return request('/v1/billing/unsubscribe',{method:'POST',body:JSON.stringify({msisdn,confirm})});
+}
 export const fetchBillingPayments=()=>request('/v1/billing/payments');
 export const fetchBillingPayment=id=>request(`/v1/billing/payments/${encodeURIComponent(id)}`);
 export function submitWalletPortal(result){

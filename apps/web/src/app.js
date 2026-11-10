@@ -1,4 +1,4 @@
-import {getState,goArenaPlus,isPremium,subscribe,update} from './state.js';
+import {getState,goArenaPlus,hasPendingGuestPremium,isPremium,subscribe,update} from './state.js';
 import {observeVitals,observeErrors,track} from './analytics.js';
 import {getSession,refreshEntitlement,paymentStatus,fetchWallet,releaseSha} from './api.js';
 import {ensureCatalogue} from './catalogue-runtime.js';
@@ -42,9 +42,23 @@ function syncLibraryNavVisibility(){
   library.hidden=false;
   library.setAttribute('aria-hidden','false');
 }
-function paymentBanner(){
+function paymentSuccessParams(){
   const hashQuery=location.hash.includes('?')?location.hash.split('?')[1]:'';
-  const params=new URLSearchParams(hashQuery||location.search);
+  return new URLSearchParams(hashQuery||location.search);
+}
+function promptAuthAfterJazzCashReturn(txn=''){
+  if(getState().user)return;
+  const key=`game-arena:auth-prompted:${txn||'ok'}`;
+  try{if(sessionStorage.getItem(key)==='1')return;sessionStorage.setItem(key,'1');}catch{/* ignore */}
+  // Let the homepage paint first, then open signup/signin.
+  setTimeout(()=>{
+    if(getState().user)return;
+    if(document.querySelector('#auth-form'))return;
+    openAuth('signup');
+  },350);
+}
+function paymentBanner(){
+  const params=paymentSuccessParams();
   if(params.get('payment')!=='succeeded')return;
   const txn=params.get('orderId')||params.get('txn')||'';
   if(txn)trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
@@ -52,13 +66,44 @@ function paymentBanner(){
     const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
     if(!getState().user)sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:'monthly',at:Date.now(),source:'home-return'}));
   }catch{/* ignore */}
-  if(document.querySelector('#payment-success-banner'))return;
-  const banner=document.createElement('div');
-  banner.id='payment-success-banner';
-  banner.className='notice';
-  banner.innerHTML='<b>Premium Features Unlocked.</b> Your JazzCash subscription is active. Sign in with your JazzCash number when you are ready to use Game Arena+.';
-  app.prepend(banner);
   if(getState().entitlement!=='premium')update({entitlement:'premium'});
+  if(!document.querySelector('#payment-success-banner')){
+    const banner=document.createElement('div');
+    banner.id='payment-success-banner';
+    banner.className='notice payment-success-banner';
+    banner.innerHTML=getState().user
+      ?'<b>Premium Features Unlocked.</b> Your JazzCash subscription is active.'
+      :'<b>Premium Features Unlocked.</b> Sign up or sign in with your JazzCash number to attach Game Arena+ to your profile.';
+    app.prepend(banner);
+  }
+  if(!getState().user)promptAuthAfterJazzCashReturn(txn);
+}
+function syncProfileChrome(){
+  const state=getState();
+  const profile=document.querySelector('#profile-button');
+  const premiumTag=document.querySelector('#profile-premium-tag');
+  const showPremium=isPremium()||hasPendingGuestPremium();
+  if(premiumTag){
+    premiumTag.hidden=!showPremium;
+    premiumTag.classList.toggle('is-pending',!state.user&&showPremium);
+    premiumTag.textContent=state.user?'Premium':'Premium';
+  }
+  if(profile){
+    if(state.user){
+      const label=(state.user.displayName||'P').slice(0,2).toUpperCase();
+      if(profile.textContent!==label)profile.textContent=label;
+      profile.classList.remove('avatar-cta');
+      profile.classList.toggle('is-premium',showPremium);
+      if(profile.getAttribute('aria-label')!=='Open account')profile.setAttribute('aria-label','Open account');
+    }else{
+      if(profile.textContent!=='Sign up')profile.textContent='Sign up';
+      profile.classList.add('avatar-cta');
+      profile.classList.toggle('is-premium',showPremium);
+      if(profile.getAttribute('aria-label')!=='Sign up')profile.setAttribute('aria-label','Sign up');
+    }
+  }
+  const premium=document.querySelector('#premium-button');
+  if(premium)premium.hidden=showPremium;
 }
 function render(force=false){
   try{
@@ -80,22 +125,7 @@ function render(force=false){
     }
     const state=getState();
     if(balance)balance.textContent=Number(state.coins||0).toLocaleString('en-PK');
-    const profile=document.querySelector('#profile-button');
-    if(profile){
-      if(state.user){
-        const label=(state.user.displayName||'P').slice(0,2).toUpperCase();
-        // Avoid rewriting DOM when unchanged — textContent assignment blurs a focused control.
-        if(profile.textContent!==label)profile.textContent=label;
-        profile.classList.remove('avatar-cta');
-        if(profile.getAttribute('aria-label')!=='Open account')profile.setAttribute('aria-label','Open account');
-      }else{
-        if(profile.textContent!=='Sign up')profile.textContent='Sign up';
-        profile.classList.add('avatar-cta');
-        if(profile.getAttribute('aria-label')!=='Sign up')profile.setAttribute('aria-label','Sign up');
-      }
-    }
-    const premium=document.querySelector('#premium-button');
-    if(premium)premium.hidden=isPremium();
+    syncProfileChrome();
     syncLibraryNavVisibility();
     document.documentElement.classList.toggle('reduce-motion',state.settings.reducedMotion);
   }catch(error){

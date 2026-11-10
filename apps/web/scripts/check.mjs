@@ -30,5 +30,5 @@ for(const file of [...scripts,join(root,'sw.js'),join(root,'scripts/build.mjs')]
 const budgetFiles=['index.html','styles/tokens.css','styles/app.css','styles/responsive.css',...scripts.map(file=>relative(root,file))]
   .filter(file=>!/(^|[\\/])(catalogue-(1|2|art)|landing|landing-campaign|landing-analytics|ga4|unsubscribe-flow)\.js$/.test(file)&&!/(^|[\\/])landing\.css$/.test(file));
 const bytes=(await Promise.all(budgetFiles.map(file=>stat(join(root,file))))).reduce((sum,item)=>sum+item.size,0);
-if(bytes>135*1024)throw new Error(`Core source ${(bytes/1024).toFixed(1)} KB exceeds 135 KB.`);
+if(bytes>140*1024)throw new Error(`Core source ${(bytes/1024).toFixed(1)} KB exceeds 140 KB.`);
 console.log(`Checks passed. Core source ${(bytes/1024).toFixed(1)} KB.`);

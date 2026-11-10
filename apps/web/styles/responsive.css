@@ -1,3 +1,25 @@
 @media(min-width:700px){:root{--topbar:76px}.topbar{padding-left:2rem;padding-right:2rem}.page,.section-block{padding:2rem}.landing-hero{grid-template-columns:1.25fr .75fr;padding:3rem 2rem}.spotlight-grid{grid-template-columns:repeat(2,1fr)}.feature-grid{grid-template-columns:repeat(3,1fr)}.step-grid{grid-template-columns:repeat(4,1fr)}.grid{grid-template-columns:repeat(3,1fr)}.plan-grid,.split,.competition-layout{grid-template-columns:repeat(2,minmax(0,1fr))}.topup-grid,.room-grid,.faq-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.tournament-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bottom-nav{left:50%;right:auto;transform:translateX(-50%);width:min(640px,90%);top:calc(var(--topbar) + env(safe-area-inset-top) + .75rem);bottom:auto;border:1px solid var(--border);border-radius:24px;height:68px;padding:0}.feed{height:calc(100dvh - var(--topbar) - 68px - 2rem)}#app{padding-top:calc(var(--topbar) + env(safe-area-inset-top) + 68px + 2rem);padding-bottom:2rem}.feed-slide{padding:2.5rem}.modal-wide .game-stage{aspect-ratio:16/8.5}}
 @media(min-width:1050px){.spotlight-grid{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:repeat(4,1fr)}.feed-content{margin-left:8vw}.split.wide{grid-template-columns:1.4fr .8fr}}
-@media(max-width:600px){.status,.premium-pill{display:none}.page-head,.section-head,.section-actions,.premium-banner{align-items:stretch;flex-direction:column}.hero-proof{grid-template-columns:1fr}.metric-row{grid-template-columns:1fr}.voucher-card form{flex-direction:column}.reward-item,.room-card,.tournament-card{align-items:stretch;flex-direction:column}.compare-row{font-size:.82rem}.landing-hero{min-height:auto;padding-top:2rem}}
+@media(max-width:600px){
+  .status{display:none}
+  .premium-pill:not([hidden]){display:inline-flex;padding:0 .55rem;min-height:36px;font-size:.72rem}
+  .topbar{padding-left:.75rem;padding-right:.75rem;gap:.5rem}
+  .brand img{width:32px;height:32px}
+  .brand small{display:none}
+  .top-actions{gap:.3rem}
+  .coin-button{min-height:36px;padding:0 .55rem;font-size:.78rem}
+  .avatar{width:36px;min-height:36px;font-size:.78rem}
+  .avatar-cta{padding:0 .7rem;font-size:.72rem}
+  .profile-premium-tag{min-height:24px;padding:0 .45rem;font-size:.62rem}
+  .payment-success-banner{font-size:.9rem}
+  .modal-backdrop{place-items:end center;padding:0}
+  .modal{width:100%;max-height:min(92dvh,100%);border-radius:18px 18px 0 0;padding:1rem 1rem calc(1rem + env(safe-area-inset-bottom))}
+  .modal-wide{width:100%;border-radius:18px 18px 0 0}
+  .page-head,.section-head,.section-actions,.premium-banner{align-items:stretch;flex-direction:column}
+  .hero-proof{grid-template-columns:1fr}
+  .metric-row{grid-template-columns:1fr}
+  .voucher-card form{flex-direction:column}
+  .reward-item,.room-card,.tournament-card{align-items:stretch;flex-direction:column}
+  .compare-row{font-size:.82rem}
+  .landing-hero{min-height:auto;padding-top:2rem}
+}

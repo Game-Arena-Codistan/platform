@@ -19,11 +19,28 @@ async function adminPage(browser,role='admin'){
   test.skip(!adminUrl,'BLOCKED: STAGING_ADMIN_URL is not configured for Admin browser certification.');
   const context=await browser.newContext({baseURL:adminUrl,extraHTTPHeaders:headersFor(role)});
   const page=await context.newPage();
-  const capabilities=page.waitForResponse(response=>response.url().includes('/v1/admin/capabilities'),{timeout:20000});
-  await page.goto('/');
-  const capabilitiesResponse=await capabilities.catch(()=>null);
+  let capabilitiesResponse=null;
+  page.on('response',response=>{
+    if(response.url().includes('/v1/admin/capabilities'))capabilitiesResponse=response;
+  });
+  await page.goto('/',{waitUntil:'domcontentloaded'});
   // Gateway mode resolves capabilities asynchronously before unhiding #console.
-  const consoleVisible=await page.locator('#console').isVisible().catch(()=>false)||await page.locator('#console').waitFor({state:'visible',timeout:10000}).then(()=>true).catch(()=>false);
+  // Local-key mode shows the auth form; use STAGING_QA_ADMIN_KEY when present.
+  const consoleLocator=page.locator('#console');
+  let consoleVisible=await consoleLocator.waitFor({state:'visible',timeout:20000}).then(()=>true).catch(()=>false);
+  if(!consoleVisible&&adminKey){
+    const keyInput=page.locator('#local-auth input[name="key"]');
+    if(await keyInput.isVisible().catch(()=>false)){
+      await keyInput.fill(adminKey);
+      await page.locator('#local-auth button[type="submit"]').click();
+      consoleVisible=await consoleLocator.waitFor({state:'visible',timeout:20000}).then(()=>true).catch(()=>false);
+    }
+  }
+  if(!consoleVisible){
+    // One reload covers late tunnel readiness / first-paint races.
+    await page.reload({waitUntil:'domcontentloaded'});
+    consoleVisible=await consoleLocator.waitFor({state:'visible',timeout:20000}).then(()=>true).catch(()=>false);
+  }
   if(!consoleVisible){
     const title=await page.title().catch(()=> '');
     const authStatus=String(await page.locator('#auth-status').textContent().catch(()=> '')||'').trim();

@@ -50,7 +50,7 @@ function showForm(msisdn='',statusHtml=''){
     status.textContent='Checking subscription…';
     try{
       const result=await lookupUnsubscribe(phone);
-      if(!result.hasActiveSubscription){
+      if(!result?.hasActiveSubscription){
         status.innerHTML=noSubscriptionMarkup();
         bindNoPlanLink();
         track('unsubscribe_lookup_miss');
