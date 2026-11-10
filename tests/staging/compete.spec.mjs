@@ -19,7 +19,7 @@ test('@player competition hub loads leaderboards and protects premium tournament
   await premiumEntry.click();
   // Locked premium tournament entry routes to the library plans gate (pay-first Arena+).
   await expect(page).toHaveURL(/#\/library/);
-  await expect(page.getByRole('heading',{name:/Choose a plan to unlock premium games|Discover your next game|Your premium catalogue is ready/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Choose a plan to unlock premium games/i}).first()).toBeVisible();
 });
 
 test('@player authenticated user can create and rejoin a supported multiplayer room',async({page},testInfo)=>{
