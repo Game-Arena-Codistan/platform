@@ -1,15 +1,15 @@
 {
-  "schemaVersion":"game-arena-visual-baselines.v1",
-  "approvalPolicy":{
-    "reviewer":"ChatGPT QA reviewer (delegated by project owner)",
-    "mode":"explicit-visual-review",
-    "status":"approved",
-    "autoApprove":false
+  "schemaVersion": "game-arena-visual-baselines.v1",
+  "approvalPolicy": {
+    "reviewer": "ChatGPT QA reviewer (delegated by project owner)",
+    "mode": "explicit-visual-review",
+    "status": "approved",
+    "autoApprove": false
   },
-  "approvedFromStagingSha":"fb30412f2c689602a7214d991441663a3aa15e61",
-  "screenshots":{
-    "admin-shell.png":"1ed55f117a467e1039fe7611db5ba4cb715ba7382dfb8f43cdf0a3565a41345d",
-    "player-home.png":"6f7bb22923b9c78860c87cf1fcf66465dff8ea1d8b8e8c7023694683de62909a",
-    "player-support.png":"17b7fb17f9cf05f821e250fef6d4017bd3a3566c17e424e43b5049dca3a0a4fb"
+  "approvedFromStagingSha": "eea9f23d169f4c87751f516494f56d6fa7a5d277",
+  "screenshots": {
+    "admin-shell.png": "1ed55f117a467e1039fe7611db5ba4cb715ba7382dfb8f43cdf0a3565a41345d",
+    "player-home.png": "e6066c12329c104dc3f10048e5bbdfafce12907db970c8f3add595e8afaf2ccc",
+    "player-support.png": "86db1e015e5119a739b805965a0c6db80184d95cb79667e52906f6cc214460a9"
   }
 }

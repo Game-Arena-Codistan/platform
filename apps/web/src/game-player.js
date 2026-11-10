@@ -3,6 +3,7 @@ import {completePlay,gameUrl,startPlay,mode} from './api.js';
 import {escapeHtml,modal,openAuth,requireAuth,toast} from './ui.js';
 import {GameBridge} from './game-bridge.js';
 import {track} from './analytics.js';
+import {defaultLandingHref} from './landing-campaign.js';
 
 export async function openGame(game){
   if(!game)return;
@@ -13,7 +14,7 @@ export async function openGame(game){
   }
   if(game.tier==='premium'&&!isPremium()){
     track('upgrade_view',{source:'locked_game',gameId:game.id});
-    location.hash='#/library';
+    location.assign(defaultLandingHref('monthly'));
     return;
   }
   const guestFree=game.tier==='free'&&!getState().user;
