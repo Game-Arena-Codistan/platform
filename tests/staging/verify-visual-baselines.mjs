@@ -12,8 +12,9 @@ let reviewRequired=0;
 for(const name of files){
   const digest=createHash('sha256').update(await readFile(join(captureDir,name))).digest('hex');
   const expected=baseline.screenshots?.[name];
-  if(!expected){reviewRequired++;results.push({name,status:'VISUAL_REVIEW_REQUIRED',actualSha256:digest,reason:'no human-approved baseline'});continue;}
-  if(expected!==digest){reviewRequired++;results.push({name,status:'VISUAL_REVIEW_REQUIRED',actualSha256:digest,expectedSha256:expected,reason:'screenshot changed'});continue;}
+  const accepted=Array.isArray(expected)?expected.filter(Boolean):expected?[expected]:[];
+  if(!accepted.length){reviewRequired++;results.push({name,status:'VISUAL_REVIEW_REQUIRED',actualSha256:digest,reason:'no human-approved baseline'});continue;}
+  if(!accepted.includes(digest)){reviewRequired++;results.push({name,status:'VISUAL_REVIEW_REQUIRED',actualSha256:digest,expectedSha256:accepted,reason:'screenshot changed'});continue;}
   results.push({name,status:'PASS',sha256:digest});
 }
 if(!files.length){reviewRequired++;results.push({name:'visual-captures',status:'VISUAL_REVIEW_REQUIRED',reason:'no screenshots were captured'});}
