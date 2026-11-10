@@ -13,6 +13,7 @@ import {renderRewards,bindRewards} from './views/rewards.js';
 import {renderPremium,bindPremium} from './views/premium.js';
 import {renderAccount,bindAccount} from './views/account.js';
 import {renderSupport,bindSupport} from './views/support.js';
+import {openUnsubscribeFlow} from './unsubscribe-flow.js';
 
 if(bootLandingIfNeeded()){
   // Landing pages own the viewport; skip the hash SPA shell.
@@ -119,6 +120,7 @@ addEventListener('beforeinstallprompt',event=>{event.preventDefault();window.__G
 document.querySelector('#profile-button')?.addEventListener('click',()=>{if(getState().user)location.hash='#/account';else openAuth('signup');});
 document.querySelector('#coins-button')?.addEventListener('click',()=>location.hash='#/rewards');
 document.querySelector('#premium-button')?.addEventListener('click',()=>goArenaPlus());
+document.querySelector('#unsubscribe-nav')?.addEventListener('click',()=>openUnsubscribeFlow());
 subscribe(()=>render(true));
 observeVitals();observeErrors();setNetwork();
 // Paint the shell immediately so a slow/hung catalogue fetch cannot leave every tab blank.

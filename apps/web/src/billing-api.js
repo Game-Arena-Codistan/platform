@@ -20,6 +20,8 @@ export const unlinkBillingWallet=()=>request('/v1/billing/wallets/unlink',{metho
 export const fetchBillingStatus=()=>request('/v1/billing/status');
 export const createBillingSubscription=({planCode,skipTrial=false})=>request('/v1/billing/subscriptions',{method:'POST',body:JSON.stringify({planCode,skipTrial})});
 export const cancelBillingSubscription=id=>request(`/v1/billing/subscriptions/${encodeURIComponent(id)}/cancel`,{method:'POST'});
+export const lookupUnsubscribe=msisdn=>request('/v1/billing/unsubscribe/lookup',{method:'POST',body:JSON.stringify({msisdn})});
+export const unsubscribeByMsisdn=({msisdn,confirm=true})=>request('/v1/billing/unsubscribe',{method:'POST',body:JSON.stringify({msisdn,confirm})});
 export const fetchBillingPayments=()=>request('/v1/billing/payments');
 export const fetchBillingPayment=id=>request(`/v1/billing/payments/${encodeURIComponent(id)}`);
 export function submitWalletPortal(result){

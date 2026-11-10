@@ -164,3 +164,52 @@ test('orchestrator billing accepts both configured origins and returns to the re
     }
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('guest unsubscribe by JazzCash number looks up and revokes active Arena+',async()=>{
+  const store=new MemoryStore();
+  const config=loadConfig({nodeEnv:'test',port:1,publicOrigin:'http://localhost:8080',allowedOrigins:['http://localhost:8080'],allowDebugOtp:true,jazzcashMode:'orchestrator',jazzcashMerchantId:'MC990983',jazzcashPassword:'pw',jazzcashIntegritySalt:'salt',jazzcashReturnUrl:'http://localhost:8080/callback',jazzcashWebhookSecret:'test-secret'});
+  let tokenDeleted=false;
+  const fetchImpl=async(url)=>{
+    if(String(url).includes('/payments/m-wallet'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA789'})};
+    if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'59900'})};
+    if(String(url).includes('mobile-tokens/delete')){tokenDeleted=true;return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success'})};}
+    if(String(url).includes('mobile-tokens/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:tokenDeleted?'999':'000',pp_ResponseMessage:tokenDeleted?'No Payment Token exists against the provided pp_MobileNumber.':'Success'})};
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const orchestrator=new JazzCashOrchestratorAdapter(config,{fetchImpl});
+  const jazzcash=new JazzCashAdapter({...config,jazzcashMode:'mock'});
+  const recurring=createJazzCashRecurringApp({config,store,orchestrator});
+  const primary=createApp({config,store,jazzcash,otpDelivery:new OtpDeliveryRouter({providers:[new MockOtpProvider()],audit:store.audit,metrics:store.metrics}),payments:new PaymentService({store,provider:jazzcash})});
+  const server=createServer(async(req,res)=>{if(await recurring(req,res)!==false)return;await primary(req,res);});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base=`http://127.0.0.1:${server.address().port}`;
+  try{
+    let response=await fetch(`${base}/v1/billing/unsubscribe/lookup`,{method:'POST',headers:{'content-type':'application/json',origin:'http://localhost:8080'},body:JSON.stringify({msisdn:'03005554433'})});
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).hasActiveSubscription,false);
+
+    response=await fetch(`${base}/v1/billing/wallets/link`,{method:'POST',headers:{'content-type':'application/json',origin:'http://localhost:8080'},body:JSON.stringify({msisdn:'03005554433',planCode:'monthly',consentToAutoPay:true})});
+    assert.equal(response.status,201);
+    const link=await response.json();
+    const returnFields={pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_PaymentToken:'token-guest',pp_RequestID:link.requestId,pp_MerchantID:'MC990983',pp_MSISDN:'03005554433'};
+    returnFields.pp_SecureHash=jazzCashSecureHash(returnFields,'salt');
+    response=await fetch(`${base}/v1/jazzcash/wallet/callback`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(returnFields).toString(),redirect:'manual'});
+    assert.equal(response.status,303);
+
+    response=await fetch(`${base}/v1/billing/unsubscribe/lookup`,{method:'POST',headers:{'content-type':'application/json',origin:'http://localhost:8080'},body:JSON.stringify({msisdn:'03005554433'})});
+    assert.equal(response.status,200);
+    const lookup=await response.json();
+    assert.equal(lookup.hasActiveSubscription,true);
+    assert.equal(lookup.planCode,'monthly');
+
+    response=await fetch(`${base}/v1/billing/unsubscribe`,{method:'POST',headers:{'content-type':'application/json',origin:'http://localhost:8080'},body:JSON.stringify({msisdn:'03005554433',confirm:true})});
+    assert.equal(response.status,200);
+    const canceled=await response.json();
+    assert.equal(canceled.status,'canceled');
+    assert.equal(canceled.appEntitlement.tier,'free');
+    assert.equal(canceled.tokenCleared,true);
+
+    response=await fetch(`${base}/v1/billing/unsubscribe/lookup`,{method:'POST',headers:{'content-type':'application/json',origin:'http://localhost:8080'},body:JSON.stringify({msisdn:'03005554433'})});
+    assert.equal((await response.json()).hasActiveSubscription,false);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
