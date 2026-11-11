@@ -14,6 +14,7 @@ import {renderPremium,bindPremium} from './views/premium.js';
 import {renderAccount,bindAccount} from './views/account.js';
 import {renderSupport,bindSupport} from './views/support.js';
 import {openUnsubscribeFlow} from './unsubscribe-flow.js';
+import {bindMotion} from './motion.js';
 
 if(bootLandingIfNeeded()){
   // Landing pages own the viewport; skip the hash SPA shell.
@@ -115,6 +116,7 @@ function render(force=false){
       const [view,bind]=routes[name];
       app.innerHTML=view();
       try{bind?.();}catch(error){console.error('route bind failed',name,error);}
+      try{bindMotion(app);}catch(error){console.error('motion bind failed',error);}
       paymentBanner();
       document.querySelectorAll('[data-route]').forEach(link=>link.classList.toggle('active',link.dataset.route===name));
       // Only move focus on real navigation — state-driven re-renders must not steal keyboard focus.

@@ -1,13 +1,13 @@
 const release=new URL(self.location.href).searchParams.get('release')||'dev';
 const CACHE=`game-arena-shell-${release}`;
 const versioned=path=>`${path}?v=${encodeURIComponent(release)}`;
-const SHELL=['/','/index.html','/manifest.webmanifest','/assets/icon.svg','/assets/logo.svg','/demo-games/arena-dash/index.html',versioned('/styles/tokens.css'),versioned('/styles/app.css'),versioned('/styles/responsive.css')];
+const SHELL=['/','/index.html','/manifest.webmanifest','/assets/icon.svg','/assets/logo.svg','/demo-games/arena-dash/index.html',versioned('/styles/tokens.css'),versioned('/styles/app.css'),versioned('/styles/responsive.css'),versioned('/styles/home.css')];
 
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE&&!key.startsWith('game-arena-downloads')).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 
 function isModuleGraph(url){
-  return url.pathname.startsWith('/src/')||url.pathname==='/styles/landing.css';
+  return url.pathname.startsWith('/src/')||url.pathname==='/styles/landing.css'||url.pathname==='/styles/home.css';
 }
 
 self.addEventListener('fetch',event=>{
