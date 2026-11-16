@@ -1,123 +1,14 @@
-import {getGames,getGenres} from '../catalogue-runtime.js';
-import {premiumFeatures} from '../data.js';
-import {escapeHtml,money} from '../ui.js';
-import {openGame} from '../game-player.js';
-import {track} from '../analytics.js';
-
-const FEATURES=[
-  {icon:'⚡',title:'Instant play',body:'Launch HTML5 games directly in the browser.',tone:'play'},
-  {icon:'⌕',title:'Genre discovery',body:'Browse active genre groups and save favourites.',tone:'discover',dynamic:true},
-  {icon:'♟',title:'Multiplayer',body:'Create or join game rooms from the competition hub.',tone:'multi'},
-  {icon:'🏆',title:'Tournaments',body:'Join open events and follow verified leaderboard scores.',tone:'cup'},
-  {icon:'◉',title:'Rewards',body:'Collect Arena Coins from verified play and challenges.',tone:'coin'},
-  {icon:'🎟',title:'Vouchers & top-ups',body:'Redeem offers and access member discounts when enabled.',tone:'voucher'}
-];
-
-function gameCard(game){
-  return `<article class="spotlight-card" data-reveal style="--art:${game.art}"><div class="spotlight-copy"><span class="badge ${game.tier==='premium'?'premium':''}">${game.tier==='premium'?'Arena+':'Free'}</span>${game.multiplayer?'<span class="badge">Multiplayer</span>':''}<h3>${escapeHtml(game.title)}</h3><button class="text-link game-card-see-more" type="button" data-home-see-more="${escapeHtml(game.id)}" aria-expanded="false">See more...</button><p class="game-card-desc" hidden>${escapeHtml(game.description)}</p><button class="button primary" data-home-play="${game.id}" type="button">Play now</button></div></article>`;
-}
-
-function featureCard(item,genreCount){
-  const body=item.dynamic?`Browse ${genreCount} active genre groups and save favourites.`:item.body;
-  return `<article class="feature-card feature-card--${item.tone}" data-reveal>
-    <div class="feature-card-copy"><span class="feature-icon" aria-hidden="true">${item.icon}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(body)}</p></div>
-    <div class="feature-card-art" aria-hidden="true"></div>
-  </article>`;
-}
-
-export function renderHome(){
-  const games=getGames();
-  const genres=getGenres();
-  const featured=games.slice(0,6);
-  const genreCount=Math.max(genres.length-1,1);
-  return `<section class="home-page">
-  <section class="home-hero" data-reveal>
-    <div class="home-hero-copy">
-      <p class="home-brand-mark"><img src="/assets/logo.svg" alt="" width="28" height="28"><span>Game Arena</span></p>
-      <h1>Your hub for online <span class="accent-underline">gaming.</span></h1>
-      <p class="home-hero-lead">Play popular games, join tournaments and unlock exclusive experiences.</p>
-      <div class="hero-actions">
-        <a class="button lime" href="#/feed"><span aria-hidden="true">▶</span> Play now</a>
-        <a class="button ghost" href="#/library"><span aria-hidden="true">🎮</span> Explore Arena+</a>
-      </div>
-    </div>
-    <div class="home-hero-visual" data-reveal style="--reveal-delay:120ms">
-      <img class="home-hero-image" src="/assets/home/hero-visual.jpeg" alt="Game Arena player celebrating with headphones and featured games" width="960" height="695" decoding="async" fetchpriority="high">
-      <div class="home-float home-float--crown" aria-hidden="true">♛</div>
+import{getGames as p,getGenres as h}from"../catalogue-runtime.js";import{escapeHtml as n}from"../ui.js";import{openGame as u}from"../game-player.js";import{track as b}from"../analytics.js";import{toggleFavourite as v}from"../state.js";const g=[{icon:"\u26A1",title:"Instant play",body:"Launch HTML5 games directly in the browser.",tone:"play"},{icon:"\u2315",title:"Genre discovery",body:"Browse active genre groups and save favourites.",tone:"discover",dynamic:!0},{icon:"\u265F",title:"Multiplayer",body:"Create or join game rooms from the competition hub.",tone:"multi"},{icon:"\u{1F3C6}",title:"Tournaments",body:"Join open events and follow verified leaderboard scores.",tone:"cup"},{icon:"\u25C9",title:"Rewards",body:"Collect Arena Coins from verified play and challenges.",tone:"coin"},{icon:"\u{1F39F}",title:"Vouchers & top-ups",body:"Redeem offers and access member discounts when enabled.",tone:"voucher"}];export function renderHome(){const c=p(),l=h().filter(e=>e!=="All").slice(0,6),a=[["Arena Dash","Arcade","/assets/home/cards/arena-dash.webp"],["Brick Out","Arcade","/assets/home/cards/brick-out.webp"],["Crazy Runner","Running","/assets/home/cards/crazy-runner.webp"],["Duck Shooter","Action","/assets/home/cards/duck-shooter.webp"],["Fishing Frenzy","Adventure","/assets/home/cards/fishing-frenzy.webp"],["Flappy Ball","Running","/assets/home/cards/flappy-ball.webp"]].map(([e,t,i])=>({title:e,genre:t,art:i,tier:"free"})),r=[["Balloon Paradise","Casual","/assets/home/cards/balloon-paradise.webp"],["Candy Match 3","Puzzle","/assets/home/cards/candy-match-3.webp"],["Car Physics","Racing","/assets/home/cards/car-physics.webp"],["Tank Wars","Strategy","/assets/home/cards/tank-wars.webp"],["Ninja Run","Running","/assets/home/cards/ninja-run.webp"],["Zombie Buster","Action","/assets/home/cards/zombie-buster.webp"]].map(([e,t,i])=>({title:e,genre:t,art:i,tier:"premium"})),o=e=>e.map(t=>{const i=c.find(y=>y.title===t.title),d=i?.description||`Explore ${t.title} in the Game Arena catalogue.`,m=t.tier==="premium"?'<a class="button primary" href="#/library">Unlock</a>':i?`<button class="button primary" data-home-play="${i.id}" type="button">\u25B6 Play</button>`:'<a class="button primary" href="#/library">\u25B6 Play</a>';return`<article class="prototype-game-card" data-reveal><div class="prototype-game-cover" style="--art:url('${t.art}')" role="img" aria-label="${n(t.title)} artwork"><span class="badge ${t.tier==="premium"?"premium":""}">${t.tier==="premium"?"ARENA+":"FREE"}</span><button class="prototype-heart" type="button" aria-label="Save ${n(t.title)}">\u2606</button></div><div class="prototype-game-copy"><h3>${n(t.title)}</h3><small>${n(t.genre)}</small><p class="game-card-desc" hidden>${n(d)}</p><div>${m}<button class="prototype-details" type="button" data-home-see-more="${n(t.title)}">Details</button></div></div></article>`}).join(""),s=(e,t,i="")=>`<section class="prototype-section" data-reveal><div class="prototype-section-head"><h2>${e}</h2>${i?`<a href="${i}">View all games \u2192</a>`:""}</div>${t}</section>`;return`<section class="prototype-home">
+    <div class="prototype-wrap">
+      <section class="prototype-hero" data-reveal>
+        <div class="prototype-hero-copy"><span class="eyebrow">YOUR NEXT GAME STARTS HERE</span><h1>Play instantly.<br><span>Compete. Conquer.</span></h1><p>Discover games. Challenge friends. No installs.</p><div class="hero-actions"><a class="button primary" href="#/library">\u25B6 Play now</a><a class="button gold" href="#/library">Explore Arena+</a></div></div>
+      </section>
+      ${s("Play for free",`<div class="prototype-game-grid">${o(a)}</div>`,"#/library")}
+      ${s("Discover Arena+ games",`<div class="prototype-game-grid">${o(r)}</div>`,"#/library")}
+      ${s("Browse by genre",`<div class="prototype-category-grid">${l.map(e=>`<a class="prototype-category" style="--category-art:${c.find(i=>i.genre===e)?.art||c[0]?.art}" href="#/library"><strong>${n(e)} \u2192</strong></a>`).join("")}</div>`,"#/library")}
+      ${s("The competitive side",'<div class="prototype-split"><article class="prototype-banner competition"><span class="eyebrow">COMPETITION HUB</span><h2>Take on the Arena.</h2><p>Multiplayer rooms and tournaments.</p><a class="button primary" href="#/compete">Compete now</a></article><article class="prototype-banner rewards"><span class="eyebrow">ARENA REWARDS</span><h2>Challenges & rewards.</h2><p>Unlock loyalty rewards through verified play.</p><a class="button soft" href="#/rewards">Explore rewards</a></article></div>')}
+      ${s("Game Arena+",'<article class="prototype-premium-banner"><span class="eyebrow">THE FULL GAME ARENA EXPERIENCE</span><h2>More games. More action.</h2><div class="prototype-price">PKR 990 <small>/month</small></div><div class="prototype-tax">Exclusive of taxes</div><a class="button gold" href="#/library">View membership plans</a></article>')}
+      ${s("Everything in one Arena",`<div class="prototype-feature-grid">${g.map(e=>`<div class="prototype-feature"><span>${e.icon}</span>${n(e.title)}</div>`).join("")}</div>`)}
     </div>
   </section>
-
-  <section class="section-block home-featured" data-reveal>
-    <header class="section-head"><div><span class="eyebrow">Featured now</span><h2>Find your next game</h2></div><a href="#/library">View all games →</a></header>
-    <div class="spotlight-grid">${featured.map(gameCard).join('')}</div>
-  </section>
-
-  <section class="home-about" data-reveal>
-    <div class="home-about-copy">
-      <p class="eyebrow cyan-line">About Game Arena</p>
-      <h2>One arena. Endless <span class="text-gold">play.</span></h2>
-      <p>Discover games, challenge friends and join the action.</p>
-    </div>
-    <div class="home-about-visual" data-reveal style="--reveal-delay:100ms">
-      <img src="/assets/home/about-banner.jpeg" alt="Game Arena collage with controller, portal and tournament icons" width="960" height="640" loading="lazy" decoding="async">
-    </div>
-  </section>
-
-  <section class="section-block home-features" data-reveal>
-    <div class="home-features-bg" aria-hidden="true"></div>
-    <header class="section-head home-features-head">
-      <div>
-        <span class="eyebrow cyan-line center">Everything in one arena</span>
-        <h2>Built for playing, <span class="text-gold underline-gold">not waiting.</span></h2>
-      </div>
-    </header>
-    <div class="feature-showcase">${FEATURES.map(item=>featureCard(item,genreCount)).join('')}</div>
-  </section>
-
-  <section class="section-block premium-banner" data-reveal>
-    <div><span class="eyebrow">Game Arena+</span><h2>Unlock the full Game Arena catalogue.</h2><p>${premiumFeatures.slice(0,4).join(' · ')}</p></div>
-    <div class="premium-price"><strong>${money(599)}</strong><small>monthly JazzCash</small><a class="button gold" href="#/library">See plans</a></div>
-  </section>
-
-  <section class="section-block steps" data-reveal>
-    <header class="section-head"><div><span class="eyebrow">Simple activation</span><h2>Four steps to premium</h2></div></header>
-    <div class="step-grid">
-      <article data-reveal><b>1</b><h3>Select plan</h3><p>Choose monthly or yearly access.</p></article>
-      <article data-reveal><b>2</b><h3>Pay via JazzCash</h3><p>Continue to the provider's secure checkout.</p></article>
-      <article data-reveal><b>3</b><h3>Premium activates</h3><p>The server confirms payment and entitlement.</p></article>
-      <article data-reveal><b>4</b><h3>Benefits unlock</h3><p>Premium games, tournaments and stronger rewards become available.</p></article>
-    </div>
-  </section>
-</section>`;
-}
-
-export function bindHome(){
-  const games=getGames();
-  const heroStage=document.querySelector('.ga-hero-stage');
-  heroStage?.addEventListener('click',event=>{
-    if(event.target.closest('a'))return;
-    const rect=heroStage.getBoundingClientRect();
-    const x=(event.clientX-rect.left)/rect.width;
-    const y=(event.clientY-rect.top)/rect.height;
-    if(x>=.21&&x<=.41&&y>=.64&&y<=.81){
-      window.location.hash='#/library';
-    }
-  });
-  document.querySelectorAll('[data-home-see-more]').forEach(button=>button.addEventListener('click',event=>{
-    event.stopPropagation();
-    const card=button.closest('.spotlight-card');
-    const desc=card?.querySelector('.game-card-desc');
-    if(!card||!desc)return;
-    const open=desc.hasAttribute('hidden');
-    if(open)desc.removeAttribute('hidden');
-    else desc.setAttribute('hidden','');
-    card.classList.toggle('is-desc-open',open);
-    button.setAttribute('aria-expanded',String(open));
-    button.textContent=open?'See less':'See more...';
-  }));
-  document.querySelectorAll('[data-home-play]').forEach(button=>button.addEventListener('click',()=>{
-    const game=games.find(item=>item.id===button.dataset.homePlay);
-    track('game_play_intent',{source:'home',gameId:game?.id});
-    openGame(game);
-  }));
-}
+`}export function bindHome(){const c=p(),l=document.querySelector(".ga-hero-stage");l?.addEventListener("click",a=>{if(a.target.closest("a"))return;const r=l.getBoundingClientRect(),o=(a.clientX-r.left)/r.width,s=(a.clientY-r.top)/r.height;o>=.21&&o<=.41&&s>=.64&&s<=.81&&(window.location.hash="#/library")}),document.querySelectorAll("[data-home-see-more]").forEach(a=>a.addEventListener("click",r=>{r.stopPropagation();const o=a.closest(".spotlight-card,.prototype-game-card"),s=o?.querySelector(".game-card-desc");if(!o||!s)return;const e=s.hasAttribute("hidden");e?s.removeAttribute("hidden"):s.setAttribute("hidden",""),o.classList.toggle("is-desc-open",e),a.setAttribute("aria-expanded",String(e)),a.textContent=e?"See less":"See more..."})),document.querySelectorAll("[data-home-play]").forEach(a=>a.addEventListener("click",()=>{const r=c.find(o=>o.id===a.dataset.homePlay);b("game_play_intent",{source:"home",gameId:r?.id}),u(r)})),document.querySelectorAll(".prototype-heart").forEach(a=>a.addEventListener("click",()=>{const r=c.find(o=>o.title===a.closest(".prototype-game-card")?.querySelector("h3")?.textContent);r&&v(r.id),a.classList.toggle("is-saved"),a.textContent=a.classList.contains("is-saved")?"\u2605":"\u2606"}))}
