@@ -5,7 +5,7 @@ import {track} from './analytics.js';
 
 function formMarkup(msisdn='',statusHtml=''){
   return`<form id="unsubscribe-form" class="stack">
-    <p class="muted">Enter the JazzCash mobile number used for Game Arena+. Unsubscribing ends access immediately.</p>
+    <p class="muted">Enter the JazzCash mobile number used for Game Premium. Unsubscribing ends access immediately.</p>
     <div class="field"><label for="unsubscribe-msisdn">JazzCash number</label><input id="unsubscribe-msisdn" name="msisdn" inputmode="tel" autocomplete="tel" required pattern="(\\+92|0)?3\\d{9}" placeholder="03XX XXXXXXX" value="${escapeHtml(msisdn)}"></div>
     <button class="button danger" type="submit">Unsubscribe</button>
     <p id="unsubscribe-status" class="muted" role="status">${statusHtml}</p>
@@ -15,7 +15,7 @@ function formMarkup(msisdn='',statusHtml=''){
 function confirmMarkup(msisdn,planCode){
   return`<div id="unsubscribe-confirm" class="stack">
     <p>Are you sure you want to cancel your subscription${planCode?` (<b>${escapeHtml(planCode)}</b>)`:''}?</p>
-    <p class="muted">Game Arena+ access ends immediately and renewals stop for <b>${escapeHtml(msisdn)}</b>.</p>
+    <p class="muted">Game Premium access ends immediately and renewals stop for <b>${escapeHtml(msisdn)}</b>.</p>
     <div class="hero-actions">
       <button class="button danger" id="unsubscribe-confirm-yes" type="button">Yes, cancel subscription</button>
       <button class="button secondary" id="unsubscribe-confirm-back" type="button">Back</button>
@@ -76,7 +76,7 @@ function showConfirm(msisdn,planCode){
       revokePremiumLocally();
       track('unsubscribe_by_msisdn');
       closeModal();
-      toast('Unsubscribed. Game Arena+ access has ended.');
+      toast('Unsubscribed. Game Premium access has ended.');
       if(location.hash.includes('account'))location.hash='#/account';
     }catch(error){
       button.disabled=false;

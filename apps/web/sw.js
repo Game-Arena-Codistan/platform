@@ -7,7 +7,7 @@ self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE&&!key.startsWith('game-arena-downloads')).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 
 function isModuleGraph(url){
-  return url.pathname.startsWith('/src/')||url.pathname==='/styles/landing.css'||url.pathname==='/styles/home.css';
+  return url.pathname.startsWith('/src/')||url.pathname==='/styles/landing.css'||url.pathname==='/styles/home.css'||url.pathname==='/styles/legal.css';
 }
 
 self.addEventListener('fetch',event=>{

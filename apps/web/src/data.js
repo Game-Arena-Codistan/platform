@@ -18,18 +18,18 @@ export const previewGame={...previewBase,art:resolveCardArt(previewBase,0)};
 export const games=[previewGame,...enriched];
 export const genres=['All',...new Set(games.map(game=>game.genre))];
 export const plans=[
-  {id:'monthly',name:'Monthly',price:990,period:'month',description:'JazzCash monthly Game Arena+ access, exclusive of tax.',recommended:true,status:'live'},
-  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'Yearly Game Arena+ access.',status:'coming_soon',comingSoon:true}
+  {id:'monthly',name:'Monthly',price:990,period:'month',description:'JazzCash monthly Game Premium access, exclusive of tax.',recommended:true,status:'live'},
+  {id:'yearly',name:'Yearly',price:4999,period:'year',description:'Yearly Game Premium access.',status:'coming_soon',comingSoon:true}
 ];
 export const premiumFeatures=['Full catalogue access','Premium challenges','Tournament access','Reward eligibility','2× Arena Coins','10% member top-up discount'];
 export const benefits={free:['Selected catalogue','Standard rewards','Basic leaderboards','Configurable play limits'],premium:premiumFeatures};
 export const fallbackChallenges=[
   {id:'daily-play',title:'Daily Play',gameIds:['arena-dash'],target:{type:'completions',value:3},reward:40,premium:false,status:'live',progress:{value:1,target:3,complete:false}},
-  {id:'arena-plus-week',title:'Arena+ Week',gameIds:games.filter(item=>item.tier==='premium').slice(0,5).map(item=>item.id),target:{type:'score',value:1000},reward:250,premium:true,status:'live',progress:{value:420,target:1000,complete:false}}
+  {id:'arena-plus-week',title:'Premium Week',gameIds:games.filter(item=>item.tier==='premium').slice(0,5).map(item=>item.id),target:{type:'score',value:1000},reward:250,premium:true,status:'live',progress:{value:420,target:1000,complete:false}}
 ];
 export const fallbackTournaments=[
   {id:'weekend-arena',title:'Weekend Arena',gameId:'arena-dash',startsAt:Date.now()-3600000,endsAt:Date.now()+3*86400000,premium:false,status:'open',entries:1240},
-  {id:'arena-plus-cup',title:'Arena+ Cup',gameId:games.find(item=>item.tier==='premium')?.id||'arena-dash',startsAt:Date.now()+86400000,endsAt:Date.now()+5*86400000,premium:true,status:'open',entries:640}
+  {id:'arena-plus-cup',title:'Premium Cup',gameId:games.find(item=>item.tier==='premium')?.id||'arena-dash',startsAt:Date.now()+86400000,endsAt:Date.now()+5*86400000,premium:true,status:'open',entries:640}
 ];
 export const mockTopups=[
   {id:'demo-small',label:'Starter Coins',coins:100,amountPkr:99,status:'preview'},

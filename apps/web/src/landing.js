@@ -13,13 +13,13 @@ function bannerFor(landing){
     return{
       mobile:'/assets/landings/landing1-mobile.jpeg',
       web:'/assets/landings/landing1-web.jpeg',
-      alt:'Game Arena+ TikTok — Win PKR 10,000 JazzCash Credit Every Month'
+      alt:'Game Premium TikTok — Win PKR 10,000 JazzCash Credit Every Month'
     };
   }
   return{
     mobile:'/assets/landings/main-mobile.jpeg',
     web:'/assets/landings/main-web.jpeg',
-    alt:'Game Arena+ — More Games. Bigger Rewards.'
+    alt:'Game Premium — More Games. Bigger Rewards.'
   };
 }
 
@@ -145,7 +145,7 @@ function renderLanding(landing,commerce){
   return `<main class="ga-lp" data-landing="${landing}">
   <div class="ga-lp-fit">
   <div class="ga-lp-above">
-    <section class="ga-lp-hero" aria-label="Game Arena+ offer">
+    <section class="ga-lp-hero" aria-label="Game Premium offer">
       <div class="ga-lp-banner-swap">
         <picture>
           <source media="(min-width:1101px), ((min-width:721px) and (orientation: landscape))" srcset="${banner.web}">
@@ -223,7 +223,7 @@ async function startCheckout({landing,campaign,commerce}){
     if(!submitWalletPortal(result))throw new Error('JazzCash portal response was incomplete.');
   }catch(error){
     if(error.code==='already_linked'||/already linked/i.test(String(error.message||''))){
-      status.textContent='This JazzCash number already has Game Arena+. Sign in with the same number to continue.';
+      status.textContent='This JazzCash number already has Game Premium. Sign in with the same number to continue.';
       return;
     }
     status.textContent=error.status===429?'Too many requests. Please retry shortly.':(error.message||'Unable to start JazzCash checkout.');

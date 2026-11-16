@@ -7,20 +7,20 @@ import {track} from '../analytics.js';
 
 function planLabel(state){
   if(!isPremium())return 'Free';
-  return `Game Arena+ · ${state.selectedPlan==='yearly'?'Yearly':'Monthly'}`;
+  return `Game Premium · ${state.selectedPlan==='yearly'?'Yearly':'Monthly'}`;
 }
 
 export function renderAccount(){
   const state=getState();
   const subscribed=isPremium();
   const pending=hasPendingGuestPremium();
-  const membershipLabel=subscribed?'Subscribed · Game Arena+':pending?'Plan purchased · sign in to activate':'Free member';
+  const membershipLabel=subscribed?'Subscribed · Game Premium':pending?'Plan purchased · sign in to activate':'Free member';
   return `<section class="page account-page">
   <header class="page-head">
     <div>
       <span class="eyebrow">Account</span>
       <h1>${state.user?state.user.displayName||'Player':'Guest player'}</h1>
-      <p>${state.user?membershipLabel:pending?'JazzCash plan ready. Sign in with the same number to use Game Arena+.':'Browse freely and sign in when an action needs an account.'}</p>
+      <p>${state.user?membershipLabel:pending?'JazzCash plan ready. Sign in with the same number to use Game Premium.':'Browse freely and sign in when an action needs an account.'}</p>
       ${subscribed||pending?'<span class="badge premium">Subscribed</span>':''}
     </div>
     ${!state.user?'<button class="button primary" id="sign-in" type="button">Sign in</button>':''}
@@ -33,10 +33,10 @@ export function renderAccount(){
         ?`<p class="muted">Current plan: <b id="account-current-plan">${planLabel(state)}</b></p>
            <p class="muted" id="account-plan-detail">${subscribed?'Full catalogue and premium rewards are active.':'You can browse and play selected free games.'}</p>`
         :pending
-          ?`<p class="muted">Current plan: <b>Game Arena+ · pending sign-in</b></p><p class="muted">Sign in with your JazzCash number to attach this purchase.</p>`
+          ?`<p class="muted">Current plan: <b>Game Premium · pending sign-in</b></p><p class="muted">Sign in with your JazzCash number to attach this purchase.</p>`
           :`<p class="muted">Sign in to see your current plan.</p>`}
       <div class="hero-actions">
-        ${!subscribed&&!pending?'<a class="button gold" href="#/library">Upgrade to Arena+</a>':''}
+        ${!subscribed&&!pending?'<a class="button gold" href="#/library">Upgrade to Premium</a>':''}
         ${state.user&&subscribed?'<button class="button danger" id="unsubscribe-plan" type="button">Unsubscribe</button>':''}
         ${state.user?'<button class="button danger" id="sign-out" type="button">Sign out</button><button class="button secondary" id="sign-out-all" type="button">Sign out other devices</button>':''}
       </div>
@@ -58,7 +58,7 @@ export function renderAccount(){
 }
 
 async function unsubscribeCurrentPlan(button){
-  if(!confirm('Unsubscribe from Game Arena+ now? Access ends immediately and renewals stop.'))return;
+  if(!confirm('Unsubscribe from Game Premium now? Access ends immediately and renewals stop.'))return;
   if(button)button.disabled=true;
   try{
     const status=await fetchBillingStatus();
@@ -66,7 +66,7 @@ async function unsubscribeCurrentPlan(button){
     await cancelBillingSubscription(id);
     // Force free immediately so Account + Premium Games re-render before any stale billing poll.
     revokePremiumLocally();
-    toast('Unsubscribed. Game Arena+ access has ended.');
+    toast('Unsubscribed. Game Premium access has ended.');
     track('subscription_cancel',{subscriptionId:id});
   }catch(error){
     if(button)button.disabled=false;

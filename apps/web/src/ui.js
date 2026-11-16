@@ -59,7 +59,7 @@ function bindAuthForm(resolve){
       }
       clearLandingAuthSeed();
       closeModal();
-      toast(getState().entitlement==='premium'?'Signed in · Game Arena+ subscribed':'Signed in successfully');
+      toast(getState().entitlement==='premium'?'Signed in · Game Premium subscribed':'Signed in successfully');
       resolve(true);
     }catch(error){status.textContent=error.message;}
   };
@@ -82,7 +82,7 @@ export function requireAuth(continuation){
 export async function membershipCheckout(plan){
   if(!await requireAuth({type:'checkout',planId:plan.id}))return;
   track('checkout_start',{planId:plan.id});
-  modal('Activate Game Arena+',`<div class="stack"><div class="checkout-summary"><span><b>${escapeHtml(plan.name)}</b><small>${money(plan.price)} · fixed-duration ${escapeHtml(plan.period)}</small></span><span class="jazzcash-mark">JC</span></div><div class="notice">Game Arena never collects your JazzCash PIN or card details.</div><button class="button gold" id="start-payment" type="button">Continue to JazzCash</button><p id="payment-status" role="status"></p></div>`);
+  modal('Activate Game Premium',`<div class="stack"><div class="checkout-summary"><span><b>${escapeHtml(plan.name)}</b><small>${money(plan.price)} · fixed-duration ${escapeHtml(plan.period)}</small></span><span class="jazzcash-mark">JC</span></div><div class="notice">Game Arena never collects your JazzCash PIN or card details.</div><button class="button gold" id="start-payment" type="button">Continue to JazzCash</button><p id="payment-status" role="status"></p></div>`);
   document.querySelector('#start-payment').addEventListener('click',async()=>{
     const status=document.querySelector('#payment-status');
     status.textContent='Creating checkout…';
@@ -97,7 +97,7 @@ export async function membershipCheckout(plan){
       sessionStorage.removeItem('game-arena:pending-payment');
       track('checkout_complete',{planId:plan.id});
       closeModal();
-      toast('Game Arena+ is active');
+      toast('Game Premium is active');
       location.hash='#/account';
     }catch(error){status.textContent=error.message;}
   });

@@ -47,15 +47,15 @@ export function commerceForCampaign(campaign){
   return{
     planCode,
     item_id:planCode,
-    item_name:planCode==='yearly'?'Game Arena+ Yearly':'Game Arena+ Monthly',
+    item_name:planCode==='yearly'?'Game Premium Yearly':'Game Premium Monthly',
     value,
     currency:'PKR',
     conversion_event:planCode==='yearly'?'purchase':'subscribe',
     comingSoon:planCode==='yearly',
     promotion:monthly10k?'Win PKR 10,000 JazzCash Credit Every Month':null,
     offerNote:monthly10k
-      ?'Subscribe Now pe Rs. 1 katay ga — limited TikTok offer sirf aaj. Us ke baad PKR 990/m exclusive of tax.'
-      :'Subscribe Now pe Rs. 1 katay ga — limited offer sirf aaj. Us ke baad PKR 990/m exclusive of tax.'
+      ?'Subscribe Now click kartay hi Rs. 1 kat lia jayega. Ye limited offer sirf aaj ke din ke liye valid hai. Us ke baad PKR 990/month, tax inclusive, lagu hon gay.'
+      :'Subscribe Now click kartay hi Rs. 1 kat lia jayega. Ye limited offer sirf aaj ke din ke liye valid hai. Us ke baad PKR 990/month, tax inclusive, lagu hon gay.'
   };
 }
 

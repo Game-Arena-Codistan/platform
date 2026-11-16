@@ -46,16 +46,17 @@
 .prototype-game-card{
   min-width:0;border:1px solid var(--prototype-line);border-radius:14px;overflow:hidden;background:var(--prototype-panel);
 }
-.prototype-game-cover{aspect-ratio:1.08;position:relative;background:var(--art)}.prototype-game-card .badge{position:absolute;top:9px;left:9px}
+.prototype-game-cover{aspect-ratio:1.08;position:relative;background:var(--art) center/contain no-repeat #120d1e}.prototype-game-card .badge{position:absolute;top:9px;left:9px;background:rgba(8,6,16,.82);border:1px solid rgba(255,255,255,.16);color:var(--prototype-cyan);backdrop-filter:blur(8px)}.prototype-game-card .badge.premium{color:var(--prototype-gold)}
 .prototype-heart{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:50%;background:rgba(12,9,20,.75);color:#fff;font-size:18px}
 .prototype-game-copy{padding:12px}
 .prototype-game-copy{width:100%}.prototype-game-copy h3{margin:0 0 2px;font-size:1rem}.prototype-game-copy small{color:var(--prototype-muted)}
 .prototype-game-copy>div{display:flex;gap:6px;align-items:center;justify-content:space-between;margin-top:12px}
 .prototype-game-copy .button.primary{flex:1;border:0;border-radius:10px;padding:9px 13px;font-size:13px;color:#fff;background:linear-gradient(135deg,#9764ff,#6939e8)}
+.prototype-game-copy .button.soft{flex:1;border:1px solid #3a2d4d;border-radius:10px;padding:9px 13px;font-size:13px;color:#e8e4ef;background:#241d32}
 .prototype-details{border:0;background:transparent;color:#c5b9df;font-size:12px;padding:5px;font-weight:400}
 .prototype-category-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
-.prototype-category{min-height:104px;padding:16px;display:flex;align-items:flex-end;background:var(--category-art);border:1px solid var(--prototype-line);border-radius:14px;color:#fff;font-weight:800;text-align:left;position:relative;overflow:hidden}
-.prototype-category::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,6,16,.95),rgba(8,6,16,.15))}
+.prototype-category{min-height:104px;padding:16px;display:flex;align-items:flex-end;background:var(--category-art) center/cover no-repeat;border:1px solid var(--prototype-line);border-radius:14px;color:#fff;font-weight:800;text-align:left;position:relative;overflow:hidden}
+.prototype-category::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(8,6,16,.55),rgba(8,6,16,.05))}
 .prototype-category strong{position:relative;z-index:1;font-size:17px}
 .prototype-category:hover{border-color:var(--prototype-cyan);color:var(--prototype-cyan)}
 .prototype-split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}

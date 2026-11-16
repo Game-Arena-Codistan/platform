@@ -1,0 +1,85 @@
+.legal-document h1,
+.legal-document h2,
+.legal-document h3,
+.legal-document h4,
+.legal-document th {
+  font-weight: 800;
+}
+
+.legal-document h2 {
+  margin-top: 2rem;
+  padding-bottom: .35rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-document h3 {
+  margin-top: 1.35rem;
+}
+
+.legal-document .legal-section {
+  margin: 1.25rem 0;
+  padding: 1.25rem 1.4rem;
+  background: rgba(255,255,255,.035);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.legal-document .legal-section h2 {
+  margin-top: 0;
+}
+
+.legal-document .terms-price-table {
+  width: 100%;
+  margin: 1.25rem 0 1.5rem;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.legal-document .terms-price-table th,
+.legal-document .terms-price-table td {
+  padding: .85rem 1rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.legal-document .terms-price-table th {
+  color: var(--text);
+  background: rgba(255,255,255,.07);
+}
+
+.legal-document .terms-price-table td {
+  color: var(--muted);
+}
+
+@media print {
+  .legal-document {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .legal-document > .button {
+    display: none;
+  }
+
+  .legal-document h2:not(:first-of-type) {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .legal-document .legal-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .legal-document h2,
+  .legal-document h3,
+  .legal-document .terms-price-table,
+  .legal-document p {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

@@ -8,7 +8,6 @@ import {trackPaymentConversion} from './landing-analytics.js';
 import {renderHome,bindHome} from './views/home.js';
 import {renderFeed,bindFeed} from './views/feed.js';
 import {renderLibrary,bindLibrary} from './views/library.js';
-import {renderCompete,bindCompete} from './views/compete.js';
 import {renderRewards,bindRewards} from './views/rewards.js';
 import {renderPremium,bindPremium} from './views/premium.js';
 import {renderAccount,bindAccount} from './views/account.js';
@@ -19,8 +18,15 @@ import {bindMotion} from './motion.js';
 if(bootLandingIfNeeded()){
   // Landing pages own the viewport; skip the hash SPA shell.
 }else{
-const routes={home:[renderHome,bindHome],feed:[renderFeed,bindFeed],library:[renderLibrary,bindLibrary],compete:[renderCompete,bindCompete],rewards:[renderRewards,bindRewards],premium:[renderPremium,bindPremium],account:[renderAccount,bindAccount],support:[renderSupport,bindSupport]};
+const routes={home:[renderHome,bindHome],feed:[renderFeed,bindFeed],library:[renderLibrary,bindLibrary],rewards:[renderRewards,bindRewards],premium:[renderPremium,bindPremium],account:[renderAccount,bindAccount],support:[renderSupport,bindSupport]};
 const app=document.querySelector('#app');const balance=document.querySelector('#coin-balance');const network=document.querySelector('#network-status');let current='';
+document.querySelectorAll('[data-route="compete"]').forEach(link=>link.remove());
+document.querySelectorAll('.prototype-footer a').forEach(link=>{
+  const href=link.getAttribute('href');
+  if(href==='#/terms')link.setAttribute('href','/legal/terms.html');
+  else if(['#/privacy','#/subscriptions','#/copyright'].includes(href))link.setAttribute('href','#/support');
+});
+document.querySelector('#premium-button')?.replaceChildren(document.createTextNode('Premium'));
 function route(){const name=location.hash.replace(/^#\//,'').split(/[/?]/)[0]||'home';return routes[name]?name:'home';}
 /** Keep the home screen at `/` instead of `/#/home` (preserve payment query if present). */
 function canonicalizeHomeUrl(){
@@ -74,13 +80,20 @@ function paymentBanner(){
     banner.className='notice payment-success-banner';
     banner.innerHTML=getState().user
       ?'<b>Premium Features Unlocked.</b> Your JazzCash subscription is active.'
-      :'<b>Premium Features Unlocked.</b> Sign up or sign in with your JazzCash number to attach Game Arena+ to your profile.';
+      :'<b>Premium Features Unlocked.</b> Sign up or sign in with your JazzCash number to attach Game Premium to your profile.';
     app.prepend(banner);
   }
   if(!getState().user)promptAuthAfterJazzCashReturn(txn);
 }
 function syncProfileChrome(){
   const state=getState();
+  const accountLinks=document.querySelectorAll('#account-nav,#account-nav-secondary');
+  accountLinks.forEach(link=>{
+    link.hidden=!state.user;
+    link.setAttribute('aria-hidden',String(!state.user));
+    if(state.user&&link.matches('#account-nav'))link.textContent='Profile';
+    if(state.user&&link.matches('#account-nav-secondary')){const label=link.querySelector('small');if(label)label.textContent='Profile';}
+  });
   const profile=document.querySelector('#profile-button');
   const premiumTag=document.querySelector('#profile-premium-tag');
   const showPremium=isPremium()||hasPendingGuestPremium();
@@ -117,6 +130,9 @@ function render(force=false){
       app.innerHTML=view();
       try{bind?.();}catch(error){console.error('route bind failed',name,error);}
       try{bindMotion(app);}catch(error){console.error('motion bind failed',error);}
+      if(name==='library'&&new URLSearchParams(location.hash.split('?')[1]||'').get('section')==='games'){
+        requestAnimationFrame(()=>document.querySelector('[data-library-games]')?.scrollIntoView({behavior:'smooth',block:'start'}));
+      }
       paymentBanner();
       document.querySelectorAll('[data-route]').forEach(link=>link.classList.toggle('active',link.dataset.route===name));
       // Only move focus on real navigation — state-driven re-renders must not steal keyboard focus.
@@ -140,7 +156,7 @@ async function hydrate(){
   try{await Promise.race([ensureCatalogue(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('catalogue timeout')),8000))]);}catch{}
   try{const session=await getSession();if(session.authenticated)update({user:session.user,entitlement:session.entitlement?.tier||session.entitlement,coins:session.coins});}catch{}
 }
-async function reconcilePayment(){const match=location.hash.match(/payment-return\?(.+)$/);const pending=JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null');const query=match?new URLSearchParams(match[1]):null;const transactionId=query?.get('transactionId')||pending?.transactionId;if(!transactionId)return;const kind=query?.get('kind')||pending?.kind||'membership';try{if(kind==='topup'){for(let attempt=0;attempt<12;attempt++){const result=await paymentStatus(transactionId);if(result.status==='paid'){const wallet=await fetchWallet();update({coins:wallet.balance,walletEntries:wallet.entries||[],walletLoaded:true});sessionStorage.removeItem('game-arena:pending-payment');toast(`+${result.coins||pending?.coins||0} Arena Coins`);location.hash='#/rewards';return;}if(['failed','refunded','voided'].includes(result.status))throw new Error(`Payment ${result.status}.`);await new Promise(resolve=>setTimeout(resolve,2000));}toast('Top-up payment is pending confirmation.');location.hash='#/rewards';return;}const entitlement=await refreshEntitlement(transactionId,{attempts:15,intervalMs:2000});if(entitlement.status==='active'){update({entitlement:entitlement.entitlement,selectedPlan:pending?.planId||getState().selectedPlan});sessionStorage.removeItem('game-arena:pending-payment');track('checkout_complete',{planId:pending?.planId});toast('Game Arena+ is active');location.hash='#/account';}else{toast('Payment is pending confirmation.');location.hash='#/premium';}}catch(error){toast(error.message);location.hash=kind==='topup'?'#/rewards':'#/premium';}}
+async function reconcilePayment(){const match=location.hash.match(/payment-return\?(.+)$/);const pending=JSON.parse(sessionStorage.getItem('game-arena:pending-payment')||'null');const query=match?new URLSearchParams(match[1]):null;const transactionId=query?.get('transactionId')||pending?.transactionId;if(!transactionId)return;const kind=query?.get('kind')||pending?.kind||'membership';try{if(kind==='topup'){for(let attempt=0;attempt<12;attempt++){const result=await paymentStatus(transactionId);if(result.status==='paid'){const wallet=await fetchWallet();update({coins:wallet.balance,walletEntries:wallet.entries||[],walletLoaded:true});sessionStorage.removeItem('game-arena:pending-payment');toast(`+${result.coins||pending?.coins||0} Arena Coins`);location.hash='#/rewards';return;}if(['failed','refunded','voided'].includes(result.status))throw new Error(`Payment ${result.status}.`);await new Promise(resolve=>setTimeout(resolve,2000));}toast('Top-up payment is pending confirmation.');location.hash='#/rewards';return;}const entitlement=await refreshEntitlement(transactionId,{attempts:15,intervalMs:2000});if(entitlement.status==='active'){update({entitlement:entitlement.entitlement,selectedPlan:pending?.planId||getState().selectedPlan});sessionStorage.removeItem('game-arena:pending-payment');track('checkout_complete',{planId:pending?.planId});toast('Game Premium is active');location.hash='#/account';}else{toast('Payment is pending confirmation.');location.hash='#/premium';}}catch(error){toast(error.message);location.hash=kind==='topup'?'#/rewards':'#/premium';}}
 function registerServiceWorker(){navigator.serviceWorker.register(`/sw.js?release=${encodeURIComponent(releaseSha())}`,{updateViaCache:'none'}).catch(()=>{});}
 addEventListener('hashchange',()=>{
   canonicalizeHomeUrl();

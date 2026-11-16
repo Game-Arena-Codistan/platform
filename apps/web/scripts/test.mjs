@@ -72,8 +72,7 @@ test('library card art prefers CSP-safe game snaps over sprite sheets',async()=>
 test('MVP surfaces have launch-safe data contracts',()=>{
   assert.ok(games.some(game=>game.multiplayer));
   assert.ok(mockTopups.length>=3);
-  assert.match(librarySource,/game\.tier==='free'&&Boolean\(game\.downloadUrl\)/);
-  assert.match(librarySource,/!game\?\.downloadUrl\|\|game\.tier!=='free'/);
+  assert.doesNotMatch(librarySource,/data-download|data-tab="saved"|data-tab="downloads"/);
   assert.match(competeSource,/getGames\(\)\.filter\(item=>item\.multiplayer\)|games\.filter\(item=>item\.multiplayer\)/);
   assert.match(competeSource,/item\.multiplayer/);
   assert.doesNotMatch(competeSource,/item\.multiplayer\|\|item\.internalDemo/);

@@ -30,7 +30,7 @@ function syncEntitlementTier(appEntitlement){
   return true;
 }
 
-export function renderBillingPanel(){return `<section class="card card-body" id="billing-panel"><div class="page-head"><div><span class="eyebrow">Billing</span><h2>Game Arena+ subscription</h2><p class="muted" id="billing-summary">Loading JazzCash wallet and subscription status…</p></div></div><div id="billing-details" class="stack"></div><div id="billing-history" class="stack"></div></section>`;}
+export function renderBillingPanel(){return `<section class="card card-body" id="billing-panel"><div class="page-head"><div><span class="eyebrow">Billing</span><h2>Game Premium subscription</h2><p class="muted" id="billing-summary">Loading JazzCash wallet and subscription status…</p></div></div><div id="billing-details" class="stack"></div><div id="billing-history" class="stack"></div></section>`;}
 
 export async function bindBillingPanel(){
   const root=document.querySelector('#billing-panel');if(!root)return;
@@ -52,17 +52,17 @@ export async function bindBillingPanel(){
     if(stale())return;
     summary.textContent=`Wallet: ${wallet.status}. Subscription: ${state}.`;
     if(!sub||TERMINAL.has(state)){
-      details.innerHTML=`<p class="muted">${TERMINAL.has(state)?'Subscription canceled. Game Arena+ access has ended.':'No active subscription.'} <a href="#/library">Choose a Game Arena+ plan</a>.</p>`;
+      details.innerHTML=`<p class="muted">${TERMINAL.has(state)?'Subscription canceled. Game Premium access has ended.':'No active subscription.'} <a href="#/library">Choose a Game Premium plan</a>.</p>`;
     }else{
       const paidThrough=sub.current_period_end||status.appEntitlement?.expiresAt;const next=sub.next_due_at||status.status?.next_due_at;
-      details.innerHTML=`<div class="split"><div><b>Plan</b><p>${escapeHtml(sub.plan_code||'Premium')} · ${money(sub.amount_minor)}</p></div><div><b>Status</b><p>${escapeHtml(String(state).replaceAll('_',' '))}</p></div><div><b>Paid/trial access through</b><p>${fmt(paidThrough)}</p></div><div><b>Next due</b><p>${fmt(next)}</p></div></div><div class="hero-actions"><button class="button danger" id="cancel-subscription" type="button">Unsubscribe</button>${wallet.status==='linked'?'<button class="button secondary" id="unlink-wallet" type="button">Unlink JazzCash wallet</button>':''}</div><p class="muted">Unsubscribe ends Game Arena+ access immediately and stops renewals. The wallet stays linked unless you unlink it.</p>`;
+      details.innerHTML=`<div class="split"><div><b>Plan</b><p>${escapeHtml(sub.plan_code||'Premium')} · ${money(sub.amount_minor)}</p></div><div><b>Status</b><p>${escapeHtml(String(state).replaceAll('_',' '))}</p></div><div><b>Paid/trial access through</b><p>${fmt(paidThrough)}</p></div><div><b>Next due</b><p>${fmt(next)}</p></div></div><div class="hero-actions"><button class="button danger" id="cancel-subscription" type="button">Unsubscribe</button>${wallet.status==='linked'?'<button class="button secondary" id="unlink-wallet" type="button">Unlink JazzCash wallet</button>':''}</div><p class="muted">Unsubscribe ends Game Premium access immediately and stops renewals. The wallet stays linked unless you unlink it.</p>`;
       root.querySelector('#cancel-subscription')?.addEventListener('click',async event=>{
-        if(!confirm('Unsubscribe from Game Arena+ now? Access ends immediately and renewals stop.'))return;
+        if(!confirm('Unsubscribe from Game Premium now? Access ends immediately and renewals stop.'))return;
         const button=event.currentTarget;
         button.disabled=true;
         try{
           await cancelBillingSubscription(sub.id||'current');
-          toast('Unsubscribed. Game Arena+ access has ended.');
+          toast('Unsubscribed. Game Premium access has ended.');
           panelEpoch+=1;
           revokePremiumLocally();
         }catch(error){
