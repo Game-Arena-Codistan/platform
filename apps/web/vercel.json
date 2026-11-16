@@ -4,6 +4,10 @@
   "outputDirectory":"dist",
   "cleanUrls":false,
   "trailingSlash":false,
+  "rewrites":[
+    {"source":"/prototype","destination":"/prototype.html"},
+    {"source":"/prototype/","destination":"/prototype.html"}
+  ],
   "headers":[
     {"source":"/config.js","headers":[{"key":"Cache-Control","value":"no-store"}]},
     {"source":"/sw.js","headers":[{"key":"Cache-Control","value":"public, max-age=0, must-revalidate"}]},

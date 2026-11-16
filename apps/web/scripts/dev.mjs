@@ -45,6 +45,12 @@ createServer(async(req,res)=>{
       proxyApi(req,res);
       return;
     }
+    if(url.pathname==='/prototype'||url.pathname==='/prototype/'){
+      const body=await readFile(join(root,'prototype.html'));
+      res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});
+      res.end(body);
+      return;
+    }
     let path=normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, '');
     if(path==='/'||!extname(path))path='/index.html';
     let file=join(root,path);

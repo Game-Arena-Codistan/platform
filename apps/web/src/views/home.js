@@ -93,6 +93,16 @@ export function renderHome(){
 
 export function bindHome(){
   const games=getGames();
+  const heroStage=document.querySelector('.ga-hero-stage');
+  heroStage?.addEventListener('click',event=>{
+    if(event.target.closest('a'))return;
+    const rect=heroStage.getBoundingClientRect();
+    const x=(event.clientX-rect.left)/rect.width;
+    const y=(event.clientY-rect.top)/rect.height;
+    if(x>=.21&&x<=.41&&y>=.64&&y<=.81){
+      window.location.hash='#/library';
+    }
+  });
   document.querySelectorAll('[data-home-see-more]').forEach(button=>button.addEventListener('click',event=>{
     event.stopPropagation();
     const card=button.closest('.spotlight-card');

@@ -8,7 +8,7 @@ const dist=resolve(root,'dist');
 await rm(dist,{recursive:true,force:true});
 await mkdir(resolve(dist,'assets'),{recursive:true});
 
-for(const name of ['config.js','manifest.webmanifest','sw.js'])await cp(resolve(root,name),resolve(dist,name));
+for(const name of ['config.js','manifest.webmanifest','sw.js','prototype.html'])await cp(resolve(root,name),resolve(dist,name));
 for(const name of ['assets','styles','legal','demo-games'])await cp(resolve(root,name),resolve(dist,name),{recursive:true});
 
 let html=await readFile(resolve(root,'index.html'),'utf8');

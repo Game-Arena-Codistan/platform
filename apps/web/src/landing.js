@@ -79,6 +79,7 @@ function fitLandingAboveFold(){
 
   resetLandingFitStyles(fit,above,img);
   const viewport=Math.max(320,window.innerHeight);
+  const mobileViewport=window.matchMedia('(max-width:720px),((max-width:1100px) and (orientation:portrait))').matches;
   void above.offsetHeight;
   // Wait for banner decode so natural height includes the full uncropped image.
   if(img&&!img.complete){
@@ -97,7 +98,7 @@ function fitLandingAboveFold(){
     above.style.width=scale<0.999?`${100/scale}%`:'100%';
     void above.offsetHeight;
     const natural=Math.max(1,above.scrollHeight||above.offsetHeight||viewport);
-    const next=natural>viewport?Math.max(0.55,viewport/natural):1;
+    const next=mobileViewport?1:(natural>viewport?Math.max(0.55,viewport/natural):1);
     if(Math.abs(next-scale)<0.002){scale=next;break;}
     scale=next;
   }
@@ -109,8 +110,8 @@ function fitLandingAboveFold(){
   above.style.marginRight='0';
   above.style.transformOrigin='top left';
   above.style.transform=scale<0.999?`scale(${scale})`:'none';
-  fit.style.height=`${viewport}px`;
-  fit.style.minHeight=`${viewport}px`;
+  fit.style.height=mobileViewport?'auto':`${viewport}px`;
+  fit.style.minHeight=mobileViewport?'0':`${viewport}px`;
   fit.dataset.scale=String(scale);
   bindBannerFit(img);
 }
@@ -178,14 +179,14 @@ function renderLanding(landing,commerce){
         <span class="ga-lp-notice-stripes" aria-hidden="true"></span>
       </div>
     </section>
-    <section class="ga-lp-trust" aria-label="Trust signals">
-      <div><b>Secure Payments</b><small>Powered by JazzCash</small></div>
-      <div><b>Aapka data safe hai</b><small>100% Secure</small></div>
-      <div><b>Help jab chahiye</b><small>24/7 Support</small></div>
-    </section>
-    <p class="ga-lp-legal">Jari rakhne se aap Game Arena ki <a href="/legal/terms.html" target="_blank" rel="noopener">Terms and Conditions</a> se raazi hoon. Already paid? <a href="/#/account">Sign in</a>.</p>
   </div>
   </div>
+  <section class="ga-lp-trust" aria-label="Trust signals">
+    <div><b>Secure Payments</b><small>Powered by JazzCash</small></div>
+    <div><b>Aapka data safe hai</b><small>100% Secure</small></div>
+    <div><b>Help jab chahiye</b><small>24/7 Support</small></div>
+  </section>
+  <p class="ga-lp-legal">Jari rakhne se aap Game Arena ki <a href="/legal/terms.html" target="_blank" rel="noopener">Terms and Conditions</a> se raazi hoon. Already paid? <a href="/#/account">Sign in</a>.</p>
   ${benefitsFooter()}
 </main>`;
 }
