@@ -3,9 +3,9 @@ import {test,expect} from '@playwright/test';
 test('public player shell exposes all launch-critical routes',async({page})=>{
   await page.goto('/#/home');
   await expect(page).toHaveTitle(/Game Arena/);
-  await expect(page.getByRole('heading',{name:/Play instantly/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Play instantly|Your hub for online/i})).toBeVisible();
   for(const [label,hash,heading] of [
-    ['Games','#/library',/Games|catalogue|Discover your next game/i],
+    ['Premium Games','#/library',/Games|catalogue|Discover your next game/i],
     ['Compete','#/compete',/Compete|leaderboard|tournament/i],
     ['Rewards','#/rewards',/Rewards|Arena Coins/i],
     ['Account','#/account',/Guest player|Player/i]

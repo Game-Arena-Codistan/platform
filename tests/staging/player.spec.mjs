@@ -9,7 +9,7 @@ test('@player @critical-mobile deployed shell exposes the exact release and crit
   const assertClean=watchPage(page);
   await page.goto('/#/home');
   await expect(page).toHaveTitle(/Game Arena/);
-  await expect(page.getByRole('heading',{name:/Play instantly/i})).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Play instantly|Your hub for online/i})).toBeVisible();
   if(expectedSha){const release=await page.evaluate(()=>window.GAME_ARENA_CONFIG?.releaseSha);expect(release).toBe(expectedSha);}
   for(const [label,hash] of [['Premium Games','#/library'],['Compete','#/compete'],['Rewards','#/rewards'],['Account','#/account']]){await page.getByRole('link',{name:label,exact:true}).click();await expect(page).toHaveURL(new RegExp(hash.replace('/','\\/')));}
   assertClean();

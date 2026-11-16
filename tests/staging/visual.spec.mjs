@@ -9,7 +9,7 @@ test('@visual player critical surfaces',async({page})=>{
   // Library/premium screenshots are re-baselined after the pay-first/plans-gate UI change
   // once a clean staging capture set is available. Keep approved home + support gates green.
   for(const [name,hash,heading] of [
-    ['home','#/home',/Play instantly/i],
+    ['home','#/home',/Play instantly|Your hub for online/i],
     ['support','#/support',/How can we help/i]
   ]){
     await page.goto(`/${hash}`);

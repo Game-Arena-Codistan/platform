@@ -4,10 +4,10 @@ import {watchPage} from './helpers.mjs';
 test('@player home presents the approved product proposition and routes into discovery',async({page})=>{
   const assertClean=watchPage(page);
   await page.goto('/#/home');
-  await expect(page.getByRole('heading',{name:/Play instantly/i})).toBeVisible();
-  await expect(page.getByText(/Pakistan's mobile game arena/i)).toBeVisible();
+  await expect(page.getByRole('heading',{name:/Play instantly|Your hub for online/i})).toBeVisible();
+  await expect(page.getByText(/Play popular games, join tournaments/i)).toBeVisible();
   await expect(page.getByText(/server confirms payment and entitlement/i)).toBeVisible();
-  await page.getByRole('link',{name:'Start playing'}).click();
+  await page.getByRole('link',{name:/Play now/i}).first().click();
   await expect(page).toHaveURL(/#\/feed/);
   await expect(page.locator('.feed-slide').first()).toBeVisible();
   assertClean();
