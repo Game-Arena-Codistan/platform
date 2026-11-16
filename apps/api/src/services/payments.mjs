@@ -3,7 +3,7 @@ import {sanitizeAttribution} from '../lib/campaign-attribution.mjs';
 
 const DAY_MS=86400000;
 const PLAN_DEFINITIONS={
-  monthly:{id:'monthly',name:'Game Arena+ Monthly',pricePkr:599,currency:'PKR',durationDays:31,durationMs:31*DAY_MS,billingMode:'single',benefitsVersion:'launch-v1',status:'live'},
+  monthly:{id:'monthly',name:'Game Arena+ Monthly',pricePkr:990,currency:'PKR',durationDays:31,durationMs:31*DAY_MS,billingMode:'single',benefitsVersion:'launch-v1',status:'live'},
   yearly:{id:'yearly',name:'Game Arena+ Yearly',pricePkr:4999,currency:'PKR',durationDays:366,durationMs:366*DAY_MS,billingMode:'single',benefitsVersion:'launch-v1',status:'coming_soon'}
 };
 const PLANS=Object.fromEntries(Object.entries(PLAN_DEFINITIONS).map(([id,plan])=>[id,{price:plan.pricePkr,durationMs:plan.durationMs}]));

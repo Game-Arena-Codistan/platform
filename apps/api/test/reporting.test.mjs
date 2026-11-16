@@ -31,7 +31,7 @@ test('single-charge reporting separates activation, extension, recurring custome
   f.payments.applyEvent({transactionId:failedExtension.id,status:'failed',providerReference:'JC-FAILED',providerEventId:`event-${failedExtension.id}`,signatureValid:true,event:{}});
   f.store.setEntitlement(secondUser.id,{tier:'premium',status:'active',origin:'manual_grant',sourceType:'manual_grant',sourceId:'manual-test',startsAt:f.clock(),expiresAt:f.clock()+86400000});
   const summary=f.reports.summary(customFilters());
-  assert.equal(summary.kpis.newPaidActivations,2);assert.equal(summary.kpis.successfulRenewals,1);assert.equal(summary.kpis.failedRenewals,1);assert.equal(summary.kpis.recurringCustomers,1);assert.equal(summary.kpis.monthlyRecurringRevenue.applicability,'not_applicable');assert.equal(summary.kpis.annualRecurringRevenue.value,null);assert.equal(summary.kpis.grossCollectionsPkr,6197);assert.equal(summary.kpis.netCollectionsPkr,6197);
+  assert.equal(summary.kpis.newPaidActivations,2);assert.equal(summary.kpis.successfulRenewals,1);assert.equal(summary.kpis.failedRenewals,1);assert.equal(summary.kpis.recurringCustomers,1);assert.equal(summary.kpis.monthlyRecurringRevenue.applicability,'not_applicable');assert.equal(summary.kpis.annualRecurringRevenue.value,null);assert.equal(summary.kpis.grossCollectionsPkr,6979);assert.equal(summary.kpis.netCollectionsPkr,6979);
 });
 
 test('member top-up discount is persisted as benefit cost and reverses on refund',async()=>{
@@ -44,7 +44,7 @@ test('member top-up discount is persisted as benefit cost and reverses on refund
 
 test('refunds are reported separately and exports protect spreadsheet formulas',async()=>{
   const f=fixture();const user=f.user('03003334444');const transaction=await f.payments.checkout({userId:user.id,planId:'monthly',idempotencyKey:'refund'});f.paidEvent(transaction,'=CMD|unsafe');f.advance(1000);f.payments.refund(transaction.id,{providerReference:'refund-2',reason:'test'});
-  const summary=f.reports.summary(customFilters());assert.equal(summary.kpis.grossCollectionsPkr,599);assert.equal(summary.kpis.refundsPkr,599);assert.equal(summary.kpis.netCollectionsPkr,0);
+  const summary=f.reports.summary(customFilters());assert.equal(summary.kpis.grossCollectionsPkr,990);assert.equal(summary.kpis.refundsPkr,990);assert.equal(summary.kpis.netCollectionsPkr,0);
   const principal={actor:'admin:finance',roles:['finance']};const exported=f.reports.export('payments',customFilters(),principal);assert.match(exported.body,/'=CMD\|unsafe/);assert.equal(exported.audit.rowCount,1);assert.equal(f.store.reportExports.length,1);assert.equal(f.store.audit.events.some(item=>item.action==='report.export_generated'),true);
 });
 
@@ -65,7 +65,7 @@ test('campaign attribution aggregates succeeded payments by utm package paramete
   f.paidEvent(omitted);
   const report=f.reports.campaignAttribution(customFilters());
   assert.equal(report.totals.subscriptions,1);
-  assert.equal(report.totals.amountMinor,59900);
+  assert.equal(report.totals.amountMinor,99000);
   assert.equal(report.basic[0].platform,'T');
   assert.equal(report.basic[0].package,'1');
   assert.equal(report.basic[0].parameter,'20percentoff');

@@ -18,7 +18,7 @@ export const previewGame={...previewBase,art:resolveCardArt(previewBase,0)};
 export const games=[previewGame,...enriched];
 export const genres=['All',...new Set(games.map(game=>game.genre))];
 export const plans=[
-  {id:'monthly',name:'Monthly',price:599,period:'month',description:'JazzCash monthly Game Arena+ access.',recommended:true,status:'live'},
+  {id:'monthly',name:'Monthly',price:990,period:'month',description:'JazzCash monthly Game Arena+ access, exclusive of tax.',recommended:true,status:'live'},
   {id:'yearly',name:'Yearly',price:4999,period:'year',description:'Yearly Game Arena+ access.',status:'coming_soon',comingSoon:true}
 ];
 export const premiumFeatures=['Full catalogue access','Premium challenges','Tournament access','Reward eligibility','2× Arena Coins','10% member top-up discount'];

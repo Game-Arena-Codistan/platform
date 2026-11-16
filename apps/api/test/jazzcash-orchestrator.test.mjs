@@ -37,7 +37,7 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
   let tokenDeleted=false;
   const fetchImpl=async(url)=>{
     if(String(url).includes('/payments/m-wallet'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA123'})};
-    if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'59900'})};
+    if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'99000'})};
     if(String(url).includes('mobile-tokens/delete')){tokenDeleted=true;return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success'})};}
     if(String(url).includes('mobile-tokens/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:tokenDeleted?'999':'000',pp_ResponseMessage:tokenDeleted?'No Payment Token exists against the provided pp_MobileNumber.':'Success'})};
     throw new Error(`unexpected fetch ${url}`);
@@ -171,7 +171,7 @@ test('guest unsubscribe by JazzCash number looks up and revokes active Arena+',a
   let tokenDeleted=false;
   const fetchImpl=async(url)=>{
     if(String(url).includes('/payments/m-wallet'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA789'})};
-    if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'59900'})};
+    if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'99000'})};
     if(String(url).includes('mobile-tokens/delete')){tokenDeleted=true;return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success'})};}
     if(String(url).includes('mobile-tokens/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:tokenDeleted?'999':'000',pp_ResponseMessage:tokenDeleted?'No Payment Token exists against the provided pp_MobileNumber.':'Success'})};
     throw new Error(`unexpected fetch ${url}`);

@@ -23,7 +23,7 @@ function maskMsisdn(value){
   if(digits.length<4)return'****';
   return`${'*'.repeat(Math.max(0,digits.length-4))}${digits.slice(-4)}`;
 }
-export const fetchBillingPlans=()=>config.mode==='live'?request('/v1/billing/plans'):Promise.resolve({enabled:true,plans:[{code:'monthly',fullAmountMinor:59900,interval:'month',recommended:true},{code:'yearly',fullAmountMinor:499900,interval:'year',comingSoon:true,status:'coming_soon'}]});
+export const fetchBillingPlans=()=>config.mode==='live'?request('/v1/billing/plans'):Promise.resolve({enabled:true,plans:[{code:'monthly',fullAmountMinor:99000,interval:'month',recommended:true},{code:'yearly',fullAmountMinor:499900,interval:'year',comingSoon:true,status:'coming_soon'}]});
 export async function linkBillingWallet({msisdn,planCode,consentToAutoPay=true,returnPath,attribution}){
   if(config.mode!=='live'){
     await wait(500);

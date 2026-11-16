@@ -43,7 +43,7 @@ export function commerceForCampaign(campaign){
   const planCode=planCodeForPackage(campaign.package);
   const monthly10k=String(campaign.parameter).toLowerCase()==='monthly10k';
   const discounted=planCode==='yearly'&&String(campaign.parameter).toLowerCase()==='20percentoff';
-  const value=planCode==='yearly'?(discounted?3999:4999):599;
+  const value=planCode==='yearly'?(discounted?3999:4999):990;
   return{
     planCode,
     item_id:planCode,
@@ -54,8 +54,8 @@ export function commerceForCampaign(campaign){
     comingSoon:planCode==='yearly',
     promotion:monthly10k?'Win PKR 10,000 JazzCash Credit Every Month':null,
     offerNote:monthly10k
-      ?'Subscribe Now pe Rs. 1 katay ga — limited TikTok offer sirf aaj. Us ke baad PKR 599/m.'
-      :'Subscribe Now pe Rs. 1 katay ga — limited offer sirf aaj. Us ke baad PKR 599/m.'
+      ?'Subscribe Now pe Rs. 1 katay ga — limited TikTok offer sirf aaj. Us ke baad PKR 990/m exclusive of tax.'
+      :'Subscribe Now pe Rs. 1 katay ga — limited offer sirf aaj. Us ke baad PKR 990/m exclusive of tax.'
   };
 }
 

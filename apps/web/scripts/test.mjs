@@ -17,7 +17,7 @@ const stateSource=await readFile(new URL('../src/state.js',import.meta.url),'utf
 const billingAccountSource=await readFile(new URL('../src/billing-account.js',import.meta.url),'utf8');
 
 test('commercial baseline matches approved legacy fallback plan',()=>{
-  assert.equal(plans.find(plan=>plan.id==='monthly').price,599);
+  assert.equal(plans.find(plan=>plan.id==='monthly').price,990);
   assert.equal(plans.find(plan=>plan.id==='yearly').price,4999);
   assert.equal(plans.find(plan=>plan.id==='monthly').recommended,true);
   assert.equal(plans.find(plan=>plan.id==='yearly').comingSoon,true);

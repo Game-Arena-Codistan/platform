@@ -119,7 +119,7 @@ await lane('membership-checkout-idempotency-and-return-safety',async()=>{
     if(plans.data?.enabled!==true||plans.data?.mode!=='jazzcash_orchestrator')throw new Error('orchestrator billing plans are not enabled.');
     const monthly=(plans.data.plans||[]).find(item=>String(item.code||item.planCode)==='monthly');
     const yearly=(plans.data.plans||[]).find(item=>String(item.code||item.planCode)==='yearly');
-    if(!monthly||Number(monthly.fullAmountMinor||monthly.full_amount_minor)!==59900)throw new Error('monthly orchestrator plan must be Rs 599.');
+    if(!monthly||Number(monthly.fullAmountMinor||monthly.full_amount_minor)!==99000)throw new Error('monthly orchestrator plan must be Rs 990.');
     if(!yearly||yearly.comingSoon!==true&&yearly.status!=='coming_soon')throw new Error('yearly orchestrator plan must be coming soon.');
     const guest=await call('/v1/billing/wallets/link',{method:'POST',requireOrigin:true,body:{msisdn:'03111222333',planCode:'monthly',consentToAutoPay:true,returnPath:'/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash'}});
     expectStatus(guest.response.status,[201],'guest orchestrator wallet link start failed');
@@ -136,7 +136,7 @@ await lane('membership-checkout-idempotency-and-return-safety',async()=>{
   const second=await call('/v1/payments/jazzcash/checkout',{method:'POST',auth:true,headers:{'idempotency-key':key},body:{planId:'monthly'}});expectStatus(second.response.status,[201],'membership checkout retry failed');
   if(!first.data?.transactionId||second.data?.transactionId!==first.data.transactionId)throw new Error('repeated membership checkout created a different transaction.');
   paymentTransaction=first.data.transactionId;
-  const returned=await call('/v1/payments/jazzcash/return',{method:'POST',redirect:'manual',body:{transactionId:paymentTransaction,status:'paid',amountMinor:59900,currency:'PKR'}});
+  const returned=await call('/v1/payments/jazzcash/return',{method:'POST',redirect:'manual',body:{transactionId:paymentTransaction,status:'paid',amountMinor:99000,currency:'PKR'}});
   expectStatus(returned.response.status,[303],'browser payment return did not redirect safely');
   const status=await call(`/v1/payments/${paymentTransaction}`,{auth:true});expectStatus(status.response.status,[200],'payment status lookup failed');
   if(status.data?.status!=='pending')throw new Error('browser return incorrectly activated payment/entitlement.');
