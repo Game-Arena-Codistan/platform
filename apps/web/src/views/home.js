@@ -42,7 +42,7 @@ export function renderHome(){
       </div>
     </div>
     <div class="home-hero-visual" data-reveal style="--reveal-delay:120ms">
-      <img class="home-hero-image" src="/assets/home/hero-banner.jpeg" alt="Game Arena player celebrating with headphones and featured games" width="960" height="720" decoding="async" fetchpriority="high">
+      <img class="home-hero-image" src="/assets/home/hero-visual.jpeg" alt="Game Arena player celebrating with headphones and featured games" width="960" height="695" decoding="async" fetchpriority="high">
       <div class="home-float home-float--crown" aria-hidden="true">♛</div>
     </div>
   </section>
