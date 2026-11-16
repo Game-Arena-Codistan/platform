@@ -251,15 +251,17 @@ body.landing-mode #app{
 }
 .ga-lp-notice-icon svg{width:20px;height:20px}
 .ga-lp-notice p{
+  flex:1;
+  min-width:0;
   color:#2a2140;
   max-width:none;
   margin:0;
   font-size:15px;
   font-weight:700;
   line-height:1.25;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
   padding-right:2.25rem;
 }
 .ga-lp-notice-stripes{

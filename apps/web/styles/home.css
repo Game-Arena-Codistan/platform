@@ -65,7 +65,7 @@
 .prototype-banner,.prototype-premium-banner{position:relative;background-size:cover;background-position:center;overflow:hidden}
 .prototype-banner>* ,.prototype-premium-banner>*{position:relative;z-index:1}
 .prototype-banner h2,.prototype-premium-banner h2{margin:10px 0;font-size:clamp(1.6rem,3vw,2.5rem)}
-.prototype-banner p{color:var(--prototype-muted)}
+.prototype-banner p{color:#fff;font-weight:700}
 .prototype-banner.competition{background-image:url('/assets/home/competition.webp')}
 .prototype-banner.rewards{background-image:url('/assets/home/rewards.webp')}
 .prototype-premium-banner{background-image:url('/assets/home/premium.webp')}
