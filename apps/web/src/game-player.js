@@ -36,8 +36,8 @@ export async function openGame(game){
   const sandbox=['allow-scripts',...(crossOrigin?[sameOriginToken]:[]),...(permissions.pointerLock?['allow-pointer-lock']:[])].join(' ');
   const allow=[...(permissions.fullscreen?['fullscreen']:[]),...(permissions.orientationLock?['screen-wake-lock']:[])].join('; ');
   const body=url
-    ?`<div class="game-stage"><iframe id="game-frame" title="${escapeHtml(game.title)}" src="${escapeHtml(url)}" sandbox="${sandbox}" allow="${allow}"></iframe></div>`
-    :`<div class="game-stage"><div class="empty"><h3>Game runtime unavailable</h3><p>This title needs an approved hosted build.</p></div></div>`;
+    ?`<div class="game-stage game-player-shell" data-game-shell><iframe id="game-frame" title="${escapeHtml(game.title)}" src="${escapeHtml(url)}" sandbox="${sandbox}" allow="${allow}"></iframe><p class="game-rotate-hint" data-rotate-hint>For the best experience, rotate your device to landscape.</p></div>`
+    :`<div class="game-stage game-player-shell" data-game-shell><div class="empty"><h3>Game runtime unavailable</h3><p>This title needs an approved hosted build.</p></div></div>`;
   modal(game.title,`${body}<div class="game-toolbar"><span class="muted">${guestFree?'Guest free play':'Secure isolated player'}</span><button class="button secondary" data-close-game type="button">Exit game</button></div>`,{wide:true});
   const iframe=document.querySelector('#game-frame');
   if(!iframe)return;
@@ -64,4 +64,33 @@ export async function openGame(game){
   const close=()=>{document.removeEventListener('visibilitychange',visibility);bridge.destroy();};
   document.querySelector('[data-close]')?.addEventListener('click',close,{once:true});
   document.querySelector('[data-close-game]')?.addEventListener('click',()=>document.querySelector('[data-close]')?.click());
+  const shell=document.querySelector('[data-game-shell]');
+  const mobile=window.matchMedia('(max-width: 699px) and (pointer: coarse)').matches;
+  let enteredFullscreen=false;
+  const enterMobileFullscreen=async()=>{
+    if(!mobile||!shell)return;
+    try{
+      if(document.fullscreenElement!==shell&&shell.requestFullscreen){
+        await shell.requestFullscreen({navigationUI:'hide'});
+        enteredFullscreen=true;
+      }
+    }catch{/* Fullscreen is unavailable on some mobile browsers. */}
+    try{
+      if(screen.orientation?.lock)await screen.orientation.lock('landscape');
+    }catch{/* Orientation lock is optional and unsupported on some iOS browsers. */}
+    shell.classList.add('mobile-game-active');
+  };
+  const leaveMobileFullscreen=async()=>{
+    shell?.classList.remove('mobile-game-active');
+    try{if(screen.orientation?.unlock)screen.orientation.unlock();}catch{/* ignore unsupported unlock */}
+    if(enteredFullscreen&&document.fullscreenElement){
+      try{await document.exitFullscreen();}catch{/* browser may already have exited */}
+    }
+  };
+  void enterMobileFullscreen();
+  const cleanupFullscreen=()=>{void leaveMobileFullscreen();};
+  document.querySelector('[data-close]')?.addEventListener('click',cleanupFullscreen,{once:true});
+  document.addEventListener('fullscreenchange',()=>{
+    if(!document.fullscreenElement)shell?.classList.remove('mobile-game-active');
+  });
 }
