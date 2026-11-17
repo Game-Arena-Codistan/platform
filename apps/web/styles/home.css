@@ -104,6 +104,31 @@
   .prototype-home .hero-actions .button{min-height:55px;padding:13px 12px}
 }
 @media(max-width:700px){
+  .prototype-brand{gap:5px}
+  .prototype-brand img{width:32px;height:32px}
+  .prototype-brand b{font-size:13px}
+  .prototype-brand small{font-size:8px}
+  .prototype-actions{gap:3px}
+  .prototype-actions>#profile-button{
+    display:inline-flex!important;
+    padding:7px 8px;
+    font-size:10px;
+    border-radius:9px;
+  }
+  .prototype-actions>#premium-button{
+    padding:7px 8px;
+    font-size:10px;
+  }
+  .prototype-actions>#unsubscribe-nav-mobile{
+    padding:7px 8px!important;
+    font-size:10px;
+  }
+  .mobile-menu-toggle{
+    padding:7px 9px;
+    font-size:18px;
+  }
+}
+@media(max-width:700px){
   .prototype-nav{position:relative;flex-wrap:nowrap;gap:8px}
   .prototype-hero p{color:#fff;font-weight:700}
   .prototype-hero{min-height:582px;padding:250px 24px 24px;flex-direction:column;justify-content:flex-end;align-items:stretch;text-align:left;background-color:#201036;background-size:100% auto;background-position:center top;background-repeat:no-repeat}
