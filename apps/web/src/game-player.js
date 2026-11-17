@@ -36,9 +36,11 @@ export async function openGame(game){
   const sandbox=['allow-scripts',...(crossOrigin?[sameOriginToken]:[]),...(permissions.pointerLock?['allow-pointer-lock']:[])].join(' ');
   const allow=[...(permissions.fullscreen?['fullscreen']:[]),...(permissions.orientationLock?['screen-wake-lock']:[])].join('; ');
   const body=url
-    ?`<div class="game-stage game-player-shell" data-game-shell><iframe id="game-frame" title="${escapeHtml(game.title)}" src="${escapeHtml(url)}" sandbox="${sandbox}" allow="${allow}"></iframe><p class="game-rotate-hint" data-rotate-hint>For the best experience, rotate your device to landscape.</p></div>`
+    ?`<div class="game-stage game-player-shell" data-game-shell><iframe id="game-frame" title="${escapeHtml(game.title)}" src="${escapeHtml(url)}" sandbox="${sandbox}" allow="${allow}"></iframe><button class="game-fullscreen-button" data-game-fullscreen type="button" aria-label="Rotate screen to landscape" title="Rotate screen to landscape">↻</button><p class="game-rotate-hint" data-rotate-hint>For the best experience, rotate your device to landscape.</p></div>`
     :`<div class="game-stage game-player-shell" data-game-shell><div class="empty"><h3>Game runtime unavailable</h3><p>This title needs an approved hosted build.</p></div></div>`;
-  modal(game.title,`${body}<div class="game-toolbar"><span class="muted">${guestFree?'Guest free play':'Secure isolated player'}</span><button class="button secondary" data-close-game type="button">Exit game</button></div>`,{wide:true});
+  const playerModal=modal(game.title,`${body}<div class="game-toolbar"><span class="muted">${guestFree?'Guest free play':'Secure isolated player'}</span><button class="button secondary" data-close-game type="button">Exit game</button></div>`,{wide:true});
+  playerModal.classList.add('game-modal');
+  playerModal.closest('.modal-backdrop')?.classList.add('game-modal-backdrop');
   const iframe=document.querySelector('#game-frame');
   if(!iframe)return;
   let bridge;
@@ -87,10 +89,24 @@ export async function openGame(game){
       try{await document.exitFullscreen();}catch{/* browser may already have exited */}
     }
   };
+  document.querySelector('[data-game-fullscreen]')?.addEventListener('click',()=>{
+    if(document.fullscreenElement)void leaveMobileFullscreen();
+    else void enterMobileFullscreen();
+  });
+  const fullscreenButton=document.querySelector('[data-game-fullscreen]');
+  const syncFullscreenButton=()=>{
+    if(!fullscreenButton)return;
+    const active=Boolean(document.fullscreenElement);
+    fullscreenButton.textContent=active?'↙':'↻';
+    fullscreenButton.setAttribute('aria-label',active?'Exit fullscreen':'Rotate screen to landscape');
+    fullscreenButton.title=active?'Exit fullscreen':'Rotate screen to landscape';
+  };
+  syncFullscreenButton();
   void enterMobileFullscreen();
   const cleanupFullscreen=()=>{void leaveMobileFullscreen();};
   document.querySelector('[data-close]')?.addEventListener('click',cleanupFullscreen,{once:true});
   document.addEventListener('fullscreenchange',()=>{
     if(!document.fullscreenElement)shell?.classList.remove('mobile-game-active');
+    syncFullscreenButton();
   });
 }
