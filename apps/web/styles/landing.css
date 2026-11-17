@@ -417,10 +417,11 @@ body.landing-mode #app{
   .ga-lp-notice{border-radius:10px;gap:8px;margin-top:8px;padding:11px 12px}
   .ga-lp-notice-icon{width:34px;height:34px}
   .ga-lp-notice-icon svg{width:16px;height:16px}
-  .ga-lp-notice p{font-size:13px;font-weight:700;white-space:nowrap}
+  .ga-lp-notice p{font-size:13px;font-weight:700;white-space:normal;overflow:visible;text-overflow:clip}
   .ga-lp-trust{grid-template-columns:1fr}
-  .ga-lp-trust>div{border-right:0;border-bottom:1px solid #e4e2e9;align-items:flex-start;text-align:left}
+  .ga-lp-trust>div{border-right:0;border-bottom:1px solid #e4e2e9;align-items:center;text-align:center}
   .ga-lp-trust>div:last-child{border-bottom:0}
+  .ga-lp-legal{text-align:center}
   .ga-lp-benefits{background:#fff;padding:22px 14px 28px;margin-top:12px}
   .ga-lp-benefits-inner{width:100%;max-width:100%}
   .ga-lp-benefits-grid{grid-template-columns:1fr;gap:14px}

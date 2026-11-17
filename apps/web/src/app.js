@@ -21,6 +21,31 @@ if(bootLandingIfNeeded()){
 const routes={home:[renderHome,bindHome],feed:[renderFeed,bindFeed],library:[renderLibrary,bindLibrary],rewards:[renderRewards,bindRewards],premium:[renderPremium,bindPremium],account:[renderAccount,bindAccount],support:[renderSupport,bindSupport]};
 const app=document.querySelector('#app');const balance=document.querySelector('#coin-balance');const network=document.querySelector('#network-status');let current='';
 document.querySelectorAll('[data-route="compete"]').forEach(link=>link.remove());
+const prototypeMenu=document.querySelector('.prototype-menu');
+const prototypeActions=document.querySelector('.prototype-actions');
+const unsubscribeNav=document.querySelector('#unsubscribe-nav');
+if(prototypeMenu&&prototypeActions&&unsubscribeNav){
+  const mobileUnsubscribe=unsubscribeNav.cloneNode(true);
+  mobileUnsubscribe.id='unsubscribe-nav-mobile';
+  mobileUnsubscribe.classList.add('prototype-unsubscribe-mobile');
+  mobileUnsubscribe.textContent='Unsubscribe';
+  mobileUnsubscribe.addEventListener('click',event=>{event.preventDefault();openUnsubscribeFlow();});
+  prototypeActions.append(mobileUnsubscribe);
+  const menuToggle=document.createElement('button');
+  menuToggle.id='mobile-menu-toggle';
+  menuToggle.className='mobile-menu-toggle';
+  menuToggle.type='button';
+  menuToggle.setAttribute('aria-label','Open menu');
+  menuToggle.setAttribute('aria-expanded','false');
+  menuToggle.textContent='☰';
+  prototypeActions.append(menuToggle);
+  menuToggle.addEventListener('click',()=>{
+    const open=prototypeMenu.classList.toggle('is-open');
+    menuToggle.setAttribute('aria-expanded',String(open));
+    menuToggle.setAttribute('aria-label',open?'Close menu':'Open menu');
+  });
+  prototypeMenu.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>prototypeMenu.classList.remove('is-open')));
+}
 document.querySelectorAll('.prototype-footer a').forEach(link=>{
   const href=link.getAttribute('href');
   if(href==='#/terms')link.setAttribute('href','/legal/terms.html');
@@ -132,6 +157,8 @@ function render(force=false){
       try{bindMotion(app);}catch(error){console.error('motion bind failed',error);}
       if(name==='library'&&new URLSearchParams(location.hash.split('?')[1]||'').get('section')==='games'){
         requestAnimationFrame(()=>document.querySelector('[data-library-games]')?.scrollIntoView({behavior:'smooth',block:'start'}));
+      }else if(routeChanged){
+        window.scrollTo({top:0,left:0,behavior:'auto'});
       }
       paymentBanner();
       document.querySelectorAll('[data-route]').forEach(link=>link.classList.toggle('active',link.dataset.route===name));
