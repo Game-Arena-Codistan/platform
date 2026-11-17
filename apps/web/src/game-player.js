@@ -35,9 +35,10 @@ export async function openGame(game){
   const sameOriginToken=['allow','same-origin'].join('-');
   const sandbox=['allow-scripts',...(crossOrigin?[sameOriginToken]:[]),...(permissions.pointerLock?['allow-pointer-lock']:[])].join(' ');
   const allow=[...(permissions.fullscreen?['fullscreen']:[]),...(permissions.orientationLock?['screen-wake-lock']:[])].join('; ');
+  const orientation=game.orientation==='portrait'?'portrait':'landscape';
   const body=url
-    ?`<div class="game-stage game-player-shell" data-game-shell><iframe id="game-frame" title="${escapeHtml(game.title)}" src="${escapeHtml(url)}" sandbox="${sandbox}" allow="${allow}"></iframe><button class="game-fullscreen-button" data-game-fullscreen type="button" aria-label="Rotate screen to landscape" title="Rotate screen to landscape">↻</button><p class="game-rotate-hint" data-rotate-hint>For the best experience, rotate your device to landscape.</p></div>`
-    :`<div class="game-stage game-player-shell" data-game-shell><div class="empty"><h3>Game runtime unavailable</h3><p>This title needs an approved hosted build.</p></div></div>`;
+    ?`<div class="game-stage game-player-shell game-orientation-${orientation}" data-game-shell><iframe id="game-frame" title="${escapeHtml(game.title)}" src="${escapeHtml(url)}" sandbox="${sandbox}" allow="${allow}"></iframe><button class="game-fullscreen-button" data-game-fullscreen type="button" aria-label="Rotate screen to landscape" title="Rotate screen to landscape">↻</button><p class="game-rotate-hint" data-rotate-hint>For the best experience, rotate your device to landscape.</p></div>`
+    :`<div class="game-stage game-player-shell game-orientation-${orientation}" data-game-shell><div class="empty"><h3>Game runtime unavailable</h3><p>This title needs an approved hosted build.</p></div></div>`;
   const playerModal=modal(game.title,`${body}<div class="game-toolbar"><span class="muted">${guestFree?'Guest free play':'Secure isolated player'}</span><button class="button secondary" data-close-game type="button">Exit game</button></div>`,{wide:true});
   playerModal.classList.add('game-modal');
   playerModal.closest('.modal-backdrop')?.classList.add('game-modal-backdrop');

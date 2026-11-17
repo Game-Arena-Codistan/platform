@@ -24,6 +24,14 @@ document.querySelectorAll('[data-route="compete"]').forEach(link=>link.remove())
 const prototypeMenu=document.querySelector('.prototype-menu');
 const prototypeActions=document.querySelector('.prototype-actions');
 const unsubscribeNav=document.querySelector('#unsubscribe-nav');
+const mobileAuthMenu=document.createElement('button');
+mobileAuthMenu.type='button';
+mobileAuthMenu.className='prototype-menu-auth';
+mobileAuthMenu.addEventListener('click',()=>{
+  prototypeMenu?.classList.remove('is-open');
+  if(getState().user)location.hash='#/account';
+  else openAuth('signup');
+});
 if(prototypeMenu&&prototypeActions&&unsubscribeNav){
   const mobileUnsubscribe=unsubscribeNav.cloneNode(true);
   mobileUnsubscribe.id='unsubscribe-nav-mobile';
@@ -44,12 +52,14 @@ if(prototypeMenu&&prototypeActions&&unsubscribeNav){
     menuToggle.setAttribute('aria-expanded',String(open));
     menuToggle.setAttribute('aria-label',open?'Close menu':'Open menu');
   });
+  prototypeMenu.append(mobileAuthMenu);
   prototypeMenu.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>prototypeMenu.classList.remove('is-open')));
 }
 document.querySelectorAll('.prototype-footer a').forEach(link=>{
   const href=link.getAttribute('href');
   if(href==='#/terms')link.setAttribute('href','/legal/terms.html');
-  else if(['#/privacy','#/subscriptions','#/copyright'].includes(href))link.setAttribute('href','#/support');
+  else if(href==='#/subscriptions')link.setAttribute('href','#/library');
+  else if(['#/privacy','#/copyright'].includes(href))link.setAttribute('href','#/support');
 });
 document.querySelector('#premium-button')?.replaceChildren(document.createTextNode('Premium'));
 function route(){const name=location.hash.replace(/^#\//,'').split(/[/?]/)[0]||'home';return routes[name]?name:'home';}
@@ -140,6 +150,10 @@ function syncProfileChrome(){
       profile.classList.toggle('is-premium',showPremium);
       if(profile.getAttribute('aria-label')!=='Sign up')profile.setAttribute('aria-label','Sign up');
     }
+  }
+  if(mobileAuthMenu){
+    mobileAuthMenu.textContent=state.user?'Profile':'Sign up';
+    mobileAuthMenu.setAttribute('aria-label',state.user?'Open profile':'Sign up');
   }
   const premium=document.querySelector('#premium-button');
   if(premium)premium.hidden=showPremium;
