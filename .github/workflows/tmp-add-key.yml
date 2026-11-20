@@ -1,0 +1,30 @@
+name: tmp-add-key
+on:
+  workflow_dispatch:
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
+      MY_PUBKEY: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCLwQFgBlG70F55Mzh2B4OCTij+ED5jn7+hQb3ACUpxNqqKdQdNgVkvtPu/bMMXtOypF3S2dv31SgcbjYX/RvHeMkrExvgcOAVm3zdmKnm8SQIEfbZq3FMX2aImuLh5enDHFXnskmjhY5146G2dbTyROSMaHniyIEIdBRs4xMAfSt7J4qRmOP7mE+ojvtFv1oUY+JUHBfPc0apxSp9Rm9RvZHHutHWZB8kcwEf+rGJik59nEtrZUQPRnPghovBCsm3lkZ0nwgeMti40ckOkOV1rWkXdAL5+2grTA5+BFQeVeL1676ppTqcR876YDXPI5fisGiLNjARLcWpVwZ8LYbd3 rsa-key-20261120"
+    steps:
+      - run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/k"
+          chmod 600 "$HOME/.ssh/k"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$MY_PUBKEY" | ssh -i "$HOME/.ssh/k" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" '
+            set -e
+            read -r key
+            mkdir -p ~/.ssh && chmod 700 ~/.ssh
+            touch ~/.ssh/authorized_keys
+            grep -qxF "$key" ~/.ssh/authorized_keys || echo "$key" >> ~/.ssh/authorized_keys
+            chmod 600 ~/.ssh/authorized_keys
+            wc -l ~/.ssh/authorized_keys
+          '
