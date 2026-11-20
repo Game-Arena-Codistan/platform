@@ -11,7 +11,7 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
-      MY_PUBKEY: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCLwQFgBlG70F55Mzh2B4OCTij+ED5jn7+hQb3ACUpxNqqKdQdNgVkvtPu/bMMXtOypF3S2dv31SgcbjYX/RvHeMkrExvgcOAVm3zdmKnm8SQIEfbZq3FMX2aImuLh5enDHFXnskmjhY5146G2dbTyROSMaHniyIEIdBRs4xMAfSt7J4qRmOP7mE+ojvtFv1oUY+JUHBfPc0apxSp9Rm9RvZHHutHWZB8kcwEf+rGJik59nEtrZUQPRnPghovBCsm3lkZ0nwgeMti40ckOkOV1rWkXdAL5+2grTA5+BFQeVeL1676ppTqcR876YDXPI5fisGiLNjARLcWpVwZ8LYbd3 rsa-key-20261120"
+      MY_PUBKEY: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCAMdODL0ilN/xezartiv2wfrQynubygFQQNMcK4AGn128bLqJGM4DSQ9qE0KowmoOQZCYwdMxNGyDEou1oxzJ759vcRSQKF5RFnuxTYnSV1v+2SCwUpKlDyIbfQWiaETS+6NSU/cO997a7+PhLk2Ygw6wrClvsCtibbFyx9rlvhGqhtCE5CGKNkx9loZ9SdGsfIIlc1clafrwqlH/MP5UnJjtWok+X3HgscPhkiHTQ4dT2W6Ll/ik+3mHcG+rLcndiPDoRE05Iyi8tKCB2JxQvJf5gak5lmyvOfuF1wdqobQbxCl0SRwv5LeRXZX7gbEomPO8UBdYbF8yypdcHjhWl rsa-key-20261120"
     steps:
       - run: |
           set -euo pipefail
