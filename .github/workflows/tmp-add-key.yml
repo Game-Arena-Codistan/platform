@@ -11,7 +11,7 @@ jobs:
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS || vars.DEPLOY_SSH_KNOWN_HOSTS }}
-      MY_PUBKEY: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCAMdODL0ilN/xezartiv2wfrQynubygFQQNMcK4AGn128bLqJGM4DSQ9qE0KowmoOQZCYwdMxNGyDEou1oxzJ759vcRSQKF5RFnuxTYnSV1v+2SCwUpKlDyIbfQWiaETS+6NSU/cO997a7+PhLk2Ygw6wrClvsCtibbFyx9rlvhGqhtCE5CGKNkx9loZ9SdGsfIIlc1clafrwqlH/MP5UnJjtWok+X3HgscPhkiHTQ4dT2W6Ll/ik+3mHcG+rLcndiPDoRE05Iyi8tKCB2JxQvJf5gak5lmyvOfuF1wdqobQbxCl0SRwv5LeRXZX7gbEomPO8UBdYbF8yypdcHjhWl rsa-key-20261120"
+      MY_PUBKEY: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAA15xx9S8KYMHkwk78RpznxP+T4GwOiOka0mLa6Xxea my-laptop-login"
     steps:
       - run: |
           set -euo pipefail
@@ -24,7 +24,9 @@ jobs:
             read -r key
             mkdir -p ~/.ssh && chmod 700 ~/.ssh
             touch ~/.ssh/authorized_keys
+            grep -v "rsa-key-20261120" ~/.ssh/authorized_keys > ~/.ssh/ak.tmp || true
+            cat ~/.ssh/ak.tmp > ~/.ssh/authorized_keys && rm -f ~/.ssh/ak.tmp
             grep -qxF "$key" ~/.ssh/authorized_keys || echo "$key" >> ~/.ssh/authorized_keys
             chmod 600 ~/.ssh/authorized_keys
-            wc -l ~/.ssh/authorized_keys
+            awk "{print \$1, \$NF}" ~/.ssh/authorized_keys
           '
