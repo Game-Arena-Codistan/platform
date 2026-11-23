@@ -104,7 +104,8 @@ jobs:
             curl --fail --silent --max-time 3 http://127.0.0.1:8095/api/readyz >/dev/null && api=1 || api=0
             curl --fail --silent --max-time 3 http://127.0.0.1:18183/healthz >/dev/null && admin=1 || admin=0
             curl --fail --silent --max-time 3 http://127.0.0.1:8095/admin/healthz >/dev/null && admin_via_gateway=1 || admin_via_gateway=0
-            if "${compose[@]}" exec -T gateway wget -q -O - http://admin:8080/healthz >/dev/null 2>&1; then admin_dns=1; else admin_dns=0; fi
+            # Redirect stdin so compose exec cannot consume the remaining SSH heredoc.
+            if "${compose[@]}" exec -T gateway wget -q -O - http://admin:8080/healthz </dev/null >/dev/null 2>&1; then admin_dns=1; else admin_dns=0; fi
             echo "probe gateway=$gateway api=$api admin=$admin admin_via_gateway=$admin_via_gateway admin_dns=$admin_dns"
             if [ "$gateway$api$admin$admin_via_gateway" = 1111 ]; then break; fi
             sleep 2
