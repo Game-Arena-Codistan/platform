@@ -204,6 +204,19 @@ jobs:
             echo "CRITICAL: still failing after host nginx force-fix (admin=$public_admin)" >&2
             exit 1
           fi
+
+          echo '=== rewire public player edge → gateway:8095 ==='
+          if [ -n "$IMAGE_TAG" ] && [ -f infra/host-nginx/rewire-player-edge.sh ]; then
+            chmod +x infra/host-nginx/rewire-player-edge.sh
+            ROOT_DIR=/opt/codistan/platform bash infra/host-nginx/rewire-player-edge.sh "$IMAGE_TAG"
+            public_html="$(curl --fail --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 https://gsmarena-play.codistan.org/ || true)"
+            printf '%s\n' "$public_html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
+              echo 'WARNING: public HTML still missing TikTok Pixel meta after player rewire' >&2
+            }
+          else
+            echo 'WARNING: skipping player edge rewire (IMAGE_TAG or script missing)' >&2
+          fi
+
           echo 'Staging edge recovery complete (player + public /admin).'
           exit 0
           REMOTE

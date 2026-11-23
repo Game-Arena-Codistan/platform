@@ -88,9 +88,9 @@ jobs:
       - name: Sync exact deployment configuration
         run: |
           set -euo pipefail
-          tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf | \
+          tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf infra/host-nginx | \
             ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env'
+              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env; test -f infra/host-nginx/rewire-player-edge.sh; chmod +x infra/host-nginx/rewire-player-edge.sh'
 
       - name: Authenticate staging server to GHCR with ephemeral token
         env:
@@ -297,7 +297,8 @@ jobs:
           "${compose[@]}" ps
           docker image prune -f >/dev/null
 
-          # Prove the public web edge actually serves this SHA (not a stale container).
+          # Prove gateway web serves this SHA, then rewire host nginx if the
+          # public edge is still stuck on a stale static tree.
           web_config="$(curl --fail --silent --max-time 8 http://127.0.0.1:8095/config.js)"
           printf '%s\n' "$web_config" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
             echo "Web config.js releaseSha does not match IMAGE_TAG=$IMAGE_TAG" >&2
@@ -310,7 +311,6 @@ jobs:
             exit 1
           }
 
-          # Recover the public edge if host nginx stopped accepting connections.
           if command -v systemctl >/dev/null 2>&1; then
             sudo -n systemctl restart nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
             sudo -n systemctl is-active nginx >/dev/null 2>&1 || systemctl is-active nginx >/dev/null 2>&1 || true
@@ -320,15 +320,13 @@ jobs:
           fi
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/healthz >/dev/null
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/admin/healthz >/dev/null
-          public_config="$(curl --fail --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 https://gsmarena-play.codistan.org/config.js || true)"
-          if [ -n "$public_config" ]; then
-            printf '%s\n' "$public_config" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
-              echo "Public edge config.js releaseSha does not match IMAGE_TAG=$IMAGE_TAG" >&2
-              printf '%s\n' "$public_config" >&2
-              exit 1
-            }
-          fi
-          # Host edge (best-effort): prove the public reverse proxy is listening again.
+          chmod +x infra/host-nginx/rewire-player-edge.sh
+          ROOT_DIR=/opt/codistan/platform bash infra/host-nginx/rewire-player-edge.sh "$IMAGE_TAG"
+          public_html="$(curl --fail --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 https://gsmarena-play.codistan.org/)"
+          printf '%s\n' "$public_html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
+            echo 'Public edge HTML is missing TikTok Pixel meta tag.' >&2
+            exit 1
+          }
           curl --silent --max-time 5 -o /dev/null -w 'host_http=%{http_code}\n' http://127.0.0.1/healthz || true
           curl --silent --max-time 8 -k -o /dev/null -w 'host_https=%{http_code}\n' https://127.0.0.1/healthz || true
           REMOTE
