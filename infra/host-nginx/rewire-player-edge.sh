@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rewire the public staging host nginx edge so the player PWA is served from the
-# Compose gateway (:8095), and refresh any leftover static html tree.
+# Compose gateway (:8095), and refresh the known static html tree.
 set -euo pipefail
 
 EXPECTED_SHA="${1:?expected release SHA required}"
@@ -26,60 +26,58 @@ printf '%s\n' "$gateway_config" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" || {
   exit 1
 }
 
-read_sni_config() {
+read_sni_loopback() {
   curl --fail --silent --max-time 8 -k \
     --resolve gsmarena-play.codistan.org:443:127.0.0.1 \
     https://gsmarena-play.codistan.org/config.js
 }
 
-read_public_dns_config() {
-  # Hairpin through public DNS from the staging host (not 127.0.0.1).
-  curl --fail --silent --max-time 8 https://gsmarena-play.codistan.org/config.js
+read_sni_on_ip() {
+  local ip="$1"
+  curl --fail --silent --max-time 8 -k \
+    --resolve "gsmarena-play.codistan.org:443:${ip}" \
+    https://gsmarena-play.codistan.org/config.js
 }
 
 echo "=== host identity ==="
 hostname -f 2>/dev/null || hostname || true
 hostname -I 2>/dev/null || true
-ip -4 addr show scope global 2>/dev/null | awk '/inet /{print $2}' || true
+mapfile -t host_ips < <(hostname -I 2>/dev/null | tr ' ' '\n' | awk 'NF' || true)
+public_ip="$(getent ahostsv4 gsmarena-play.codistan.org 2>/dev/null | awk 'NR==1{print $1}' || true)"
+echo "dns_a_record=${public_ip:-unknown}"
 
-sni_config="$(read_sni_config || true)"
-dns_config="$(read_public_dns_config || true)"
-printf 'sni_config=%s\n' "$sni_config"
-printf 'dns_config=%s\n' "$dns_config"
+compose=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
+web_cid="$("${compose[@]}" ps -q web || true)"
+[ -n "$web_cid" ] || { echo 'ERROR: web container id unavailable' >&2; exit 1; }
 
-sni_ok=0
-dns_ok=0
-printf '%s\n' "$sni_config" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" && sni_ok=1 || true
-printf '%s\n' "$dns_config" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" && dns_ok=1 || true
+echo "=== sync web container html → ${STATIC_ROOT} ==="
+tmp="$(mktemp -d)"
+docker cp "$web_cid:/usr/share/nginx/html/." "$tmp/"
+sudo_run mkdir -p "$STATIC_ROOT"
+sudo_run cp -a "$tmp"/. "$STATIC_ROOT"/
+rm -rf "$tmp"
+echo "static_config_after_sync=$(sudo_run head -c 400 "$STATIC_ROOT/config.js" || true)"
+sudo_run grep -Fq "releaseSha:\"$EXPECTED_SHA\"" "$STATIC_ROOT/config.js" || {
+  echo "ERROR: ${STATIC_ROOT}/config.js missing expected SHA after sync" >&2
+  exit 1
+}
 
-if [ "$sni_ok" = 1 ] && [ "$dns_ok" = 1 ]; then
-  echo "Public SNI and DNS edges already serve releaseSha=$EXPECTED_SHA"
-  exit 0
-fi
-
-echo "Public edge stale (sni_ok=$sni_ok dns_ok=$dns_ok); rewiring host nginx + syncing static root"
-
+echo "=== patch only gsmarena-play nginx site files ==="
 sudo_run mkdir -p /etc/nginx/snippets
 sudo_run cp -f infra/host-nginx/game-arena-admin.conf /etc/nginx/snippets/game-arena-admin.conf
 sudo_run cp -f infra/host-nginx/game-arena-player.conf /etc/nginx/snippets/game-arena-player.conf
 
-# Known staging vhost + any site that mentions the staging hostnames or static root.
 mapfile -t site_files < <(
-  {
-    sudo_run bash -lc 'ls -1 /etc/nginx/sites-enabled/* /etc/nginx/conf.d/* 2>/dev/null' || true
-    sudo_run grep -Rls -E 'gsmarena-play\.(codistan\.org|com)|/var/www/gsmarena-play\.com/html' /etc/nginx 2>/dev/null || true
-  } | awk 'NF' | sort -u
+  sudo_run bash -lc 'ls -1 /etc/nginx/sites-enabled/gsmarena-play.com /etc/nginx/sites-available/gsmarena-play.com 2>/dev/null' \
+    | awk 'NF' \
+    | sort -u
 )
 
 if [ "${#site_files[@]}" -eq 0 ]; then
-  echo 'WARNING: no nginx site files found for gsmarena-play' >&2
+  echo 'WARNING: gsmarena-play.com site file not found' >&2
 else
   for site in "${site_files[@]}"; do
     [ -f "$site" ] || continue
-    # Never rewrite the snippets themselves as "sites".
-    case "$site" in
-      */snippets/*) continue ;;
-    esac
     echo "patching player edge in $site"
     sudo_run cp -a "$site" "$site.bak.playeredge"
     sudo_run python3 - "$site" <<'PY'
@@ -103,13 +101,11 @@ def ensure_include(content: str, snippet: str) -> str:
     )
     if replaced != content:
         return replaced
-    # Fallback: insert after first server { for this file.
     return re.sub(r'(server\s*\{)', rf'\1\n    include {marker};', content, count=1)
 
 text = ensure_include(text, 'game-arena-admin.conf')
 text = ensure_include(text, 'game-arena-player.conf')
 
-# Ensure staging hostname is accepted by the production-named vhost.
 if 'gsmarena-play.codistan.org' not in text and 'gsmarena-play.com' in text:
     text = re.sub(
         r'(server_name\s+)([^;]*gsmarena-play\.com[^;]*);',
@@ -137,20 +133,13 @@ text = re.sub(
     flags=re.M,
 )
 
-# Old direct admin upstreams still break /admin on this host.
 text = re.sub(
     r'proxy_pass\s+http://(?:localhost|127\.0\.0\.1):(8083|18183)/?\s*;',
     'proxy_pass http://127.0.0.1:8095;',
     text,
 )
 
-text = re.sub(
-    r'^(\s*)root\s+([^;]*/var/www/gsmarena-play\.com/html[^;]*);',
-    r'\1# root \2; # disabled: player served via gateway 8095',
-    text,
-    flags=re.M,
-)
-
+# Keep root for certbot/other locations, but player / is proxied via snippet.
 if text != original:
     path.write_text(text, encoding='utf-8')
     print(f'rewrote {path}')
@@ -160,56 +149,49 @@ PY
   done
 fi
 
-# Always refresh the known static tree from the live web container.
-compose=(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE")
-web_cid="$("${compose[@]}" ps -q web || true)"
-if [ -z "$web_cid" ]; then
-  echo 'ERROR: web container id unavailable for static sync' >&2
-  exit 1
-fi
-
-sync_dirs=("$STATIC_ROOT")
-mapfile -t discovered < <(sudo_run find /var/www /opt/codistan -type f -name config.js 2>/dev/null | head -n 40 || true)
-for cfg in "${discovered[@]:-}"; do
-  [ -n "${cfg:-}" ] || continue
-  sync_dirs+=("$(dirname "$cfg")")
+echo "=== restore unrelated vhosts if an earlier recovery corrupted them ==="
+for broken in \
+  /etc/nginx/sites-enabled/skillupshop.com \
+  /etc/nginx/sites-enabled/watch-jalwa.com \
+  /etc/nginx/conf.d/connection_upgrade.conf
+do
+  if sudo_run test -f "${broken}.bak.playeredge"; then
+    echo "restoring $broken from bak.playeredge"
+    sudo_run cp -a "${broken}.bak.playeredge" "$broken"
+  fi
 done
 
-tmp="$(mktemp -d)"
-docker cp "$web_cid:/usr/share/nginx/html/." "$tmp/"
-# Deduplicate destinations.
-mapfile -t sync_dirs < <(printf '%s\n' "${sync_dirs[@]}" | awk 'NF' | sort -u)
-for dir in "${sync_dirs[@]}"; do
-  echo "syncing web container html → $dir"
-  sudo_run mkdir -p "$dir"
-  sudo_run cp -a "$tmp"/. "$dir"/
-done
-rm -rf "$tmp"
-
-if sudo_run nginx -t; then
-  sudo_run systemctl reload nginx 2>/dev/null || sudo_run systemctl restart nginx 2>/dev/null || true
-else
+echo "=== nginx -t / reload ==="
+if ! sudo_run nginx -t; then
   echo 'ERROR: nginx -t failed after player edge rewire' >&2
-  sudo_run nginx -T 2>/dev/null | grep -nE 'gsmarena-play|location /|root |proxy_pass|game-arena-player|game-arena-admin' | head -n 160 >&2 || true
+  sudo_run nginx -T 2>/dev/null | grep -nE 'gsmarena-play|location /|root |proxy_pass|game-arena-player|game-arena-admin' | head -n 200 >&2 || true
   exit 1
 fi
+sudo_run systemctl reload nginx 2>/dev/null || sudo_run systemctl restart nginx
 
-sni_config="$(read_sni_config)"
-dns_config="$(read_public_dns_config || true)"
-printf 'sni_config_after=%s\n' "$sni_config"
-printf 'dns_config_after=%s\n' "$dns_config"
-
-printf '%s\n' "$sni_config" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" || {
-  echo "SNI edge config.js still does not match releaseSha=$EXPECTED_SHA after rewire" >&2
-  sudo_run nginx -T 2>/dev/null | grep -nE 'gsmarena-play|location /|root |proxy_pass|game-arena-player|game-arena-admin' | head -n 160 >&2 || true
+echo "=== probe loopback + host IPs + DNS A ==="
+sni_loopback="$(read_sni_loopback || true)"
+printf 'sni_loopback=%s\n' "$sni_loopback"
+printf '%s\n' "$sni_loopback" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" || {
+  echo 'ERROR: loopback SNI edge still stale after rewire' >&2
   exit 1
 }
 
-if [ -n "$dns_config" ]; then
-  printf '%s\n' "$dns_config" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" || {
-    echo "DNS edge config.js still does not match releaseSha=$EXPECTED_SHA after rewire" >&2
+probe_ips=("${host_ips[@]:-}")
+if [ -n "${public_ip:-}" ]; then
+  probe_ips+=("$public_ip")
+fi
+mapfile -t probe_ips < <(printf '%s\n' "${probe_ips[@]:-}" | awk 'NF' | sort -u)
+
+for ip in "${probe_ips[@]}"; do
+  cfg="$(read_sni_on_ip "$ip" || true)"
+  printf 'sni_on_%s=%s\n' "$ip" "$cfg"
+  printf '%s\n' "$cfg" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" || {
+    echo "ERROR: SNI edge on ${ip} still stale after rewire/sync" >&2
+    echo "static_root_config=$(sudo_run cat "$STATIC_ROOT/config.js" || true)" >&2
+    sudo_run nginx -T 2>/dev/null | grep -nE 'gsmarena-play|listen |server_name|location /|root |proxy_pass|game-arena-player' | head -n 220 >&2 || true
     exit 1
   }
-fi
+done
 
-echo "Public edge now serves releaseSha=$EXPECTED_SHA"
+echo "Public edge now serves releaseSha=$EXPECTED_SHA on loopback and host/public IPs"
