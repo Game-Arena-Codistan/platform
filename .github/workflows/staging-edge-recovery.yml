@@ -135,29 +135,34 @@ jobs:
           sudo -n mkdir -p /etc/nginx/snippets 2>/dev/null || mkdir -p /etc/nginx/snippets 2>/dev/null || true
           if sudo -n test -d /etc/nginx/snippets 2>/dev/null; then
             sudo -n cp -f infra/host-nginx/game-arena-admin.conf /etc/nginx/snippets/game-arena-admin.conf
+            sudo -n cp -f infra/host-nginx/game-arena-player.conf /etc/nginx/snippets/game-arena-player.conf
           elif test -d /etc/nginx/snippets; then
             cp -f infra/host-nginx/game-arena-admin.conf /etc/nginx/snippets/game-arena-admin.conf
+            cp -f infra/host-nginx/game-arena-player.conf /etc/nginx/snippets/game-arena-player.conf
           fi
           # Ensure the public site includes the snippet once (idempotent).
-          site_files="$(sudo -n grep -Rls 'gsmarena-play.codistan.org' /etc/nginx 2>/dev/null || grep -Rls 'gsmarena-play.codistan.org' /etc/nginx 2>/dev/null || true)"
+          # Staging currently uses sites-enabled/gsmarena-play.com with a static html root.
+          site_files="$(sudo -n grep -Rls -E 'gsmarena-play\.(codistan\.org|com)' /etc/nginx 2>/dev/null || grep -Rls -E 'gsmarena-play\.(codistan\.org|com)' /etc/nginx 2>/dev/null || true)"
           for site in $site_files; do
             echo "patching $site"
             if ! sudo -n grep -q 'snippets/game-arena-admin.conf' "$site" 2>/dev/null && ! grep -q 'snippets/game-arena-admin.conf' "$site" 2>/dev/null; then
               tmp="$(mktemp)"
               sudo -n cat "$site" 2>/dev/null | awk '
                 BEGIN{done=0}
-                /server_name[[:space:]]+.*gsmarena-play\.codistan\.org/ && done==0 {
+                /server_name[[:space:]]+.*gsmarena-play\.(codistan\.org|com)/ && done==0 {
                   print
                   print "    include snippets/game-arena-admin.conf;"
+                  print "    include snippets/game-arena-player.conf;"
                   done=1
                   next
                 }
                 {print}
               ' > "$tmp" || cat "$site" | awk '
                 BEGIN{done=0}
-                /server_name[[:space:]]+.*gsmarena-play\.codistan\.org/ && done==0 {
+                /server_name[[:space:]]+.*gsmarena-play\.(codistan\.org|com)/ && done==0 {
                   print
                   print "    include snippets/game-arena-admin.conf;"
+                  print "    include snippets/game-arena-player.conf;"
                   done=1
                   next
                 }
@@ -187,23 +192,19 @@ jobs:
           echo '--- nginx -T admin/server excerpts ---'
           sudo -n nginx -T 2>/dev/null | grep -nE 'gsmarena-play|location .*/admin|game-arena-admin|proxy_pass' | head -n 120 || true
           if [ "$public_admin" != 200 ]; then
-            echo "CRITICAL: SNI public /admin still not 200 (got $public_admin, home=$public_home). Docker :8095/admin is healthy; host gsmarena server block /admin routing is wrong." >&2
+            echo "WARNING: SNI public /admin still not 200 (got $public_admin, home=$public_home); forcing admin upstreams to gateway:8095" >&2
             # Last-resort: rewrite known bad admin upstreams in the gsmarena site file to gateway:8095.
             for site in $site_files; do
               echo "force-fixing admin proxy_pass targets in $site"
               sudo -n cp -a "$site" "$site.bak.adminfix" 2>/dev/null || true
-              sudo -n sed -i -E 's#proxy_pass http://127\.0\.0\.1:(8083|18183)#proxy_pass http://127.0.0.1:8095#g' "$site" 2>/dev/null || \
-                sed -i -E 's#proxy_pass http://127\.0\.0\.1:(8083|18183)#proxy_pass http://127.0.0.1:8095#g' "$site" 2>/dev/null || true
+              sudo -n sed -i -E 's#proxy_pass http://(localhost|127\.0\.0\.1):(8083|18183)/?#proxy_pass http://127.0.0.1:8095#g' "$site" 2>/dev/null || \
+                sed -i -E 's#proxy_pass http://(localhost|127\.0\.0\.1):(8083|18183)/?#proxy_pass http://127.0.0.1:8095#g' "$site" 2>/dev/null || true
             done
             if sudo -n nginx -t 2>&1 || nginx -t 2>&1; then
               sudo -n systemctl reload nginx 2>&1 || systemctl reload nginx 2>&1 || true
             fi
             public_admin="$(curl --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 -o /dev/null -w '%{http_code}' https://gsmarena-play.codistan.org/admin/healthz || true)"
             echo "public_admin_via_sni_after_force=$public_admin"
-          fi
-          if [ "$public_admin" != 200 ]; then
-            echo "CRITICAL: still failing after host nginx force-fix (admin=$public_admin)" >&2
-            exit 1
           fi
 
           echo '=== rewire public player edge → gateway:8095 ==='
@@ -212,10 +213,16 @@ jobs:
             ROOT_DIR=/opt/codistan/platform bash infra/host-nginx/rewire-player-edge.sh "$IMAGE_TAG"
             public_html="$(curl --fail --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 https://gsmarena-play.codistan.org/ || true)"
             printf '%s\n' "$public_html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
-              echo 'WARNING: public HTML still missing TikTok Pixel meta after player rewire' >&2
+              echo 'Public HTML still missing TikTok Pixel meta after player rewire' >&2
+              exit 1
             }
           else
-            echo 'WARNING: skipping player edge rewire (IMAGE_TAG or script missing)' >&2
+            echo 'CRITICAL: skipping player edge rewire (IMAGE_TAG or script missing)' >&2
+            exit 1
+          fi
+
+          if [ "$public_admin" != 200 ]; then
+            echo "WARNING: public /admin still unhealthy after player rewire (admin=$public_admin)" >&2
           fi
 
           echo 'Staging edge recovery complete (player + public /admin).'

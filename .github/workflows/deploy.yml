@@ -331,6 +331,22 @@ jobs:
           curl --silent --max-time 8 -k -o /dev/null -w 'host_https=%{http_code}\n' https://127.0.0.1/healthz || true
           REMOTE
 
+      - name: Verify public internet edge serves this SHA
+        run: |
+          set -euo pipefail
+          cfg="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/config.js)"
+          printf '%s\n' "$cfg"
+          printf '%s\n' "$cfg" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
+            echo "Internet edge config.js does not match IMAGE_TAG=$IMAGE_TAG" >&2
+            exit 1
+          }
+          html="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/)"
+          printf '%s\n' "$html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
+            echo 'Internet edge HTML is missing TikTok Pixel meta tag.' >&2
+            exit 1
+          }
+          echo "Internet edge confirmed releaseSha=$IMAGE_TAG with TikTok Pixel meta."
+
       - name: Staging deployment summary
         run: |
           {
@@ -340,6 +356,7 @@ jobs:
             echo "- Immutable image publication run: $RELEASE_RUN_ID"
             echo '- Deployment configuration synced from the same SHA.'
             echo '- Gateway, API, Admin and game-origin health checks passed on the server.'
+            echo '- Public internet edge config.js and TikTok Pixel meta verified.'
             echo '- Automated certification runs next and must pass before UAT.'
           } >> "$GITHUB_STEP_SUMMARY"
 
