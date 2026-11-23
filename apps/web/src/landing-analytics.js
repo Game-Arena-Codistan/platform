@@ -1,4 +1,5 @@
 import {logGa4Event} from './ga4.js';
+import {logTikTokEvent} from './tiktok-pixel.js';
 import {commerceForCampaign} from './landing-campaign.js';
 
 const CONTEXT_KEY='lp_context';
@@ -9,6 +10,23 @@ function trafficSource(utm){
   if(value==='M'||value==='META'||value==='FACEBOOK')return 'meta';
   if(value==='T'||value==='TIKTOK')return 'tiktok';
   return 'direct';
+}
+
+function commercePayload(context){
+  return{
+    contents:[{
+      content_id:context.item_id,
+      content_type:'product',
+      content_name:context.item_name
+    }],
+    content_type:'product',
+    value:context.value,
+    currency:context.currency,
+    traffic_source:context.traffic_source,
+    utm_code:context.utm_code,
+    banner_parameter:context.banner_parameter,
+    landing:context.landing
+  };
 }
 
 export function buildLandingAnalyticsContext(campaign,{landing}){
@@ -49,11 +67,16 @@ export function trackLandingView(context){
   persistLandingAnalyticsContext(context);
   logGa4Event('landing_view',{...context});
   logGa4Event('view_item',{item_id:context.item_id,item_name:context.item_name,value:context.value,currency:context.currency,landing:context.landing});
+  logTikTokEvent('PageView');
+  logTikTokEvent('ViewContent',commercePayload(context));
 }
 export function trackAddToCart(context){
   persistLandingAnalyticsContext(context);
   logGa4Event('add_to_cart',{...context,user_state:'new'});
   logGa4Event('begin_checkout',{...context});
+  const payload=commercePayload(context);
+  logTikTokEvent('AddToCart',payload);
+  logTikTokEvent('InitiateCheckout',payload);
 }
 export function trackPaymentConversion({paymentStatus,transactionId,context}={}){
   const ctx=context||readLandingAnalyticsContext();
@@ -61,4 +84,6 @@ export function trackPaymentConversion({paymentStatus,transactionId,context}={})
   if(paymentStatus!=='succeeded'||!transactionId||!ctx)return;
   if(!markToken(String(transactionId)))return;
   logGa4Event(ctx.conversion_event,{transaction_id:String(transactionId),value:ctx.value,currency:ctx.currency,item_id:ctx.item_id,item_name:ctx.item_name,landing:ctx.landing});
+  const tiktokEvent=ctx.conversion_event==='purchase'?'CompletePayment':'Subscribe';
+  logTikTokEvent(tiktokEvent,commercePayload(ctx),{event_id:String(transactionId)});
 }

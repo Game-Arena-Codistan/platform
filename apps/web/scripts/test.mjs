@@ -143,6 +143,26 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.doesNotMatch(landingSource,/pp_PaymentToken|pp_Password|pp_SecureHash/);
 });
 
+test('TikTok Pixel is wired for landing1 campaign analytics',async()=>{
+  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');
+  const analytics=await readFile(new URL('../src/landing-analytics.js',import.meta.url),'utf8');
+  const pixel=await readFile(new URL('../src/tiktok-pixel.js',import.meta.url),'utf8');
+  const runtime=await readFile(new URL('../deploy/40-game-arena-config.sh',import.meta.url),'utf8');
+  assert.match(html,/game-arena-tiktok-pixel-id" content="DBU5QTJC77UCDH70PUBG"/);
+  assert.match(html,/https:\/\/analytics\.tiktok\.com/);
+  assert.match(html,/https:\/\/analytics-ipv6\.tiktok\.com/);
+  assert.match(pixel,/analytics\.tiktok\.com\/i18n\/pixel\/events\.js/);
+  assert.match(pixel,/DBU5QTJC77UCDH70PUBG/);
+  assert.match(analytics,/logTikTokEvent\('PageView'\)/);
+  assert.match(analytics,/logTikTokEvent\('ViewContent'/);
+  assert.match(analytics,/logTikTokEvent\('AddToCart'/);
+  assert.match(analytics,/logTikTokEvent\('InitiateCheckout'/);
+  assert.match(analytics,/CompletePayment|Subscribe/);
+  assert.match(analytics,/event_id:String\(transactionId\)/);
+  assert.match(runtime,/TIKTOK_PIXEL_ID/);
+  assert.match(runtime,/tiktokPixelId/);
+});
+
 test('Vercel preview mocks match contract 1.0.0',()=>{
   assert.equal(contract.contractVersion,'1.0.0');
   assert.equal(contract.examples.otpRequested.debugCode,'123456');

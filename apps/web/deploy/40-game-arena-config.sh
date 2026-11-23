@@ -6,8 +6,10 @@ ORIGIN=${GAME_ARENA_GAME_ORIGIN:-}
 HOSTS=${GAME_ARENA_GAME_HOSTS:-}
 RELEASE=${GAME_ARENA_RELEASE_SHA:-dev}
 ANALYTICS=${GAME_ARENA_ANALYTICS_ENDPOINT:-/api/v1/events}
+TIKTOK_PIXEL_ID=${TIKTOK_PIXEL_ID:-DBU5QTJC77UCDH70PUBG}
 case "$MODE" in mock|live) ;; *) echo 'Invalid GAME_ARENA_MODE' >&2; exit 1;; esac
 case "$RELEASE" in *[!A-Za-z0-9._-]*|'') echo 'Invalid GAME_ARENA_RELEASE_SHA' >&2; exit 1;; esac
+case "$TIKTOK_PIXEL_ID" in *[!A-Za-z0-9]*|'') echo 'Invalid TIKTOK_PIXEL_ID' >&2; exit 1;; esac
 case "$ORIGIN" in
   '') GAME_SOURCE='' ;;
   https://*) GAME_SOURCE=$(printf '%s' "$ORIGIN" | sed -E 's#^(https://[^/]+).*$#\1#') ;;
@@ -17,10 +19,10 @@ case "$ORIGIN" in
     ;;
   *) echo 'GAME_ARENA_GAME_ORIGIN must be HTTPS except for local dev Compose' >&2; exit 1 ;;
 esac
-for value in "$API" "$ORIGIN" "$HOSTS" "$ANALYTICS"; do case "$value" in *'"'*|*\\*|*'
+for value in "$API" "$ORIGIN" "$HOSTS" "$ANALYTICS" "$TIKTOK_PIXEL_ID"; do case "$value" in *'"'*|*\\*|*'
 '*|*''*) echo 'Runtime configuration contains unsafe characters' >&2; exit 1;; esac; done
 cat > /usr/share/nginx/html/config.js <<EOF
-window.GAME_ARENA_CONFIG={mode:"${MODE}",apiBaseUrl:"${API}",gameOrigin:"${ORIGIN}",gameHosts:"${HOSTS}".split(',').map(value=>value.trim()).filter(Boolean),releaseSha:"${RELEASE}",analyticsEndpoint:"${ANALYTICS}"};
+window.GAME_ARENA_CONFIG={mode:"${MODE}",apiBaseUrl:"${API}",gameOrigin:"${ORIGIN}",gameHosts:"${HOSTS}".split(',').map(value=>value.trim()).filter(Boolean),releaseSha:"${RELEASE}",analyticsEndpoint:"${ANALYTICS}",tiktokPixelId:"${TIKTOK_PIXEL_ID}"};
 EOF
 cp /usr/share/nginx/html/index.template.html /usr/share/nginx/html/index.html
 if [ -n "$GAME_SOURCE" ]; then
@@ -30,5 +32,6 @@ if [ -n "$GAME_SOURCE" ]; then
     sed -i "s#img-src 'self' data:#img-src 'self' data: ${GAME_SOURCE}#" /usr/share/nginx/html/index.html
   fi
 fi
+sed -i "s#name=\"game-arena-tiktok-pixel-id\" content=\"[^\"]*\"#name=\"game-arena-tiktok-pixel-id\" content=\"${TIKTOK_PIXEL_ID}\"#" /usr/share/nginx/html/index.html
 sed -i "s#/src/app.js#/src/app.js?v=${RELEASE}#" /usr/share/nginx/html/index.html
 sed -i "s#/styles/tokens.css#/styles/tokens.css?v=${RELEASE}#;s#/styles/app.css#/styles/app.css?v=${RELEASE}#;s#/styles/responsive.css#/styles/responsive.css?v=${RELEASE}#" /usr/share/nginx/html/index.html

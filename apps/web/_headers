@@ -3,7 +3,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://gamesbundle.codistan.org; connect-src 'self'; frame-src 'self' https://gamesbundle.codistan.org; object-src 'none'; base-uri 'self'; form-action 'self' https://payments.jazzcash.com.pk https://sandbox.jazzcash.com.pk; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://www.googletagmanager.com https://analytics.tiktok.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.googletagmanager.com https://analytics.tiktok.com https://gamesbundle.codistan.org; connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://analytics.tiktok.com https://analytics-ipv6.tiktok.com https://business-api.tiktok.com; frame-src 'self' https://gamesbundle.codistan.org; object-src 'none'; base-uri 'self'; form-action 'self' https://payments.jazzcash.com.pk https://sandbox.jazzcash.com.pk; frame-ancestors 'none'; upgrade-insecure-requests
 
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
