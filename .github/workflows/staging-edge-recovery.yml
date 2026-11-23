@@ -154,7 +154,6 @@ jobs:
                 /server_name[[:space:]]+.*gsmarena-play\.(codistan\.org|com)/ && done==0 {
                   print
                   print "    include snippets/game-arena-admin.conf;"
-                  print "    include snippets/game-arena-player.conf;"
                   done=1
                   next
                 }
@@ -164,7 +163,6 @@ jobs:
                 /server_name[[:space:]]+.*gsmarena-play\.(codistan\.org|com)/ && done==0 {
                   print
                   print "    include snippets/game-arena-admin.conf;"
-                  print "    include snippets/game-arena-player.conf;"
                   done=1
                   next
                 }
@@ -183,10 +181,6 @@ jobs:
           else
             echo 'CRITICAL: skipping player edge rewire (IMAGE_TAG or script missing)' >&2
             exit 1
-          fi
-
-          if [ "$public_admin" != 200 ]; then
-            echo "WARNING: public /admin still unhealthy after player rewire (admin=$public_admin)" >&2
           fi
 
           echo 'Staging edge recovery local rewire complete.'
