@@ -4,9 +4,10 @@ import {signInFromAccount} from './helpers.mjs';
 test('@player guest account shows legal documents and upgrade path',async({page})=>{
   await page.goto('/#/account');
   await expect(page.getByRole('heading',{name:'Guest player'})).toBeVisible();
-  await expect(page.getByRole('link',{name:'Privacy'})).toBeVisible();
-  await expect(page.getByRole('link',{name:'Terms'})).toBeVisible();
-  await expect(page.getByRole('link',{name:'Reward rules'})).toBeVisible();
+  const account=page.locator('#app');
+  await expect(account.getByRole('link',{name:'Privacy'})).toBeVisible();
+  await expect(account.getByRole('link',{name:'Terms'})).toBeVisible();
+  await expect(account.getByRole('link',{name:'Reward rules'})).toBeVisible();
   for(const path of ['/legal/privacy.html','/legal/terms.html','/legal/rewards.html']){
     const response=await page.context().request.get(path);
     expect(response.status(),`${path} should be reachable`).toBe(200);
