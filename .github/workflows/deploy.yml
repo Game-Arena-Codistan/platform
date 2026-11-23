@@ -159,12 +159,18 @@ jobs:
             echo 'ADMIN_API_KEYS is present for /admin browser login (generated or existing; value not logged).'
           fi
 
+          # Persist the exact release identity so later edge-recovery / compose
+          # invocations cannot recreate containers from a stale IMAGE_TAG.
+          upsert_env IMAGE_BASE "$IMAGE_BASE"
+          upsert_env IMAGE_TAG "$IMAGE_TAG"
+
           # JazzCash 2026 MWallet orchestrator staging defaults (non-secret).
           # Allow both live and staging frontends against the shared API host.
           upsert_env ALLOWED_ORIGINS 'https://gsmarena-play.com,https://gsmarena-play.codistan.org'
           upsert_env JAZZCASH_RETURN_URL 'https://gsmarena-play.codistan.org/callback'
           upsert_env JAZZCASH_ORCHESTRATOR_BASE_URL 'https://onlinepayments.jazzcash.com.pk'
           upsert_env JAZZCASH_TIMEOUT_MS '8000'
+          upsert_env TIKTOK_PIXEL_ID "${TIKTOK_PIXEL_ID:-DBU5QTJC77UCDH70PUBG}"
           if [ "${APPLY_JAZZCASH_ORCHESTRATOR:-}" = 'true' ] && [ -n "${JAZZCASH_MERCHANT_ID:-}" ] && [ -n "${JAZZCASH_PASSWORD:-}" ] && [ -n "${JAZZCASH_INTEGRITY_SALT:-}" ]; then
             upsert_env JAZZCASH_MODE orchestrator
             upsert_env PAYMENT_SERVICE_MODE disabled
@@ -231,12 +237,16 @@ jobs:
           }
 
           reclaim_admin_port
+          # Bring the full stack up, then force-recreate app containers so web
+          # always boots the exact IMAGE_TAG (plain `up -d` has left a stale
+          # releaseSha on the public edge before).
           if ! "${compose[@]}" up -d --remove-orphans; then
             echo 'compose up failed; reclaiming admin port and retrying once' >&2
             reclaim_admin_port
             "${compose[@]}" up -d --remove-orphans --no-deps admin
             "${compose[@]}" up -d --remove-orphans
           fi
+          "${compose[@]}" up -d --no-deps --force-recreate --pull always api web admin game-origin
 
           # The gateway configuration is bind-mounted. Updating the file does not
           # make an already-running nginx process reload it, so validate the exact
@@ -287,6 +297,19 @@ jobs:
           "${compose[@]}" ps
           docker image prune -f >/dev/null
 
+          # Prove the public web edge actually serves this SHA (not a stale container).
+          web_config="$(curl --fail --silent --max-time 8 http://127.0.0.1:8095/config.js)"
+          printf '%s\n' "$web_config" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
+            echo "Web config.js releaseSha does not match IMAGE_TAG=$IMAGE_TAG" >&2
+            printf '%s\n' "$web_config" >&2
+            exit 1
+          }
+          web_html="$(curl --fail --silent --max-time 8 http://127.0.0.1:8095/)"
+          printf '%s\n' "$web_html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
+            echo 'Deployed web HTML is missing TikTok Pixel meta tag.' >&2
+            exit 1
+          }
+
           # Recover the public edge if host nginx stopped accepting connections.
           if command -v systemctl >/dev/null 2>&1; then
             sudo -n systemctl restart nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
@@ -297,6 +320,14 @@ jobs:
           fi
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/healthz >/dev/null
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/admin/healthz >/dev/null
+          public_config="$(curl --fail --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 https://gsmarena-play.codistan.org/config.js || true)"
+          if [ -n "$public_config" ]; then
+            printf '%s\n' "$public_config" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
+              echo "Public edge config.js releaseSha does not match IMAGE_TAG=$IMAGE_TAG" >&2
+              printf '%s\n' "$public_config" >&2
+              exit 1
+            }
+          fi
           # Host edge (best-effort): prove the public reverse proxy is listening again.
           curl --silent --max-time 5 -o /dev/null -w 'host_http=%{http_code}\n' http://127.0.0.1/healthz || true
           curl --silent --max-time 8 -k -o /dev/null -w 'host_https=%{http_code}\n' https://127.0.0.1/healthz || true
