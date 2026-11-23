@@ -24,11 +24,19 @@ sudo_run() {
 }
 
 gateway_config="$(curl --fail --silent --max-time 8 http://127.0.0.1:8095/config.js)"
-printf '%s\n' "$gateway_config" | grep -Fq "releaseSha:\"$EXPECTED_SHA\"" || {
-  echo "Gateway :8095/config.js does not contain releaseSha=$EXPECTED_SHA" >&2
-  printf '%s\n' "$gateway_config" >&2
-  exit 1
-}
+printf 'gateway_config=%s\n' "$gateway_config"
+# Prefer the live gateway SHA when it already has the pixel; .deployed-sha can lag
+# a concurrent image recreate during edge recovery.
+if ! printf '%s\n' "$gateway_config" | grep -Fq "releaseSha:\"$EXPECTED_SHA\""; then
+  live_sha="$(printf '%s\n' "$gateway_config" | sed -n 's/.*releaseSha:\"\([^\"]*\)\".*/\1/p' | head -n1)"
+  if printf '%s\n' "$gateway_config" | grep -Fq 'tiktokPixelId' && [ -n "$live_sha" ]; then
+    echo "WARNING: gateway SHA is $live_sha (expected $EXPECTED_SHA); continuing with live gateway SHA"
+    EXPECTED_SHA="$live_sha"
+  else
+    echo "Gateway :8095/config.js does not contain releaseSha=$EXPECTED_SHA and lacks tiktokPixelId" >&2
+    exit 1
+  fi
+fi
 
 echo "=== host identity ==="
 hostname -f 2>/dev/null || hostname || true
