@@ -188,7 +188,7 @@ jobs:
           REMOTE
 
       - name: Sync player html to public DNS edge host when distinct
-        if: ${{ !cancelled() }}
+        if: ${{ always() && !cancelled() }}
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
