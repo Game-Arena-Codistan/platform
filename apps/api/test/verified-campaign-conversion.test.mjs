@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {MemoryStore} from '../src/adapters/memory-store.mjs';
+import {issueCampaignReceipt,verifiedCampaignConversion} from '../src/lib/verified-campaign-conversion.mjs';
+test('verified campaign receipt cannot authorize or fabricate a payment',()=>{
+  const store=new MemoryStore(),now=Date.now();
+  store.createTransaction({id:'paid',kind:'membership',status:'paid',userId:'owner',providerReference:'provider-1',planId:'monthly',amountPkr:990,currency:'PKR',paidAt:new Date(now).toISOString()});
+  store.createTransaction({id:'pending',kind:'membership',status:'pending',userId:'owner',providerReference:'provider-2',amountPkr:990,currency:'PKR'});
+  const receipt=issueCampaignReceipt(store,'paid',now);
+  assert.ok(receipt);assert.equal(store.getTransaction('paid').campaignReceiptHash===receipt,false);
+  assert.equal(issueCampaignReceipt(store,'pending',now),null);
+  assert.equal(verifiedCampaignConversion(store,{id:'paid',receipt:'forged',now}),null);
+  assert.equal(verifiedCampaignConversion(store,{id:'paid',userId:'other',now}),null);
+  assert.equal(verifiedCampaignConversion(store,{id:'paid',receipt,now:now+16*60000}),null);
+  assert.equal(verifiedCampaignConversion(store,{id:'pending',receipt,now}),null);
+  assert.equal(verifiedCampaignConversion(store,{id:'paid',receipt,now}).transactionId,'provider-1');
+  assert.equal(verifiedCampaignConversion(store,{id:'paid',userId:'owner',now}).value,990);
+  assert.equal(store.getEntitlement('owner').tier,'free');
+  store.saveTransaction({...store.getTransaction('paid'),status:'refunded'});
+  assert.equal(verifiedCampaignConversion(store,{id:'paid',receipt,now}),null);
+});

@@ -4,6 +4,7 @@ import {assertCsrf,normalizeIdentifier,parseCookies,requestIp,sha256} from './li
 import {PLAN_DEFINITIONS} from './services/payments.mjs';
 import {jazzCashRequestId,jazzCashTxnRefNo} from './adapters/jazzcash-orchestrator.mjs';
 import {sanitizeAttribution} from './lib/campaign-attribution.mjs';
+import {issueCampaignReceipt,verifiedCampaignConversion} from './lib/verified-campaign-conversion.mjs';
 
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const msisdn=value=>{const phone=String(value||'').trim();if(!/^(\+92|0)?3\d{9}$/.test(phone.replace(/\s/g,'')))throw fail('JazzCash mobile number must be a valid Pakistani MSISDN (03XXXXXXXXX).',400,'invalid_body');const digits=phone.replace(/\D/g,'');return digits.startsWith('92')?`0${digits.slice(2)}`:digits.startsWith('0')?digits:`0${digits}`;};
@@ -366,13 +367,20 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
           await completeWalletLink(userId,fields);
           const planCodeValue=intent?.planCode||'monthly';
           const sub=await chargeLinkedWallet(userId,planCodeValue,intent?.attribution);
-          return redirect(res,303,`${appOrigin}/?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
+          const receipt=issueCampaignReceipt(store,sub.id,clock());
+          return redirect(res,303,`${appOrigin}/?payment=succeeded&orderId=${encodeURIComponent(sub.id)}${receipt?`&receipt=${encodeURIComponent(receipt)}`:''}`);
         }catch(error){
           store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
           return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);
         }
       }
 
+      if(method==='POST'&&path==='/v1/billing/verified-conversion'){
+        assertOrigin(req);const ip=sha256(requestIp(req));if(store.hitRateLimit(`conversion-receipt:${ip}`,40,60000,clock()))throw fail('Too many requests.',429,'rate_limited');
+        const {value}=await readJson(req,4096);const proof=verifiedCampaignConversion(store,{id:value.orderId,receipt:value.receipt,userId:authContext(req)?.user?.id,now:clock()});
+        if(!proof)throw fail('Payment confirmation unavailable.',404,'payment_unverified');
+        return reply(200,proof);
+      }
       if(method==='GET'&&path==='/v1/billing/plans')return reply(200,{enabled:true,mode:'jazzcash_orchestrator',plans:planCatalog()});
 
       // Proxies JazzCash Status Inquiry (no pp_Version). Frontend never calls JazzCash directly.

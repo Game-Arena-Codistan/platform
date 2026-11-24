@@ -4,7 +4,9 @@ const pick=(value,fallback)=>{const raw=String(value??'').trim();return raw||fal
 
 export function normalizeLandingCampaign(input={},defaults=DEFAULT_LANDING_CAMPAIGN){
   return{
-    utm:pick(input.utm,defaults.utm),
+    utm:pick(input.utm||input.utm_source,defaults.utm),
+    utm_source:pick(input.utm_source||input.utm,defaults.utm),
+    ...Object.fromEntries(['utm_campaign','utm_medium','utm_content','utm_term','ref','campaign_id','creative_id'].filter(key=>input[key]).map(key=>[key,String(input[key]).slice(0,80)])),
     package:pick(input.package,defaults.package),
     parameter:pick(input.parameter,defaults.parameter),
     payment:pick(input.payment,defaults.payment)
@@ -22,6 +24,7 @@ export function planCodeForPackage(packageId){
 
 export function buildLandingQuery(campaign){
   const params=new URLSearchParams({utm:campaign.utm,package:campaign.package,parameter:campaign.parameter,payment:campaign.payment});
+  for(const key of ['utm_source','utm_campaign','utm_medium','utm_content','utm_term','ref','campaign_id','creative_id'])if(campaign[key])params.set(key,campaign[key]);
   return `?${params.toString()}`;
 }
 export function buildLandingPath(campaign=DEFAULT_LANDING_CAMPAIGN){return `/mainLanding${buildLandingQuery(normalizeLandingCampaign(campaign))}`;}
@@ -62,7 +65,8 @@ export function commerceForCampaign(campaign){
 export function attributionForLanding(campaign,{landing,landingPath}){
   return{
     utm:campaign.utm,
-    utm_source:campaign.utm,
+    utm_source:campaign.utm_source||campaign.utm,
+    ...Object.fromEntries(['utm_campaign','utm_medium','utm_content','utm_term','ref','campaign_id','creative_id'].filter(key=>campaign[key]).map(key=>[key,campaign[key]])),
     package:campaign.package,
     parameter:campaign.parameter,
     payment:campaign.payment,
