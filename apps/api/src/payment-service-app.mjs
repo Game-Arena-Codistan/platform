@@ -2,6 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {readJson,readPayload,send,problem,corsHeaders} from './lib/http.mjs';
 import {assertCsrf,hmac,parseCookies,safeEqual,sha256} from './lib/security.mjs';
 import {loadPaymentServiceSettings,PaymentServiceClient} from './adapters/payment-service-client.mjs';
+import {saveExternalLink,bindExternalSubscription,bindWalletEvent,projectExternalPayment} from './services/external-campaign-payments.mjs';
+import {verifiedCampaignConversion} from './lib/verified-campaign-conversion.mjs';
 
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -94,7 +96,7 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
         const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,16384);
         const result=await client.linkWallet(user.id,{msisdn:msisdn(value.msisdn),planCode:value.planCode?planCode(value.planCode):undefined,appReturnUrl:settings.appReturnUrl||undefined});
         // Log initiation only. Do not fabricate a provider/order correlation from a user or timestamp.
-        if(campaignAnalytics){const attribution=await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:user.id}).catch(()=>null);if(result?.requestId)await campaignAnalytics.stage('jazzcash_initiated',{attemptId:String(result.requestId),attribution:attribution||{},userId:user.id}).catch(()=>{});}
+        if(campaignAnalytics){const attribution=await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:user.id}).catch(()=>null);if(result?.requestId){saveExternalLink(store,{requestId:result.requestId,userId:user.id,attribution,planCode:value.planCode});await campaignAnalytics.stage('jazzcash_initiated',{attemptId:String(result.requestId),attribution:attribution||{},userId:user.id}).catch(()=>{});}}
         store.audit.write({actor:user.id,action:'payment_service.wallet_link_started',targetType:'user',targetId:user.id,requestId,metadata:{planCode:value.planCode||null}});
         return reply(201,result);
       }
@@ -108,10 +110,11 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
         const {user}=requireUser(req);const result=await authoritativeStatus(user.id,'payment_service_poll');return reply(200,{...result.status,appEntitlement:result.entitlement});
       }
       if(method==='POST'&&path==='/v1/billing/subscriptions'){
-        const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,8192);const result=await client.subscribe(user.id,{planCode:planCode(value.planCode),skipTrial:Boolean(value.skipTrial)});return reply(201,result);
+        const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,8192);const selected=planCode(value.planCode);const attribution=campaignAnalytics?await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:user.id}).catch(()=>null):null;const result=await client.subscribe(user.id,{planCode:selected,skipTrial:Boolean(value.skipTrial)});if(result?.id)bindExternalSubscription(store,{subscriptionId:result.id,userId:user.id,planCode:result.plan_code||selected,attribution});return reply(201,result);
       }
       const cancel=path.match(/^\/v1\/billing\/subscriptions\/([^/]+)\/cancel$/);
       if(method==='POST'&&cancel){const {user}=requireUser(req);mutation(req);const current=await client.status(user.id);if(!current?.subscriptions?.some(item=>item.id===cancel[1]))throw fail('Subscription not found.',404,'not_found');const result=await client.cancelSubscription(cancel[1]);const reconciled=await authoritativeStatus(user.id,'payment_service_cancel');return reply(200,{...result,appEntitlement:reconciled.entitlement});}
+      if(method==='POST'&&path==='/v1/billing/verified-conversion'){const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,4096);const proof=verifiedCampaignConversion(store,{id:value.orderId,userId:user.id,now:clock()});if(!proof)throw fail('Payment confirmation unavailable.',404,'payment_unverified');return reply(200,proof);}
       if(method==='GET'&&path==='/v1/billing/payments'){const {user}=requireUser(req);return reply(200,await client.payments(user.id));}
       const payment=path.match(/^\/v1\/billing\/payments\/([^/]+)$/);
       if(method==='GET'&&payment){const {user}=requireUser(req);const list=await client.payments(user.id);if(!Array.isArray(list)||!list.some(item=>item.id===payment[1]))throw fail('Payment not found.',404,'not_found');return reply(200,await client.payment(payment[1]));}
@@ -124,10 +127,14 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
         const recorded=store.addPaymentEvent({transactionId,providerEventId:String(value.eventId),signatureValid:true,kind:String(value.type),providerStatus:String(value.type),userId:user.id,eventCreatedAt:String(value.createdAt||''),processedAt:null,protectedEvidenceReference:`payment-service:${value.eventId}`});
         if(recorded.duplicate&&recorded.event?.processedAt)return reply(202,{accepted:true,duplicate:true});
         const reconciled=await authoritativeStatus(user.id,`payment_service_webhook:${value.type}`);
-        recorded.event.processedAt=new Date(clock()).toISOString();recorded.event.duplicate=Boolean(recorded.duplicate);store.paymentEvents.set(String(value.eventId),recorded.event);
+        if(value.type==='wallet.linked')bindWalletEvent(store,value);
         if(String(value.type).startsWith('payment.')){
-          try{await client.payments(user.id);}catch{store.createReconciliationCase({transactionId,reason:'payment_history_reconciliation_failed',providerStatus:value.type});}
+          // Retry a signed event if authoritative facts are temporarily unavailable. Never fabricate a paid row.
+          const tx=await projectExternalPayment({store,client,event:value,status:reconciled.status,clock});
+          const stage={'payment.pending':'payment_attempt','payment.failed':'payment_failed','payment.completed':'payment_succeeded'}[value.type];
+          if(tx&&stage&&campaignAnalytics)await campaignAnalytics.stage(stage,{attemptId:tx.id,orderId:tx.subscriptionPeriodId,userId:user.id,attribution:tx.attribution||{},failureCode:value.type==='payment.failed'?String(value.data?.responseCode||'unknown'):null}).catch(()=>{});
         }
+        recorded.event.processedAt=new Date(clock()).toISOString();recorded.event.duplicate=Boolean(recorded.duplicate);store.paymentEvents.set(String(value.eventId),recorded.event);
         store.audit.write({actor:'payment-service',action:'payment_service.webhook_processed',targetType:'user',targetId:user.id,requestId,metadata:{eventId:value.eventId,type:value.type,subscriptionStatus:reconciled.status?.status?.subscription_status||null}});
         return reply(202,{accepted:true,duplicate:Boolean(recorded.duplicate)});
       }
