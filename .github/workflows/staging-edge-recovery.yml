@@ -1,14 +1,9 @@
 name: Staging edge recovery
 
+# Manual only. Host nginx proxies / shared domains are DevOps-owned and must
+# not be rewritten by automated pushes (other projects share the same edge).
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'infra/gateway/**'
-      - 'infra/host-nginx/**'
-      - 'infra/docker-compose.staging.yml'
-      - '.github/workflows/staging-edge-recovery.yml'
 
 permissions:
   contents: read

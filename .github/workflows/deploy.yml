@@ -90,7 +90,7 @@ jobs:
           set -euo pipefail
           tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf infra/host-nginx | \
             ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env; test -f infra/host-nginx/rewire-player-edge.sh; chmod +x infra/host-nginx/rewire-player-edge.sh'
+              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env'
 
       - name: Authenticate staging server to GHCR with ephemeral token
         env:
@@ -297,8 +297,9 @@ jobs:
           "${compose[@]}" ps
           docker image prune -f >/dev/null
 
-          # Prove gateway web serves this SHA, then rewire host nginx if the
-          # public edge is still stuck on a stale static tree.
+          # Prove Compose gateway web serves this SHA only.
+          # Do not restart host nginx, rewrite site proxies, sync static roots,
+          # or change DNS — shared host edge/domains are DevOps-owned.
           web_config="$(curl --fail --silent --max-time 8 http://127.0.0.1:8095/config.js)"
           printf '%s\n' "$web_config" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
             echo "Web config.js releaseSha does not match IMAGE_TAG=$IMAGE_TAG" >&2
@@ -310,42 +311,22 @@ jobs:
             echo 'Deployed web HTML is missing TikTok Pixel meta tag.' >&2
             exit 1
           }
-
-          if command -v systemctl >/dev/null 2>&1; then
-            sudo -n systemctl restart nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
-            sudo -n systemctl is-active nginx >/dev/null 2>&1 || systemctl is-active nginx >/dev/null 2>&1 || true
-          fi
-          if command -v ss >/dev/null 2>&1; then
-            ss -lntp | grep -E ':(80|443|8095|18183)\s' || true
-          fi
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/healthz >/dev/null
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/admin/healthz >/dev/null
-          chmod +x infra/host-nginx/rewire-player-edge.sh
-          ROOT_DIR=/opt/codistan/platform bash infra/host-nginx/rewire-player-edge.sh "$IMAGE_TAG"
-          public_html="$(curl --fail --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 https://gsmarena-play.codistan.org/)"
-          printf '%s\n' "$public_html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
-            echo 'Public edge HTML is missing TikTok Pixel meta tag.' >&2
-            exit 1
-          }
-          curl --silent --max-time 5 -o /dev/null -w 'host_http=%{http_code}\n' http://127.0.0.1/healthz || true
-          curl --silent --max-time 8 -k -o /dev/null -w 'host_https=%{http_code}\n' https://127.0.0.1/healthz || true
           REMOTE
 
-      - name: Verify public internet edge serves this SHA
+      - name: Observe public hostname (DevOps-owned; do not fail deploy)
         run: |
-          set -euo pipefail
-          cfg="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/config.js)"
+          set -uo pipefail
+          cfg="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/config.js || true)"
           printf '%s\n' "$cfg"
-          printf '%s\n' "$cfg" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
-            echo "Internet edge config.js does not match IMAGE_TAG=$IMAGE_TAG" >&2
-            exit 1
-          }
-          html="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/)"
-          printf '%s\n' "$html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
-            echo 'Internet edge HTML is missing TikTok Pixel meta tag.' >&2
-            exit 1
-          }
-          echo "Internet edge confirmed releaseSha=$IMAGE_TAG with TikTok Pixel meta."
+          if printf '%s\n' "$cfg" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" \
+            && curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/ | grep -Fq 'game-arena-tiktok-pixel-id'; then
+            echo "Public hostname already serves releaseSha=$IMAGE_TAG with TikTok Pixel meta."
+          else
+            echo "NOTE: gsmarena-play.codistan.org does not yet show this SHA."
+            echo "Compose gateway :8095 was verified. Host nginx / DNS / proxies are DevOps-owned — not modified by this deploy."
+          fi
 
       - name: Staging deployment summary
         run: |
@@ -354,10 +335,10 @@ jobs:
             echo
             echo "- Exact SHA: \`$IMAGE_TAG\`"
             echo "- Immutable image publication run: $RELEASE_RUN_ID"
-            echo '- Deployment configuration synced from the same SHA.'
-            echo '- Gateway, API, Admin and game-origin health checks passed on the server.'
-            echo '- Public internet edge config.js and TikTok Pixel meta verified.'
-            echo '- Automated certification runs next and must pass before UAT.'
+            echo "- Deployment configuration synced from the same SHA."
+            echo "- Gateway, API, Admin and game-origin health checks passed on the server."
+            echo "- Host nginx proxies / domains were not modified (DevOps-owned)."
+            echo "- Automated certification runs next and must pass before UAT."
           } >> "$GITHUB_STEP_SUMMARY"
 
   certify:
