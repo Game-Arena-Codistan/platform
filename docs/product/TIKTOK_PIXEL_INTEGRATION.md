@@ -27,12 +27,15 @@
 | --- | --- |
 | Landing open (`/landing1`, `/mainLanding`) | `PageView`, `ViewContent` |
 | Subscribe Now + JazzCash MSISDN submit | `InitiateCheckout`, `AddPaymentInfo` |
-| Payment / subscription success | `Subscribe` (`event_id` = order / txn id; once per order) |
+| Payment / subscription success with granted `orderId` | `Subscribe` (`event_id` = subscription id; once) |
+| Wallet link or return without `orderId` | no conversion event |
 | Failed / pending payment | no conversion event |
 
 Do **not** fire `AddToCart` or `CompletePayment`.
 
-Conversions are deduped once per `transaction_id` in `sessionStorage` (`lp_sent_tokens`).
+`Subscribe` runs only when the return URL has a real `orderId` (server subscription id). Campaign context is stored in `localStorage` as well as `sessionStorage` so JazzCash’s cross-site return can still build the payload. The pixel calls `ttq.page()` once on that new document before `ttq.track('Subscribe')`.
+
+Conversions are deduped once per order id in `sessionStorage` (`lp_sent_tokens`).
 
 ## Environment
 

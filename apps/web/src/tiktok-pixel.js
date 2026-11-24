@@ -50,6 +50,13 @@ function ensureTtq(){
   if(window.__GAME_ARENA_TIKTOK_PIXEL_ID!==id){
     ttq.load(id);
     window.__GAME_ARENA_TIKTOK_PIXEL_ID=id;
+    window.__GAME_ARENA_TIKTOK_PAGED=false;
+  }
+  // Fresh document after JazzCash's cross-site return has no prior ttq.page().
+  // TikTok drops track() (including Subscribe) until the base page call runs.
+  if(!window.__GAME_ARENA_TIKTOK_PAGED){
+    ttq.page();
+    window.__GAME_ARENA_TIKTOK_PAGED=true;
   }
   return ttq;
 }

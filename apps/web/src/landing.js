@@ -212,7 +212,7 @@ async function startCheckout({landing,campaign,commerce}){
       attribution:attributionForLanding(campaign,{landing,landingPath})
     });
     if(result?.mock){
-      trackPaymentConversion({paymentStatus:'succeeded',transactionId:result.transactionId||'mock-landing'});
+      if(result.transactionId)trackPaymentConversion({paymentStatus:'succeeded',transactionId:result.transactionId});
       try{sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:commerce.planCode,landing,at:Date.now()}));}catch{/* ignore */}
       update({entitlement:'premium',selectedPlan:commerce.planCode==='yearly'?'yearly':'monthly'});
       status.textContent='Premium Features Unlocked. Redirecting…';
@@ -239,15 +239,17 @@ function handleLandingReturn(campaign,landing){
     return;
   }
   if(payment==='succeeded'){
-    const txn=params.get('orderId')||params.get('txn')||params.get('transactionId')||'landing-return';
-    trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
+    const txn=params.get('orderId')||params.get('txn')||params.get('transactionId')||'';
+    if(txn)trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
     update({entitlement:'premium',selectedPlan:planCodeForPackage(campaign.package)==='yearly'?'yearly':'monthly'});
     try{
       const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
       sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:planCodeForPackage(campaign.package),landing,at:Date.now()}));
     }catch{/* ignore */}
     if(status)status.textContent='Premium Features Unlocked. Redirecting…';
-    setTimeout(()=>location.assign('/?payment=succeeded'),900);
+    const next=new URLSearchParams({payment:'succeeded'});
+    if(txn)next.set('orderId',txn);
+    setTimeout(()=>location.assign(`/?${next}`),1200);
   }
 }
 

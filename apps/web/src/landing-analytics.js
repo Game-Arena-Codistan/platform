@@ -4,6 +4,7 @@ import {commerceForCampaign} from './landing-campaign.js';
 
 const CONTEXT_KEY='lp_context';
 const TOKENS_KEY='lp_sent_tokens';
+const PLACEHOLDER_ORDERS=new Set(['landing-return','mock-landing']);
 
 function trafficSource(utm){
   const value=String(utm||'').trim().toUpperCase();
@@ -48,10 +49,22 @@ export function buildLandingAnalyticsContext(campaign,{landing}){
 }
 
 export function persistLandingAnalyticsContext(context){
-  try{sessionStorage.setItem(CONTEXT_KEY,JSON.stringify(context));}catch{/* ignore */}
+  const raw=JSON.stringify(context);
+  // sessionStorage can be dropped across JazzCash's cross-site POST; localStorage survives.
+  try{sessionStorage.setItem(CONTEXT_KEY,raw);}catch{/* ignore */}
+  try{localStorage.setItem(CONTEXT_KEY,raw);}catch{/* ignore */}
 }
 export function readLandingAnalyticsContext(){
-  try{return JSON.parse(sessionStorage.getItem(CONTEXT_KEY)||'null');}catch{return null;}
+  try{
+    const session=sessionStorage.getItem(CONTEXT_KEY);
+    if(session)return JSON.parse(session);
+  }catch{/* ignore */}
+  try{return JSON.parse(localStorage.getItem(CONTEXT_KEY)||'null');}catch{return null;}
+}
+function grantedOrderId(transactionId){
+  const id=String(transactionId||'').trim();
+  if(!id||PLACEHOLDER_ORDERS.has(id))return '';
+  return id;
 }
 function markToken(id){
   try{
@@ -81,10 +94,12 @@ export function trackAddToCart(context){
 }
 export function trackPaymentConversion({paymentStatus,transactionId,context}={}){
   const ctx=context||readLandingAnalyticsContext();
+  const orderId=grantedOrderId(transactionId);
   logGa4Event('payment_result',{payment_status:paymentStatus,landing:ctx?.landing,plan_code:ctx?.plan_code});
-  if(paymentStatus!=='succeeded'||!transactionId||!ctx)return;
-  if(!markToken(String(transactionId)))return;
-  logGa4Event(ctx.conversion_event,{transaction_id:String(transactionId),value:ctx.value,currency:ctx.currency,item_id:ctx.item_id,item_name:ctx.item_name,landing:ctx.landing});
+  // Subscribe only after a server-granted subscription/charge id. Wallet-link or a placeholder is not a conversion.
+  if(paymentStatus!=='succeeded'||!orderId)return;
+  if(!markToken(orderId))return;
+  if(ctx)logGa4Event(ctx.conversion_event,{transaction_id:orderId,value:ctx.value,currency:ctx.currency,item_id:ctx.item_id,item_name:ctx.item_name,landing:ctx.landing});
   // Client-approved TikTok conversion only: Subscribe (no CompletePayment).
-  logTikTokEvent('Subscribe',commercePayload(ctx),{event_id:String(transactionId)});
+  logTikTokEvent('Subscribe',ctx?commercePayload(ctx):{content_type:'product',currency:'PKR'},{event_id:orderId});
 }

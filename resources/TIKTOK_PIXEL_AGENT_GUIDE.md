@@ -2,7 +2,7 @@
 
 **Audience:** Cursor / coding agents implementing TikTok Pixel on SkillUp-like web products.  
 **Use this file as the handoff reference** when a client provides a Pixel ID and a campaign landing URL.  
-**Product example in this repo:** SkillUp (`/landing2`, Pixel `DBU5QHBC77UCDH70PUAG`).
+**Product example in this repo:** Jalwa (`/landing1`, Pixel `DBU5R83C77UCDH70PUCG`).
 
 ---
 
@@ -17,8 +17,8 @@ Install the client’s TikTok Pixel so TikTok Ads can measure visits and convers
 When a client sends something like:
 
 ```text
-https://example.com/landing2?utm=T&package=2&parameter=20percentoff&payment=jazzcash
-SkillUp pixel id: DBU5QHBC77UCDH70PUAG
+https://watch-jalwa.com/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash
+Jalwa pixel id: DBU5R83C77UCDH70PUCG
 ```
 
 They mean:
@@ -33,7 +33,7 @@ They mean:
 
 | Platform | Typical ID shape | Example |
 | --- | --- | --- |
-| TikTok Pixel | Alphanumeric string | `DBU5QHBC77UCDH70PUAG` |
+| TikTok Pixel | Alphanumeric string | `DBU5R83C77UCDH70PUCG` |
 | Meta Pixel | Mostly numeric | `123456789012345` |
 | GA4 | Starts with `G-` | `G-XXXXXXXX` |
 
@@ -51,7 +51,7 @@ If only a TikTok Pixel ID is provided, implement **TikTok only**. Do not invent 
 ### Strongly preferred (ask if missing)
 
 3. Which **events** TikTok Ads Manager expects  
-   **SkillUp client approved set (use this when following this repo):**
+   **Jalwa client approved set (use this when following this repo):**
    - `PageView` — landing open
    - `ViewContent` — landing open
    - `InitiateCheckout` — Subscribe button click
@@ -80,6 +80,35 @@ If only a TikTok Pixel ID is provided, implement **TikTok only**. Do not invent 
 5. **Runtime-configurable ID.** Prefer server/runtime env (`TIKTOK_PIXEL_ID`) exposed via a `<meta>` tag so container deploys can change the ID without rebuilding. Allow `NEXT_PUBLIC_TIKTOK_PIXEL_ID` as build-time fallback.
 6. **Pixel IDs are not secrets.** They appear in client HTML/JS. Still do not paste Events API tokens into the repo or chat.
 7. **Update CSP.** Production CSP must allow TikTok script/connect/image hosts or the Pixel will silently fail.
+8. **Do not fire `Subscribe` on wallet-link alone.** JazzCash PIN/MPIN success ≠ paid subscription grant. Only fire after a server-confirmed subscription / charge id.
+9. **Assume JazzCash return is cross-site.** Provider POSTs into `/callback`. `SameSite=Lax` cookies set on that response are often dropped. If `Subscribe` depends on a httpOnly receipt cookie alone, it will silently never fire.
+
+---
+
+## 3A. Incident — why Jalwa `Subscribe` was missing (Nov 2026)
+
+**Symptom:** TikTok Events Manager listed `ViewContent`, `InitiateCheckout`, `AddPaymentInfo` as Active, but **no `Subscribe`**, after JazzCash journeys on:
+
+`https://watch-jalwa.com/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash`
+
+Upper-funnel beacons worked; this was **not** a wrong Pixel ID / CSP / CTA wiring failure.
+
+### Root causes
+
+1. **Wallet-link ≠ conversion** — `Subscribe` requires granted `subscriptionId` on return (`order=`). Linking alone must not fire it.
+2. **Receipt cookie dropped on cross-site JazzCash POST** — client required verified conversion receipt; Lax cookie from `/callback` often never stuck → verify failed → no `ttq.track('Subscribe')`.
+3. **Events Manager lag** — Overview can lag ~**30 minutes**; use Test Events / Pixel Helper / network for immediate proof.
+
+### Fix on Jalwa (live on `watch-jalwa.com` when health SHA includes it)
+
+| Piece | Behaviour |
+| --- | --- |
+| `apps/web/app/callback/route.ts` | Sets `order=<subscriptionId>` only when granted; adds `cv=<signed receipt>`; receipt cookie `SameSite=None; Secure` on HTTPS |
+| `apps/web/app/api/campaign/conversion-receipt/route.ts` | Accepts body `receipt` (`cv`) or cookie |
+| `apps/web/components/post-jazzcash-auth-prompt.tsx` | POSTs `{ orderId, receipt }`, then `trackLandingPaymentSuccess` |
+| `apps/web/lib/landing-analytics.mjs` | `Subscribe` with `event_id = orderId` |
+
+**Agents on SkillUp / sibling products:** copy the diagnostic checklist in `resources/TIKTOK_PIXEL_AGENT_GUIDE.md` §3A and apply the same receipt/`cv` pattern if Subscribe is missing while CTA events are Active.
 
 ---
 
@@ -110,18 +139,21 @@ Copy this checklist into the PR / issue:
 - [ ] Confirm ID is TikTok (not GA4 / Meta)
 - [ ] Add runtime meta + env resolution for Pixel ID
 - [ ] Add browser loader (`analytics.tiktok.com/i18n/pixel/events.js`)
-- [ ] Wire **only** client-approved events (SkillUp: PageView, ViewContent, InitiateCheckout, AddPaymentInfo, Subscribe)
+- [ ] Wire **only** client-approved events (Jalwa: PageView, ViewContent, InitiateCheckout, AddPaymentInfo, Subscribe)
 - [ ] Dedupe paid conversion (`Subscribe`) by order / transaction id
+- [ ] Gate `Subscribe` on **granted subscription / charge id**, not wallet-link alone
+- [ ] Make conversion receipt survive JazzCash **cross-site POST** (`?cv=` and/or `SameSite=None; Secure`)
 - [ ] Extend CSP (`script-src`, `connect-src`, `img-src`)
 - [ ] Add unit tests with mocked `window` / `document`
 - [ ] Write product-specific MD with client URL + Pixel ID + event map
 - [ ] Document staging env var for operators
-- [ ] Verify with TikTok Pixel Helper / Events Manager Test Events
+- [ ] Verify with TikTok Pixel Helper / Events Manager Test Events (**and** success-return `Subscribe` beacon)
 - [ ] Explicitly state: Pixel ≠ official Subs report
+- [ ] If `Subscribe` missing while CTA events Active → run §3A / `resources/TIKTOK_PIXEL_AGENT_GUIDE.md` §3A
 
 ---
 
-## 6. Standard event map (SkillUp / client-approved)
+## 6. Standard event map (Jalwa / client-approved)
 
 **Only these five TikTok events** unless a different client document says otherwise:
 
@@ -131,7 +163,8 @@ Copy this checklist into the PR / issue:
 | Landing / offer page open | `ViewContent` | Include content_id, value, currency when known |
 | Subscribe button click | `InitiateCheckout` | Before redirect to wallet / checkout |
 | Payment info submitted (JazzCash MSISDN + Subscribe) | `AddPaymentInfo` | Same submit as InitiateCheckout is OK |
-| Payment / subscription success | `Subscribe` | Pass `event_id` = order id; fire once per order |
+| Payment / subscription success | `Subscribe` | Pass `event_id` = **granted subscriptionId**; fire once; only after verified receipt |
+| Wallet link / PIN success without subscription grant | *(none)* | Do not treat as Subscribe |
 | Payment failed / pending | *(none)* | Do not fire Subscribe |
 
 ### Removed / do not fire (unless newly requested)
@@ -178,10 +211,10 @@ If GA4 is also used, allow Google Tag / Analytics hosts the same way. A Pixel th
 
 ```dotenv
 # Preferred — runtime, works with standalone / container images
-TIKTOK_PIXEL_ID=DBU5QHBC77UCDH70PUAG
+TIKTOK_PIXEL_ID=DBU5R83C77UCDH70PUCG
 
 # Optional — build-time fallback for local / static embeds
-NEXT_PUBLIC_TIKTOK_PIXEL_ID=DBU5QHBC77UCDH70PUAG
+NEXT_PUBLIC_TIKTOK_PIXEL_ID=DBU5R83C77UCDH70PUCG
 ```
 
 Resolution order agents should implement:
@@ -199,9 +232,11 @@ Resolution order agents should implement:
 3. Network tab: request to `analytics.tiktok.com` succeeds (not CSP-blocked).
 4. Landing open: `PageView` + `ViewContent`.
 5. Click Subscribe (with payment number): **only** `InitiateCheckout` + `AddPaymentInfo` (no `AddToCart`).
-6. Complete a **staging** payment success with an order id: **one** `Subscribe` (no `CompletePayment`).
+6. Complete a **staging** payment success that grants `subscriptionId`: return must include `order=` + `cv=` (receipt). Confirm **one** `Subscribe` beacon (no `CompletePayment`).
 7. Reload / repeat success with same order id: **no second** `Subscribe`.
-8. Cross-check product admin / DB attribution for the same order — Pixel count is secondary.
+8. If Overview still empty: Test Events; allow up to ~30 minutes.
+9. Cross-check product admin / DB attribution for the same order — Pixel count is secondary.
+10. If CTA events exist and `Subscribe` does not: diagnose with §3A before changing Pixel ID / CSP.
 
 ---
 
@@ -210,7 +245,8 @@ Resolution order agents should implement:
 - Do not treat Pixel totals as official subscription or revenue numbers.
 - Do not commit Events API secrets or TikTok access tokens to git.
 - Do not put real answer keys, PII, or payment credentials in Pixel payloads.
-- Do not fire `Subscribe` on “button click” — only after confirmed payment / subscription success.
+- Do not fire `Subscribe` on “button click” or wallet-link alone — only after confirmed payment / subscription grant.
+- Do not rely only on a `SameSite=Lax` cookie set during JazzCash’s cross-site return to authorize `Subscribe`.
 - Do not fire `AddToCart` or `CompletePayment` when the client approved the five-event set above.
 - Do not merge Pixel work with unrelated production promotion / billing flag changes.
 - Do not assume Meta Pixel is required because TikTok was requested.
@@ -235,31 +271,34 @@ Resolution order agents should implement:
 
 ---
 
-## 12. SkillUp concrete reference (this repository)
+## 12. Jalwa concrete reference (this repository)
 
 | Item | Value |
 | --- | --- |
-| Landing | `/landing2?utm=T&package=2&parameter=20percentoff&payment=jazzcash` |
-| Pixel ID | `DBU5QHBC77UCDH70PUAG` |
+| Landing | `/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash` |
+| Pixel ID | `DBU5R83C77UCDH70PUCG` |
 | Approved events | `PageView`, `ViewContent`, `InitiateCheckout`, `AddPaymentInfo`, `Subscribe` only |
-| Loader | `apps/web/lib/tiktok-pixel.ts` |
+| Loader | `apps/web/lib/tiktok-pixel.mjs` |
 | Runtime meta | `apps/web/app/tiktok-runtime-config.tsx` |
-| Funnel wiring | `apps/web/lib/landing-analytics.ts` |
+| Funnel wiring | `apps/web/lib/landing-analytics.mjs` |
 | Product record | `docs/product/TIKTOK_PIXEL_INTEGRATION.md` |
+| Portable playbook + §3A checklist | `resources/TIKTOK_PIXEL_AGENT_GUIDE.md` |
 
-When starting a **new** product, copy this guide, replace the SkillUp section with that product’s URL/ID/events, and follow sections 2–9.
+When starting a **new** product, copy `resources/TIKTOK_PIXEL_AGENT_GUIDE.md`, replace the concrete reference section with that product’s URL/ID/events, and follow sections 2–9 **including §3A**.
 
 ---
 
 ## 13. Agent prompt snippet (paste into other repos)
 
 ```text
-Follow docs/product/TIKTOK_PIXEL_AGENT_GUIDE.md.
+Follow resources/TIKTOK_PIXEL_AGENT_GUIDE.md (and this repo’s TIKTOK_PIXEL_AGENT_GUIDE.md).
 
 Client provided:
 - Landing URL: <URL>
 - TikTok Pixel ID: <PIXEL_ID>
 - Events only: PageView, ViewContent, InitiateCheckout (Subscribe button), AddPaymentInfo, Subscribe (payment success)
 
-Implement browser TikTok Pixel with runtime env, CSP allowlist, and those five events only (dedupe Subscribe by order id). Do not fire AddToCart or CompletePayment. Write/update the product MD. Do not treat Pixel as source of truth for paid subs. Do not implement Meta Pixel unless a Meta Pixel ID is provided.
+Implement browser TikTok Pixel with runtime env, CSP allowlist, and those five events only (dedupe Subscribe by order id). Do not fire AddToCart or CompletePayment. Gate Subscribe on granted subscription id + a receipt that survives JazzCash cross-site POST (section 3A). Write/update the product MD. Do not treat Pixel as source of truth for paid subs. Do not implement Meta Pixel unless a Meta Pixel ID is provided.
+
+If Subscribe is missing while InitiateCheckout/AddPaymentInfo are Active, diagnose with section 3A before changing Pixel ID.
 ```
