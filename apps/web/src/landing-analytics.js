@@ -75,8 +75,9 @@ export function trackAddToCart(context){
   logGa4Event('add_to_cart',{...context,user_state:'new'});
   logGa4Event('begin_checkout',{...context});
   const payload=commercePayload(context);
-  logTikTokEvent('AddToCart',payload);
+  // Client-approved TikTok set only: InitiateCheckout + AddPaymentInfo (no AddToCart).
   logTikTokEvent('InitiateCheckout',payload);
+  logTikTokEvent('AddPaymentInfo',payload);
 }
 export function trackPaymentConversion({paymentStatus,transactionId,context}={}){
   const ctx=context||readLandingAnalyticsContext();
@@ -84,6 +85,6 @@ export function trackPaymentConversion({paymentStatus,transactionId,context}={})
   if(paymentStatus!=='succeeded'||!transactionId||!ctx)return;
   if(!markToken(String(transactionId)))return;
   logGa4Event(ctx.conversion_event,{transaction_id:String(transactionId),value:ctx.value,currency:ctx.currency,item_id:ctx.item_id,item_name:ctx.item_name,landing:ctx.landing});
-  const tiktokEvent=ctx.conversion_event==='purchase'?'CompletePayment':'Subscribe';
-  logTikTokEvent(tiktokEvent,commercePayload(ctx),{event_id:String(transactionId)});
+  // Client-approved TikTok conversion only: Subscribe (no CompletePayment).
+  logTikTokEvent('Subscribe',commercePayload(ctx),{event_id:String(transactionId)});
 }

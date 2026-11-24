@@ -21,15 +21,16 @@
 | Runtime config | `apps/web/deploy/40-game-arena-config.sh` + `config.js` (`tiktokPixelId`) |
 | CSP | `apps/web/index.html`, `apps/web/_headers` |
 
-## Event map
+## Event map (client-approved only)
 
 | Product moment | TikTok event |
 | --- | --- |
 | Landing open (`/landing1`, `/mainLanding`) | `PageView`, `ViewContent` |
-| Subscribe Now CTA | `AddToCart`, `InitiateCheckout` |
-| Payment success (monthly) | `Subscribe` (`event_id` = order / txn id) |
-| Payment success (yearly) | `CompletePayment` (`event_id` = order / txn id) |
+| Subscribe Now + JazzCash MSISDN submit | `InitiateCheckout`, `AddPaymentInfo` |
+| Payment / subscription success | `Subscribe` (`event_id` = order / txn id; once per order) |
 | Failed / pending payment | no conversion event |
+
+Do **not** fire `AddToCart` or `CompletePayment`.
 
 Conversions are deduped once per `transaction_id` in `sessionStorage` (`lp_sent_tokens`).
 
@@ -51,9 +52,9 @@ Resolution order:
 2. Confirm meta pixel id `DBU5QTJC77UCDH70PUBG`.
 3. Network: `analytics.tiktok.com` script/connect not CSP-blocked.
 4. Pixel Helper: `PageView` + `ViewContent`.
-5. Click Subscribe Now: `AddToCart` + `InitiateCheckout`.
-6. Staging payment success: one `Subscribe` / `CompletePayment` for the order id.
-7. Repeat success with same order id: no second conversion.
+5. Click Subscribe Now (with JazzCash number): `InitiateCheckout` + `AddPaymentInfo` only.
+6. Staging payment success: one `Subscribe` for the order id (no `CompletePayment`).
+7. Repeat success with same order id: no second `Subscribe`.
 
 ## Notes
 
