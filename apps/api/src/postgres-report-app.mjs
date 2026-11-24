@@ -69,6 +69,8 @@ export function createPostgresReportApp({config,pool}){
         const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');
         return reply(200,await reports.exportHistory(parseReportFilters(url.searchParams)));
       }
+      const workbookMatch=path.match(/^\/v1\/admin\/reports\/campaign-xlsx\/(overview|detail|all)$/);
+      if(workbookMatch){const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');return sendCsv(res,await reports.exportCampaignWorkbook(workbookMatch[1],parseReportFilters(url.searchParams),principal),cors);}
       const exportMatch=path.match(/^\/v1\/admin\/reports\/exports\/(summary|payments|subscriptions|recurring-customers|reconciliation|benefit-costs|campaign-attribution|campaign_attribution)$/);
       if(exportMatch){
         const principal=admin(req,['admin','finance']);requireCapability(principal,'reports.export');

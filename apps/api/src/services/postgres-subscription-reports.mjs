@@ -143,6 +143,11 @@ export class PostgresSubscriptionReportService{
   async campaignAttribution(filters){return response((await this.calculator(filters,'campaign-attribution')).campaignAttribution(filters));}
   async exportHistory(filters){return response((await this.calculator(filters,'exports')).exportHistory(filters));}
 
+  async exportCampaignWorkbook(kind,filters,principal){
+    const result=(await this.calculator(filters,'campaign-attribution')).exportCampaignWorkbook(kind,filters,principal),a=result.audit;
+    await this.pool.query('INSERT INTO ga_report_export_audit(id,actor_id,report_type,selected_range,safe_filters,row_count,schema_version,content_hash,generated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[a.id,a.actor,a.reportType,{from:filters.fromIso,toExclusive:filters.toExclusiveIso},a.filters,a.rowCount,a.schemaVersion,a.contentHash,a.generatedAt]);
+    return{...result,dataSource:'postgresql-indexed'};
+  }
   async export(type,filters,principal){
     const calculator=await this.calculator(filters,type);
     const result=calculator.export(type,filters,principal);
