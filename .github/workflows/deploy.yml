@@ -90,7 +90,7 @@ jobs:
           set -euo pipefail
           tar -cf - infra/docker-compose.staging.yml infra/gateway/nginx.conf infra/host-nginx | \
             ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
-              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env; test -f infra/host-nginx/rewire-player-edge.sh; chmod +x infra/host-nginx/rewire-player-edge.sh'
+              'set -e; cd /opt/codistan/platform; tar -xf -; test -f infra/.env; test -f infra/host-nginx/rewire-player-edge.sh; test -f infra/host-nginx/sync-codistan-edge.sh; chmod +x infra/host-nginx/rewire-player-edge.sh infra/host-nginx/sync-codistan-edge.sh'
 
       - name: Authenticate staging server to GHCR with ephemeral token
         env:
@@ -320,24 +320,103 @@ jobs:
           fi
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/healthz >/dev/null
           curl --fail --silent --max-time 5 http://127.0.0.1:8095/admin/healthz >/dev/null
-          chmod +x infra/host-nginx/rewire-player-edge.sh
+          chmod +x infra/host-nginx/rewire-player-edge.sh infra/host-nginx/sync-codistan-edge.sh
           ROOT_DIR=/opt/codistan/platform bash infra/host-nginx/rewire-player-edge.sh "$IMAGE_TAG"
           public_html="$(curl --fail --silent --max-time 8 -k --resolve gsmarena-play.codistan.org:443:127.0.0.1 https://gsmarena-play.codistan.org/)"
           printf '%s\n' "$public_html" | grep -Fq 'game-arena-tiktok-pixel-id' || {
-            echo 'Public edge HTML is missing TikTok Pixel meta tag.' >&2
+            echo 'Local host edge HTML is missing TikTok Pixel meta tag.' >&2
             exit 1
           }
           curl --silent --max-time 5 -o /dev/null -w 'host_http=%{http_code}\n' http://127.0.0.1/healthz || true
           curl --silent --max-time 8 -k -o /dev/null -w 'host_https=%{http_code}\n' https://127.0.0.1/healthz || true
           REMOTE
 
+      - name: Sync Codistan public edge from deploy host
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          set -euo pipefail
+          # Seed the staging SSH key onto the deploy host so hop-to-edge can reuse it.
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            'install -d -m 700 "$HOME/.ssh"; cat > "$HOME/.ssh/game-arena-staging"; chmod 600 "$HOME/.ssh/game-arena-staging"' \
+            < "$HOME/.ssh/game-arena-staging"
+
+          set +e
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "ROOT_DIR=/opt/codistan/platform DEPLOY_USER='$DEPLOY_USER' \
+               bash /opt/codistan/platform/infra/host-nginx/sync-codistan-edge.sh '$IMAGE_TAG'"
+          sync_rc=$?
+          set -e
+
+          if [ "$sync_rc" -eq 0 ]; then
+            echo 'Codistan public edge sync succeeded from deploy host.'
+            exit 0
+          fi
+
+          echo "Deploy-host edge sync failed (rc=$sync_rc); trying Cloudflare DNS retarget from the runner." >&2
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ZONE_ID:-}" ]; then
+            echo 'CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID staging secrets are not set.' >&2
+            exit "$sync_rc"
+          fi
+
+          origin_ip="$(ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            'curl --fail --silent --max-time 8 https://ifconfig.me/ip || curl --fail --silent --max-time 8 https://api.ipify.org')"
+          echo "origin_public_ip=$origin_ip"
+          [[ "$origin_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Could not resolve deploy host public IP.' >&2; exit 1; }
+
+          records="$(curl --fail --silent --max-time 20 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records?type=A&name=gsmarena-play.codistan.org")"
+          record_id="$(printf '%s' "$records" | python3 -c 'import json,sys; d=json.load(sys.stdin); r=d.get("result") or []; print(r[0]["id"] if r else "")')"
+          payload="$(printf '{"type":"A","name":"gsmarena-play.codistan.org","content":"%s","ttl":120,"proxied":true}' "$origin_ip")"
+          if [ -n "$record_id" ]; then
+            curl --fail --silent --max-time 20 -X PUT \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data "$payload" \
+              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records/${record_id}" >/tmp/cf-dns.json
+          else
+            curl --fail --silent --max-time 20 -X POST \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data "$payload" \
+              "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/dns_records" >/tmp/cf-dns.json
+          fi
+          python3 -c 'import json; d=json.load(open("/tmp/cf-dns.json")); assert d.get("success"), d; print("CLOUDFLARE_DNS_OK=1")'
+          for _ in $(seq 1 12); do
+            cfg="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/config.js || true)"
+            if printf '%s\n' "$cfg" | grep -Fq "releaseSha:\"$IMAGE_TAG\""; then
+              echo "Codistan hostname serves releaseSha=$IMAGE_TAG after Cloudflare DNS retarget."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Cloudflare DNS retarget did not make gsmarena-play.codistan.org serve the new SHA yet.' >&2
+          exit 1
+
       - name: Verify public internet edge serves this SHA
         run: |
           set -euo pipefail
+          # Deploy-controlled edge (DigitalOcean / gsmarena-play.com) must match first.
+          cfg_com="$(curl --fail --silent --max-time 20 https://gsmarena-play.com/config.js)"
+          printf 'gsmarena-play.com %s\n' "$cfg_com"
+          printf '%s\n' "$cfg_com" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
+            echo "gsmarena-play.com config.js does not match IMAGE_TAG=$IMAGE_TAG" >&2
+            exit 1
+          }
+          printf '%s\n' "$cfg_com" | grep -Fq 'tiktokPixelId' || {
+            echo 'gsmarena-play.com config.js is missing tiktokPixelId.' >&2
+            exit 1
+          }
+
           cfg="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/config.js)"
-          printf '%s\n' "$cfg"
+          printf 'gsmarena-play.codistan.org %s\n' "$cfg"
           printf '%s\n' "$cfg" | grep -Fq "releaseSha:\"$IMAGE_TAG\"" || {
             echo "Internet edge config.js does not match IMAGE_TAG=$IMAGE_TAG" >&2
+            echo "gsmarena-play.com is current; gsmarena-play.codistan.org DNS still points at a stale Codistan edge (103.182.14.46)." >&2
+            echo "Add staging secret CLOUDFLARE_API_TOKEN + CLOUDFLARE_ZONE_ID, or install DEPLOY_SSH_KEY on that edge host." >&2
             exit 1
           }
           html="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/)"

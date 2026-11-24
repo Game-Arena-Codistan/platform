@@ -65,11 +65,12 @@ echo "STATIC_SYNC_OK=1"
 
 echo "=== heal local nginx site ==="
 base=""
+# Prefer the live site file; only fall back to recovery backups when needed.
 for candidate in \
-  "${SITE_AVAILABLE}.bak.adminfix" \
-  "${SITE_ENABLED}.bak.adminfix" \
   "$SITE_AVAILABLE" \
-  "$SITE_ENABLED"
+  "$SITE_ENABLED" \
+  "${SITE_AVAILABLE}.bak.adminfix" \
+  "${SITE_ENABLED}.bak.adminfix"
 do
   if sudo_run test -f "$candidate"; then
     base="$candidate"
@@ -88,12 +89,16 @@ import sys
 path = pathlib.Path(sys.argv[1])
 text = path.read_text(encoding='utf-8', errors='replace')
 
-# Drop every recovery include.
+# Drop every recovery include; we re-add admin once after stripping inline duplicates.
 text = re.sub(r'^\s*include\s+snippets/game-arena-(?:admin|player)\.conf;\s*\n?', '', text, flags=re.M)
 
 # Drop previously commented duplicate blocks.
 text = re.sub(r'^# removed in favour of snippets/game-arena-player\.conf\n(?:# .*\n)+', '', text, flags=re.M)
 text = re.sub(r'^# disabled stale static player location.*\n(?:# .*\n)+', '', text, flags=re.M)
+
+# Inline /admin locations conflict with snippets/game-arena-admin.conf — remove them.
+text = re.sub(r'location\s+=\s+/admin\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*', '', text)
+text = re.sub(r'location\s+/admin/\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*', '', text)
 
 # Keep only the first location / block; comment any later ones.
 seen = {'n': 0}
@@ -121,13 +126,13 @@ if 'gsmarena-play.codistan.org' not in text and re.search(r'server_name\s+[^;]*g
         count=1,
     )
 
-if 'snippets/game-arena-admin.conf' not in text:
-    text = re.sub(
-        r'(server_name\s+[^\n]*gsmarena-play\.(?:codistan\.org|com)[^\n]*;)',
-        r'\1\n    include snippets/game-arena-admin.conf;',
-        text,
-        count=1,
-    )
+# Single admin include after server_name (snippet owns /admin and /admin/).
+text = re.sub(
+    r'(server_name\s+[^\n]*gsmarena-play\.(?:codistan\.org|com)[^\n]*;)',
+    r'\1\n    include snippets/game-arena-admin.conf;',
+    text,
+    count=1,
+)
 
 text = re.sub(r'\n{3,}', '\n\n', text)
 path.write_text(text, encoding='utf-8')

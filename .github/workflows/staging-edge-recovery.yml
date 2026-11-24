@@ -193,44 +193,17 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           set -euo pipefail
-          public_ip="$(getent ahostsv4 gsmarena-play.codistan.org | awk 'NR==1{print $1}')"
-          echo "public_ip=$public_ip"
-          cfg="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/config.js || true)"
-          printf '%s\n' "$cfg"
-          if printf '%s\n' "$cfg" | grep -Fq 'tiktokPixelId'; then
-            echo 'Public internet edge already exposes tiktokPixelId.'
-            exit 0
-          fi
-
-          # Pull the synced html tree from the compose host, then push it to the
-          # public DNS A-record host if SSH with the staging key works there.
-          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" \
-            'set -e; cd /opt/codistan/platform; test -f .staging-web-html/config.js; tar -C .staging-web-html -cf - .' \
-            > /tmp/game-arena-web-html.tar
-
-          edge_host="$public_ip"
-          if ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "$DEPLOY_USER@$edge_host" 'echo ok' >/tmp/edge-ssh.txt 2>/tmp/edge-ssh.err; then
-            echo "SSH to public edge $edge_host succeeded"
-            ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=20 "$DEPLOY_USER@$edge_host" \
-              'set -e; sudo -n mkdir -p /var/www/gsmarena-play.com/html; sudo -n tar -C /var/www/gsmarena-play.com/html -xf -; sudo -n nginx -t; sudo -n systemctl reload nginx || sudo -n systemctl restart nginx' \
-              < /tmp/game-arena-web-html.tar
-          else
-            echo "SSH to public edge $edge_host failed:" >&2
-            cat /tmp/edge-ssh.err >&2 || true
-            # Fallback: from the compose host, try hopping to the public IP.
+          tar -cf - infra/host-nginx | \
             ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=20 "$DEPLOY_USER@$DEPLOY_HOST" \
-              "set -euo pipefail
-               if ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ${DEPLOY_USER}@${edge_host} 'echo ok'; then
-                 tar -C /opt/codistan/platform/.staging-web-html -cf - . | ssh -o BatchMode=yes ${DEPLOY_USER}@${edge_host} 'sudo -n mkdir -p /var/www/gsmarena-play.com/html; sudo -n tar -C /var/www/gsmarena-play.com/html -xf -; sudo -n nginx -t; sudo -n systemctl reload nginx || true'
-               else
-                 echo 'Compose host also cannot SSH to public DNS edge' >&2
-                 exit 1
-               fi"
-          fi
-
-          cfg="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/config.js)"
-          printf '%s\n' "$cfg"
-          printf '%s\n' "$cfg" | grep -Fq 'tiktokPixelId'
-          html="$(curl --fail --silent --max-time 20 https://gsmarena-play.codistan.org/)"
-          printf '%s\n' "$html" | grep -Fq 'game-arena-tiktok-pixel-id'
-          echo 'Public internet edge now exposes TikTok Pixel meta/config.'
+              'set -e; cd /opt/codistan/platform; tar -xf -; chmod +x infra/host-nginx/rewire-player-edge.sh infra/host-nginx/sync-codistan-edge.sh'
+          # Prefer the live deployed SHA on the compose host when this recovery push is not that SHA.
+          ssh -i "$HOME/.ssh/game-arena-staging" -o BatchMode=yes -o ConnectTimeout=30 "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -euo pipefail
+             cd /opt/codistan/platform
+             tag='$IMAGE_TAG'
+             if [ -f .deployed-sha ]; then tag=\"\$(tr -d '[:space:]' < .deployed-sha)\"; fi
+             if [ ! -f .staging-web-html/config.js ]; then
+               ROOT_DIR=/opt/codistan/platform bash infra/host-nginx/rewire-player-edge.sh \"\$tag\"
+             fi
+             ROOT_DIR=/opt/codistan/platform DEPLOY_USER='$DEPLOY_USER' \
+               bash infra/host-nginx/sync-codistan-edge.sh \"\$tag\""
