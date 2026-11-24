@@ -10,12 +10,14 @@
   <title>Game Arena Operations</title>
 </head>
 <body>
-<header><div><b>Game Arena</b><span>Operations &amp; Reporting</span></div><button id="refresh" type="button">Refresh</button></header>
+<header><div><b>Game Arena</b><span>Operations &amp; Reporting</span></div><div><button id="refresh" type="button">Refresh</button><button id="admin-logout" type="button" hidden>Sign out</button></div></header>
 <main>
   <section id="auth" class="panel">
     <h1>Operations access</h1>
-    <p>Enter an authorized administrator key to open the console. Roles and capabilities are enforced by the API; the browser UI is not a security boundary.</p>
-    <form id="local-auth"><label>Administrator key<input name="key" type="password" autocomplete="current-password"></label><button type="submit">Sign in</button></form>
+    <p>Authorized administrators only. Sign in using the credentials provided by your organization.</p>
+    <form id="password-auth" hidden><label>Email<input name="email" type="email" autocomplete="username" required maxlength="128"></label><label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label><button type="submit">Sign in</button></form>
+    <p id="admin-login-unavailable" hidden>Use the authorized identity proxy. Password sign-in is not configured.</p>
+    <form id="local-auth" hidden><label>Administrator key<input name="key" type="password" autocomplete="current-password"></label><button type="submit">Sign in</button></form>
     <p id="auth-status" class="error"></p>
   </section>
   <section id="console" hidden>
