@@ -1,7 +1,8 @@
 import {attributionForLanding,buildLanding1Path,buildLandingPath,campaignFromSearchParams,commerceForCampaign,planCodeForPackage} from './landing-campaign.js';
 import {buildLandingAnalyticsContext,trackAddToCart,trackLandingView,trackPaymentConversion} from './landing-analytics.js';
 import {linkBillingWallet,submitWalletPortal} from './billing-api.js';
-import {update} from './state.js';
+import {update,setSetting,telemetryEnabled} from './state.js';
+import {campaignEvent} from './campaign-tracking.js';
 
 const phoneIcon=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.8.3 1.6.6 2.3a2 2 0 0 1-.5 2.1L8.1 9.1a16 16 0 0 0 6 6l1.9-1.1a2 2 0 0 1 2.1-.4c.7.3 1.5.5 2.3.6a2 2 0 0 1 1.6 2.1Z"></path></svg>`;
 const lockIcon=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"></path></svg>`;
@@ -201,6 +202,7 @@ async function startCheckout({landing,campaign,commerce}){
   const landingPath=landing==='landing1'?buildLanding1Path(campaign):buildLandingPath(campaign);
   const context=buildLandingAnalyticsContext(campaign,{landing});
   trackAddToCart(context);
+  await campaignEvent('landing_cta',attributionForLanding(campaign,{landing,landingPath}));
   try{sessionStorage.setItem('game-arena:landing-msisdn',msisdn);}catch{/* ignore */}
   status.textContent='Connecting to JazzCash…';
   try{
@@ -289,6 +291,10 @@ export function bootLandingIfNeeded(){
   app.innerHTML=renderLanding(landing,commerce);
   const context=buildLandingAnalyticsContext(campaign,{landing});
   trackLandingView(context);
+  const rawAttribution=attributionForLanding(campaign,{landing,landingPath:location.pathname});
+  campaignEvent('landing_view',rawAttribution);
+  const analyticsOption=document.createElement('label');analyticsOption.className='ga-lp-analytics-consent';const analyticsToggle=document.createElement('input');analyticsToggle.type='checkbox';analyticsToggle.checked=telemetryEnabled();analyticsOption.append(analyticsToggle,document.createTextNode(' Allow campaign analytics (optional)'));document.querySelector('#landing-subscribe')?.append(analyticsOption);
+  analyticsToggle.addEventListener('change',()=>{setSetting('analytics',analyticsToggle.checked);campaignEvent('landing_cta',rawAttribution);});
   handleLandingReturn(campaign,landing);
   document.querySelector('#landing-subscribe')?.addEventListener('submit',event=>{event.preventDefault();startCheckout({landing,campaign,commerce});});
   const runFit=()=>fitLandingAboveFold();

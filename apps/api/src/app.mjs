@@ -10,7 +10,7 @@ import {CatalogueAdmin} from './services/catalogue-admin.mjs';
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const maskIdentity=item=>item.type==='phone'?`${item.value.slice(0,4)}******${item.value.slice(-2)}`:item.value.replace(/^(.).+(@.+)$/,'$1***$2');
 
-export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPolicy,catalogueAdmin,clock=()=>Date.now()}){
+export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPolicy,catalogueAdmin,campaignAnalytics,clock=()=>Date.now()}){
   const delivery=otpDelivery??new OtpDeliveryRouter({providers:[new MockOtpProvider()],audit:store.audit,metrics:store.metrics});
   const paymentService=payments??new PaymentService({store,provider:jazzcash,clock});
   const rewards=rewardPolicy??new RewardPolicy({config,store,clock});
@@ -51,7 +51,7 @@ export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPoli
         store.users.set(user.id,user);
         const token=randomToken();const csrf=randomToken(18);const deviceHash=deviceFingerprint(req);const ipHash=sha256(requestIp(req));const now=clock();
         const session={id:randomUUID(),hash:sha256(token),csrfHash:sha256(csrf),userId:user.id,deviceHash,ipHash,risk:'new_device',createdAt:now,lastSeenAt:now,rotatedAt:now,expiresAt:now+config.sessionTtlSeconds*1000,revokedAt:null};
-        store.createSession(session);
+        store.createSession(session);if(campaignAnalytics)await campaignAnalytics.link(req,user.id).catch(()=>{});
         store.audit.write({actor:user.id,action:claimed?'auth.claimed':'auth.registered',targetType:'session',targetId:session.id,requestId,metadata:{identityType:identity.type,claimed}});
         return reply(claimed?200:201,{user:{id:user.id,displayName:user.displayName,status:user.status},entitlement:store.getEntitlement(user.id).tier,coins:store.wallet(user.id),csrfToken:csrf},{'set-cookie':[sessionCookie(config.sessionCookieName,token,config.sessionTtlSeconds,secure),csrfCookie(config.csrfCookieName,csrf,config.sessionTtlSeconds,secure)]});
       }
@@ -66,7 +66,7 @@ export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPoli
         const token=randomToken();const csrf=randomToken(18);const deviceHash=deviceFingerprint(req);const ipHash=sha256(requestIp(req));const now=clock();
         const known=store.devices.has(`${user.id}:${deviceHash}`);
         const session={id:randomUUID(),hash:sha256(token),csrfHash:sha256(csrf),userId:user.id,deviceHash,ipHash,risk:known?'normal':'new_device',createdAt:now,lastSeenAt:now,rotatedAt:now,expiresAt:now+config.sessionTtlSeconds*1000,revokedAt:null};
-        store.createSession(session);
+        store.createSession(session);if(campaignAnalytics)await campaignAnalytics.link(req,user.id).catch(()=>{});
         store.audit.write({actor:user.id,action:'auth.signed_in',targetType:'session',targetId:session.id,requestId,metadata:{identityType:identity.type,method:'password',risk:session.risk}});
         return reply(200,{user:{id:user.id,displayName:user.displayName,status:user.status},entitlement:store.getEntitlement(user.id).tier,coins:store.wallet(user.id),csrfToken:csrf},{'set-cookie':[sessionCookie(config.sessionCookieName,token,config.sessionTtlSeconds,secure),csrfCookie(config.csrfCookieName,csrf,config.sessionTtlSeconds,secure)]});
       }
@@ -82,7 +82,7 @@ export function createApp({config,store,jazzcash,otpDelivery,payments,rewardPoli
         const {value}=await readJson(req);const challenge=store.getOtp(value.challengeId);const now=clock();if(!challenge||challenge.expiresAt<now||challenge.consumed)throw fail('Verification code is invalid or expired.',400,'invalid_otp');
         challenge.attempts+=1;if(challenge.attempts>config.otpMaxAttempts){store.saveOtp(challenge);throw fail('Too many attempts. Request a new code.',429,'otp_attempts_exceeded');}
         if(!/^\d{6}$/.test(String(value.code??''))||!safeEqual(challenge.codeHash,sha256(value.code))){store.saveOtp(challenge);store.metrics.increment('otp_verifications_total',{status:'failed'});throw fail('Verification code is invalid or expired.',400,'invalid_otp');}
-        challenge.consumed=true;challenge.consumedAt=now;store.saveOtp(challenge);const user=store.findOrCreateUser(challenge.identity);const token=randomToken();const csrf=randomToken(18);const deviceHash=deviceFingerprint(req);const ipHash=sha256(requestIp(req));const known=store.devices.has(`${user.id}:${deviceHash}`);const session={id:randomUUID(),hash:sha256(token),csrfHash:sha256(csrf),userId:user.id,deviceHash,ipHash,risk:known?'normal':'new_device',createdAt:now,lastSeenAt:now,rotatedAt:now,expiresAt:now+config.sessionTtlSeconds*1000,revokedAt:null};store.createSession(session);store.audit.write({actor:user.id,action:'auth.signed_in',targetType:'session',targetId:session.id,requestId,metadata:{identityType:challenge.identity.type,risk:session.risk}});store.metrics.increment('otp_verifications_total',{status:'success'});
+        challenge.consumed=true;challenge.consumedAt=now;store.saveOtp(challenge);const user=store.findOrCreateUser(challenge.identity);const token=randomToken();const csrf=randomToken(18);const deviceHash=deviceFingerprint(req);const ipHash=sha256(requestIp(req));const known=store.devices.has(`${user.id}:${deviceHash}`);const session={id:randomUUID(),hash:sha256(token),csrfHash:sha256(csrf),userId:user.id,deviceHash,ipHash,risk:known?'normal':'new_device',createdAt:now,lastSeenAt:now,rotatedAt:now,expiresAt:now+config.sessionTtlSeconds*1000,revokedAt:null};store.createSession(session);if(campaignAnalytics)await campaignAnalytics.link(req,user.id).catch(()=>{});store.audit.write({actor:user.id,action:'auth.signed_in',targetType:'session',targetId:session.id,requestId,metadata:{identityType:challenge.identity.type,risk:session.risk}});store.metrics.increment('otp_verifications_total',{status:'success'});
         return reply(200,{user,entitlement:store.getEntitlement(user.id).tier,coins:store.wallet(user.id),csrfToken:csrf},{'set-cookie':[sessionCookie(config.sessionCookieName,token,config.sessionTtlSeconds,secure),csrfCookie(config.csrfCookieName,csrf,config.sessionTtlSeconds,secure)]});
       }
       if(method==='GET'&&path==='/v1/session'){
