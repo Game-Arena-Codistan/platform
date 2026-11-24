@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
+import {randomBytes} from 'node:crypto';
 import {once} from 'node:events';
 import {MemoryStore} from '../src/adapters/memory-store.mjs';
 import {loadConfig} from '../src/config.mjs';
@@ -9,7 +10,7 @@ import {authenticateAdmin} from '../src/lib/admin-auth.mjs';
 import {createAdminSessionApp} from '../src/admin-session-app.mjs';
 import {send,problem} from '../src/lib/http.mjs';
 test('native admin login, session roles, CSRF, logout, expiry and rate limits',async()=>{
-  const email='qa-admin@example.invalid',password='synthetic-long-password-22';
+  const email='qa-admin@example.invalid',password=randomBytes(24).toString('base64url');
   const hash=await hashAdminPassword(password);let time=Date.now();
   const origin='http://localhost:8080';
   const config=loadConfig({nodeEnv:'test',adminAuthMode:'signed-headers',adminIdentityRoles:{[email]:['finance']},adminPasswordHashes:{[email]:hash},adminLoginOrigins:[origin]});
