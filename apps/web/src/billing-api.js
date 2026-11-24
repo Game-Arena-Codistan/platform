@@ -31,6 +31,7 @@ export async function linkBillingWallet({msisdn,planCode,consentToAutoPay=true,r
   }
   return request('/v1/billing/wallets/link',{method:'POST',body:JSON.stringify({msisdn,planCode,consentToAutoPay,consent:consentToAutoPay,returnPath,attribution})});
 }
+export const fetchVerifiedCampaignConversion=({orderId,receipt})=>request('/v1/billing/verified-conversion',{method:'POST',body:JSON.stringify({orderId,receipt})});
 export const fetchBillingWallet=()=>request('/v1/billing/wallets');
 export const unlinkBillingWallet=()=>request('/v1/billing/wallets/unlink',{method:'POST'});
 export const fetchBillingStatus=()=>request('/v1/billing/status');

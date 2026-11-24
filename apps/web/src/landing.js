@@ -1,5 +1,5 @@
 import {attributionForLanding,buildLanding1Path,buildLandingPath,campaignFromSearchParams,commerceForCampaign,planCodeForPackage} from './landing-campaign.js';
-import {buildLandingAnalyticsContext,trackAddToCart,trackLandingView,trackPaymentConversion} from './landing-analytics.js';
+import {buildLandingAnalyticsContext,trackAddToCart,trackLandingView} from './landing-analytics.js';
 import {linkBillingWallet,submitWalletPortal} from './billing-api.js';
 import {update} from './state.js';
 
@@ -212,7 +212,7 @@ async function startCheckout({landing,campaign,commerce}){
       attribution:attributionForLanding(campaign,{landing,landingPath})
     });
     if(result?.mock){
-      trackPaymentConversion({paymentStatus:'succeeded',transactionId:result.transactionId||'mock-landing'});
+      // Mock checkout must never emit a verified marketing purchase.
       try{sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:commerce.planCode,landing,at:Date.now()}));}catch{/* ignore */}
       update({entitlement:'premium',selectedPlan:commerce.planCode==='yearly'?'yearly':'monthly'});
       status.textContent='Premium Features Unlocked. Redirecting…';
@@ -239,15 +239,12 @@ function handleLandingReturn(campaign,landing){
     return;
   }
   if(payment==='succeeded'){
-    const txn=params.get('orderId')||params.get('txn')||params.get('transactionId')||'landing-return';
-    trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
-    update({entitlement:'premium',selectedPlan:planCodeForPackage(campaign.package)==='yearly'?'yearly':'monthly'});
-    try{
-      const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
-      sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:planCodeForPackage(campaign.package),landing,at:Date.now()}));
-    }catch{/* ignore */}
-    if(status)status.textContent='Premium Features Unlocked. Redirecting…';
-    setTimeout(()=>location.assign('/?payment=succeeded'),900);
+    // The URL is not payment evidence; the home route checks the server receipt.
+    const orderId=params.get('orderId')||params.get('txn')||'';
+    const receipt=params.get('receipt')||'';
+    if(status)status.textContent='Checking payment confirmation…';
+    const next=new URLSearchParams({payment:'succeeded',orderId,receipt});
+    location.replace('/?'+next.toString());
   }
 }
 
