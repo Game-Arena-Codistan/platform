@@ -4,6 +4,7 @@ import {createApp} from './app.mjs';
 import {createMvpApp} from './mvp-app.mjs';
 import {createAdminSessionApp} from './admin-session-app.mjs';
 import {createCampaignApp} from './campaign-app.mjs';
+import {CampaignDailyDelivery,DailyDeliveryRepository} from './services/campaign-daily-delivery.mjs';
 import {CampaignAnalytics,MemoryCampaignRepository,PostgresCampaignRepository} from './services/campaign-analytics.mjs';
 import {createSupplementalApp} from './admin-app.mjs';
 import {createPostgresReportApp} from './postgres-report-app.mjs';
@@ -78,7 +79,10 @@ const providers=config.otpProviderMode==='mock'
 const otpDelivery=new OtpDeliveryRouter({providers,audit:store.audit,metrics:store.metrics});
 const campaignAnalytics=new CampaignAnalytics({config,repository:store.pool?new PostgresCampaignRepository(store.pool):new MemoryCampaignRepository()});
 const adminSessionApp=createAdminSessionApp({config,store});
-const campaignApp=createCampaignApp({config,store,analytics:campaignAnalytics});
+const campaignDelivery=new CampaignDailyDelivery({config,analytics:campaignAnalytics,repository:store.pool?new DailyDeliveryRepository(store.pool):null});
+const campaignApp=createCampaignApp({config,store,analytics:campaignAnalytics,delivery:campaignDelivery});
+const runDailyReport=()=>campaignDelivery.tick().catch(()=>console.error(JSON.stringify({level:'error',message:'Campaign daily report job failed'})));
+const campaignReportTimer=setInterval(runDailyReport,60000);campaignReportTimer.unref();
 const jazzcash=new JazzCashAdapter(config);
 const jazzCashOrchestrator=['orchestrator','mock'].includes(config.jazzcashMode)?new JazzCashOrchestratorAdapter(config):null;
 const jazzCashRecurring=jazzCashOrchestrator?createJazzCashRecurringApp({config,store,orchestrator:jazzCashOrchestrator,campaignAnalytics}):null;
@@ -214,6 +218,6 @@ server.listen(config.port,'0.0.0.0',()=>console.log(JSON.stringify({
 })));
 
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{
-  clearInterval(retentionTimer);
+  clearInterval(retentionTimer);clearInterval(campaignReportTimer);
   server.close(async()=>{await store.close?.();process.exit(0);});
 });

@@ -1,11 +1,12 @@
 import {randomUUID} from 'node:crypto';
+import {dailyCsv} from './services/campaign-daily-delivery.mjs';
 import {readJson,send,problem} from './lib/http.mjs';
 import {parseCookies,sha256,requestIp} from './lib/security.mjs';
 import {authenticateAdmin} from './lib/admin-auth.mjs';
 import {campaignConfig,campaignLink,campaignError} from './services/campaign-analytics.mjs';
 const deny=()=>campaignError('Origin is not allowed.',403,'origin_rejected');
 function userFor(req,config,store){try{const token=parseCookies(req.headers.cookie)[config.sessionCookieName];return token?store.getSession(sha256(token))?.userId||null:null;}catch{return null;}}
-export function createCampaignApp({config,store,analytics}){
+export function createCampaignApp({config,store,analytics,delivery}){
   return async(req,res)=>{
     const url=new URL(req.url,'http://localhost'),path=url.pathname,method=req.method||'GET';
     if(path!=='/v1/campaign/events'&&!path.startsWith('/v1/admin/campaign/'))return false;
@@ -34,10 +35,21 @@ export function createCampaignApp({config,store,analytics}){
         store.audit.write({actor:principal.actor,action:old?'campaign.updated':'campaign.created',targetType:'campaign',targetId:item.id,metadata:{active:item.active}});
         send(res,old?200:201,{campaign:{...item,link:campaignLink(item,config.publicOrigin)}});return true;
       }
+      if(path==='/v1/admin/campaign/daily-schedule'&&method==='GET'){
+        authenticateAdmin(req,config,['admin']);send(res,200,await delivery.settings());return true;
+      }
+      if(path==='/v1/admin/campaign/daily-schedule'&&method==='PATCH'){
+        const principal=authenticateAdmin(req,config,['admin']);const {value}=await readJson(req,4096);const data=await delivery.update(value);
+        store.audit.write({actor:principal.actor,action:'campaign.daily_schedule_updated',targetType:'campaign',targetId:'daily-report',metadata:{enabled:data.enabled,sendTime:data.sendTime}});send(res,200,data);return true;
+      }
       if(path==='/v1/admin/campaign/daily-log'&&method==='GET'){
         authenticateAdmin(req,config,['admin','finance','operator','support','security']);
         const filters=Object.fromEntries(['platform','planId','parameter','landingPage','referral','campaignId'].filter(k=>url.searchParams.get(k)).map(k=>[k,url.searchParams.get(k).slice(0,120)]));
         const data=await analytics.daily(url.searchParams.get('date')||'',filters);
+        if(url.searchParams.get('format')==='csv'){
+          const principal=authenticateAdmin(req,config,['admin','finance']);store.audit.write({actor:principal.actor,action:'campaign.daily_log_exported',targetType:'campaign',targetId:data.date,metadata:{filters}});
+          res.writeHead(200,{'content-type':'text/csv; charset=utf-8','content-disposition':'attachment; filename="campaign-jazzcash-'+data.date+'.csv"','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(dailyCsv(data));return true;
+        }
         send(res,200,data);return true;
       }
       throw campaignError('Not found.',404,'not_found');
