@@ -1,0 +1,66 @@
+import {test,expect} from '@playwright/test';
+import {randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+const origin='http://127.0.0.1:8095';
+async function login(page,email,password){
+  await page.goto('/admin/');
+  const form=page.locator('#password-auth');await expect(form).toBeVisible();
+  await form.locator('[name=email]').fill(email);
+  await form.locator('[name=password]').fill(password);
+  await form.getByRole('button',{name:'Sign in'}).click();
+  await expect(page.locator('#console')).toBeVisible();
+}
+test('Admin campaign journey with persisted synthetic checkout, reports, downloads, session and role checks',async({browser})=>{
+  const context=await browser.newContext({baseURL:origin,acceptDownloads:true});
+  await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+  const admin=await context.newPage();
+  expect((await context.request.get('/api/v1/admin/campaign/configs')).status()).toBe(401);
+  await login(admin,'qa-admin@example.test',process.env.QA_ADMIN_PASSWORD);
+  await admin.reload();await expect(admin.locator('#console')).toBeVisible();
+  await admin.getByRole('button',{name:'Campaign setup',exact:true}).click();
+  const form=admin.locator('#campaign-create');await expect(form).toBeVisible();
+  const parameter='qa-'+randomUUID();
+  await form.locator('[name=name]').fill('Browser acceptance');
+  await form.locator('[name=landingPath]').selectOption('/landing1');
+  await form.locator('[name=utm]').selectOption('M');
+  await form.locator('[name=package]').selectOption('1');
+  await form.locator('[name=parameter]').fill(parameter);
+  await form.getByRole('button',{name:'Create tracking link'}).click();
+  const row=admin.locator('tr').filter({hasText:parameter});await expect(row).toBeVisible();
+  const url=new URL(await row.locator('input[readonly]').inputValue());expect(url.origin).toBe(origin);
+  const player=await browser.newContext({baseURL:origin});
+  const event=await player.request.post('/api/v1/campaign/events',{headers:{origin},data:{eventId:randomUUID(),name:'landing_view',consent:true,campaign:{campaign_id:url.searchParams.get('campaign_id'),utm:'M',package:'1',parameter,landingPath:'/landing1'}}});
+  expect(event.status()).toBe(202);
+  const linked=await player.request.post('/api/v1/billing/wallets/link',{headers:{origin},data:{msisdn:'03000000001',planCode:'monthly',consentToAutoPay:true,attribution:{utm:'T',parameter:'incorrect'}}});
+  expect(linked.status()).toBe(201);const link=await linked.json();expect(new URL(link.actionUrl).origin).toBe(origin);
+  const callback=()=>player.request.post(link.actionUrl,{form:link.fields,maxRedirects:0});
+  const first=await callback();expect(first.status()).toBe(303);const paid=new URL(first.headers()['location']);expect(paid.searchParams.get('payment')).toBe('succeeded');
+  const replay=await callback();expect(new URL(replay.headers()['location']).searchParams.get('orderId')).toBe(paid.searchParams.get('orderId'));
+  const date=new Date(Date.now()+5*3600000).toISOString().slice(0,10);
+  const query=new URLSearchParams({preset:'custom',from:date,to:date,parameter});
+  const report=await context.request.get('/api/v1/admin/reports/campaign-attribution?'+query);
+  expect(report.status()).toBe(200);const data=await report.json();expect(data.totals.subscriptions).toBe(1);expect(data.totals.amountMinor).toBe(99000);
+  await admin.goto('/admin/?view=campaign&'+query);
+  await expect(admin.getByRole('heading',{name:'Basic View',exact:true})).toBeVisible();
+  await expect(admin.getByRole('heading',{name:'Detailed View',exact:true})).toBeVisible();
+  for(const kind of ['overview','detail']){
+    const downloadPromise=admin.waitForEvent('download');
+    await admin.locator('[data-workbook="'+kind+'"]').click();
+    const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
+    expect((await readFile(await download.path())).subarray(0,2).toString()).toBe('PK');
+  }
+  await admin.goto('/admin/?view=campaignDaily&date='+date+'&parameter='+parameter);
+  await expect(admin.getByRole('heading',{name:'Campaign & JazzCash daily logs'})).toBeVisible();
+  const daily=await context.request.get('/api/v1/admin/campaign/daily-log?'+new URLSearchParams({date,parameter}));
+  expect(daily.status()).toBe(200);const log=await daily.json();expect(log.verifiedSuccessCount).toBe(1);expect(log.mpinShown).toBeNull();
+  const csvPromise=admin.waitForEvent('download');await admin.getByRole('button',{name:'Download daily CSV'}).click();const csv=await csvPromise;expect(await readFile(await csv.path(),'utf8')).toContain('Unavailable');
+  await expect(admin.getByRole('heading',{name:'Daily email schedule (PKT)'})).toBeVisible();
+  const schedule=admin.locator('#daily-schedule');await schedule.locator('[name=sendTime]').fill('10:30');await schedule.getByRole('button',{name:'Save schedule'}).click();
+  await expect.poll(async()=> (await (await context.request.get('/api/v1/admin/campaign/daily-schedule')).json()).sendTime).toBe('10:30');
+  await admin.getByRole('button',{name:'Sign out'}).click();await expect(admin.locator('#password-auth')).toBeVisible();
+  expect((await context.request.get('/api/v1/admin/campaign/configs')).status()).toBe(401);
+  await login(admin,'qa-support@example.test',process.env.QA_SUPPORT_PASSWORD);
+  expect((await context.request.get('/api/v1/admin/reports/campaign-xlsx/overview')).status()).toBe(403);
+  expect((await context.request.get('/api/v1/admin/campaign/daily-schedule')).status()).toBe(403);
+  await player.close();await context.close();
+});
