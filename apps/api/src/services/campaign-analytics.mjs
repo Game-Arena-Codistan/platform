@@ -1,4 +1,6 @@
 import {randomUUID} from 'node:crypto';
+import {SubscriptionReportService,parseReportFilters} from './subscription-reports.mjs';
+import {PostgresSubscriptionReportService} from './postgres-subscription-reports.mjs';
 import {randomToken,sha256,parseCookies} from '../lib/security.mjs';
 const TTL=30*86400000,COOKIE='ga_campaign',UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const paths=new Set(['/mainLanding','/landing1','/landing2']);
@@ -42,6 +44,7 @@ export function pakistanDay(date){
   return{from:new Date(start).toISOString(),to:new Date(start+86400000).toISOString()};
 }
 const snapshotFields={platform:'platform',planId:'package',parameter:'parameter',landingPage:'landingPath',referral:'ref',campaignId:'campaign_id'};
+function paymentFilters(range,filters){const date=new Date(Date.parse(range.from)+5*3600000).toISOString().slice(0,10);return {...parseReportFilters(new URLSearchParams({from:date,to:date})),...filters};}
 function matches(snapshot,filters){return Object.entries(snapshotFields).every(([filter,key])=>!filters[filter]||String(snapshot?.[key]||'')===filters[filter]);}
 function eventMetrics(rows){
   const list=name=>rows.filter(r=>r.eventName===name),unique=(items,key)=>new Set(items.map(r=>r[key]).filter(Boolean)).size;
@@ -50,7 +53,7 @@ function eventMetrics(rows){
   return{landingViews:landing.length,identifiedUniqueVisitors:unique(landing,'anonymousId'),unidentifiedLandingViews:landing.filter(r=>!r.anonymousId).length,jazzCashInitiations:unique(initiated,'attemptId'),observedPaywallVisits:paywall.length?unique(paywall,'attemptId'):null,observedPaymentAttempts:unique(attempts,'attemptId'),observedFailedAttempts:unique(failed,'attemptId'),failureReasons:[...failures].map(([code,ids])=>({code,reason:'unmapped',count:ids.size})),heTraffic:null,nonHeTraffic:null,mpinShown:null,mpinSubmitted:null};
 }
 export class MemoryCampaignRepository{
-  constructor(){this.configs=new Map();this.attributions=new Map();this.events=new Map();}
+  constructor({store=null}={}){this.configs=new Map();this.attributions=new Map();this.events=new Map();this.store=store;}
   async list(){return [...this.configs.values()].slice(0,500);}
   async get(id){return this.configs.get(id)||null;}
   async put(config){this.configs.set(config.id,structuredClone(config));return config;}
@@ -59,7 +62,7 @@ export class MemoryCampaignRepository{
   async claim(hash,userId,now){const r=await this.attribution(hash,now);if(!r||r.userId&&r.userId!==userId)return null;r.userId=userId;this.attributions.set(hash,r);return r;}
   async revoke(hash,now){const r=this.attributions.get(hash);if(r)r.revokedAt=now;}
   async event(row){if(this.events.has(row.eventKey))return false;this.events.set(row.eventKey,structuredClone(row));return true;}
-  async daily(range,filters){const rows=[...this.events.values()].filter(r=>r.occurredAt>=range.from&&r.occurredAt<range.to&&matches(r.snapshot,filters));return{...eventMetrics(rows),verifiedSuccessCount:null};}
+  async daily(range,filters){const rows=[...this.events.values()].filter(r=>r.occurredAt>=range.from&&r.occurredAt<range.to&&matches(r.snapshot,filters));const report=this.store?new SubscriptionReportService({store:this.store}).campaignAttribution(paymentFilters(range,filters)):null;return{...eventMetrics(rows),verifiedSuccessCount:report?.totals.subscriptions??null};}
 }
 export class PostgresCampaignRepository{
   constructor(pool){this.pool=pool;}
@@ -77,11 +80,9 @@ export class PostgresCampaignRepository{
     const where=clauses.join(' AND ');
     const r=await this.pool.query("SELECT count(*) FILTER(WHERE event_name='landing_view') AS landing_views,count(DISTINCT anonymous_id) FILTER(WHERE event_name='landing_view') AS unique_visitors,count(*) FILTER(WHERE event_name='landing_view' AND anonymous_id IS NULL) AS unidentified,count(DISTINCT attempt_id) FILTER(WHERE event_name='jazzcash_initiated') AS initiated,count(DISTINCT attempt_id) FILTER(WHERE event_name='payment_attempt') AS attempts,count(DISTINCT attempt_id) FILTER(WHERE event_name='payment_failed') AS failures FROM ga_campaign_events WHERE "+where,values);
     const counts=r.rows[0];const failures=await this.pool.query("SELECT coalesce(failure_code,'unknown') AS code,count(DISTINCT attempt_id) AS count FROM ga_campaign_events WHERE "+where+" AND event_name='payment_failed' GROUP BY 1 ORDER BY count DESC LIMIT 100",values);
-    // Official successful charges are read from the payment projection, never public event counters.
-    const payValues=[range.from,range.to],payClauses=["kind='membership'","internal_status IN ('paid','refunded')","completed_at >= $1","completed_at < $2"];
-    for(const [name,key] of Object.entries(snapshotFields))if(filters[name]){payValues.push(filters[name]);payClauses.push("safe_record->'attribution'->>'"+key+"'=$"+payValues.length);}
-    const success=await this.pool.query("SELECT count(DISTINCT coalesce(provider_reference,id::text)) AS count FROM ga_payment_attempts WHERE "+payClauses.join(' AND '),payValues);
-    return{landingViews:Number(counts.landing_views),identifiedUniqueVisitors:Number(counts.unique_visitors),unidentifiedLandingViews:Number(counts.unidentified),jazzCashInitiations:Number(counts.initiated),observedPaywallVisits:null,observedPaymentAttempts:Number(counts.attempts),observedFailedAttempts:Number(counts.failures),failureReasons:failures.rows.map(row=>({code:row.code,reason:'unmapped',count:Number(row.count)})),verifiedSuccessCount:Number(success.rows[0].count),heTraffic:null,nonHeTraffic:null,mpinShown:null,mpinSubmitted:null};
+    // Use exactly the same report calculator as the official Admin campaign report.
+    const report=await new PostgresSubscriptionReportService({pool:this.pool}).campaignAttribution(paymentFilters(range,filters));
+    return{landingViews:Number(counts.landing_views),identifiedUniqueVisitors:Number(counts.unique_visitors),unidentifiedLandingViews:Number(counts.unidentified),jazzCashInitiations:Number(counts.initiated),observedPaywallVisits:null,observedPaymentAttempts:Number(counts.attempts),observedFailedAttempts:Number(counts.failures),failureReasons:failures.rows.map(row=>({code:row.code,reason:'unmapped',count:Number(row.count)})),verifiedSuccessCount:report.totals.subscriptions,heTraffic:null,nonHeTraffic:null,mpinShown:null,mpinSubmitted:null};
   }
 }
 function readToken(req){try{const token=parseCookies(req.headers.cookie)[COOKIE];return /^[A-Za-z0-9_-]{43}$/.test(token||'')?token:null;}catch{return null;}}

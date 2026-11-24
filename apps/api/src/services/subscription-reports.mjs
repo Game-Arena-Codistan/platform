@@ -65,7 +65,7 @@ export class SubscriptionReportService{
   reconciliation(filters){const all=this.transactions();const entitlementByPayment=new Set(this.subscriptions().filter(item=>item.sourceId).map(item=>item.sourceId));const cases=this.store.reconciliationCases.map(item=>({...item,transaction:safePayment(this.store,this.store.getTransaction(item.transactionId)||{id:item.transactionId,userId:'unknown',kind:'membership',status:'unknown'},all)}));for(const item of all.filter(item=>item.kind==='membership'&&item.status==='paid'&&!entitlementByPayment.has(item.id)))cases.push({id:`derived:no-entitlement:${item.id}`,status:'open',reason:'provider_completed_without_entitlement',createdAt:item.paidAt,transaction:safePayment(this.store,item,all),derived:true});for(const item of this.subscriptions().filter(item=>item.origin!=='manual_grant'&&['payment','payment-recompute'].includes(item.sourceType)&&!all.some(tx=>tx.id===item.sourceId&&tx.status==='paid')))cases.push({id:`derived:no-payment:${item.id}`,status:'open',reason:'entitlement_without_completed_payment',createdAt:item.createdAt?iso(item.createdAt):null,subscription:safeSubscription(this.store,item,all),derived:true});const filtered=stableSort(cases.filter(item=>(!filters.subscriptionStatus||item.status===filters.subscriptionStatus)&&(!filters.query||JSON.stringify(item).toLowerCase().includes(filters.query))));const paged=paginate(filtered,filters);return{schemaVersion:SCHEMA_VERSION,timeZone:TIME_ZONE,effectiveRange:{from:filters.fromIso,toExclusive:filters.toExclusiveIso},filters,page:paged.page,rows:paged.rows};}
   benefitCosts(filters){let rows=this.store.benefitLedger.filter(item=>inRange(item.createdAt,filters)).map(item=>({...item,customer:maskIdentity(this.store,item.userId),netCostPkr:money(Number(item.redeemedAmountPkr||item.creditedAmountPkr||0)-Number(item.reversedAmountPkr||0))}));rows=stableSort(rows);const paged=paginate(rows,filters);return{schemaVersion:SCHEMA_VERSION,timeZone:TIME_ZONE,effectiveRange:{from:filters.fromIso,toExclusive:filters.toExclusiveIso},filters,page:paged.page,summary:{issuedPkr:money(rows.reduce((sum,item)=>sum+Number(item.issuedAmountPkr||0),0)),redeemedPkr:money(rows.reduce((sum,item)=>sum+Number(item.redeemedAmountPkr||0),0)),reversedPkr:money(rows.reduce((sum,item)=>sum+Number(item.reversedAmountPkr||0),0)),netCostPkr:money(rows.reduce((sum,item)=>sum+Number(item.netCostPkr||0),0))},rows:paged.rows};}
   campaignAttribution(filters){
-    const events=[];const all=this.transactions();
+    const events=[];const all=this.transactions();const seen=new Set();
     for(const item of all){
       if(item.kind!=='membership')continue;
       if(!['paid','refunded'].includes(item.status))continue;
@@ -81,8 +81,12 @@ export class SubscriptionReportService{
       if(filters.parameter&&filters.parameter!==dims.parameter)continue;
       if(filters.landingPage&&!([attr.landing,String(attr.landingPath||'').split(/[?#]/)[0]].includes(filters.landingPage)))continue;
       if(filters.referral&&filters.referral!==String(attr.referral||attr.ref||''))continue;
+      if(filters.campaignId&&filters.campaignId!==String(attr.campaign_id||''))continue;
       if(filters.purpose&&purposeOf(item,all)!==filters.purpose)continue;
       const amountMinor=Math.round(Number(item.amountPkr||0)*100);
+      if(!Number.isSafeInteger(amountMinor)||amountMinor<=0)continue;
+      const chargeKey=String(item.provider||'unknown')+':'+String(item.providerReference||item.id);
+      if(seen.has(chargeKey))continue;seen.add(chargeKey);
       const date=filters.aggregation==='monthly'?localMonthLabel(asMs(at)):localDateLabel(asMs(at));
       events.push({date,platform:dims.platform,package:dims.package,parameter:dims.parameter,subscriptions:1,amountMinor});
     }

@@ -77,7 +77,7 @@ const providers=config.otpProviderMode==='mock'
       ]
       :[...debugMockFallback.length?debugMockFallback:[new DisabledOtpProvider()]];
 const otpDelivery=new OtpDeliveryRouter({providers,audit:store.audit,metrics:store.metrics});
-const campaignAnalytics=new CampaignAnalytics({config,repository:store.pool?new PostgresCampaignRepository(store.pool):new MemoryCampaignRepository()});
+const campaignAnalytics=new CampaignAnalytics({config,repository:store.pool?new PostgresCampaignRepository(store.pool):new MemoryCampaignRepository({store})});
 const adminSessionApp=createAdminSessionApp({config,store});
 const campaignDelivery=new CampaignDailyDelivery({config,analytics:campaignAnalytics,repository:store.pool?new DailyDeliveryRepository(store.pool):null});
 const campaignApp=createCampaignApp({config,store,analytics:campaignAnalytics,delivery:campaignDelivery});
