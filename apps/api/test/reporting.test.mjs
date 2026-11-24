@@ -75,3 +75,20 @@ test('campaign attribution aggregates succeeded payments by utm package paramete
   assert.match(exported.body,/platform_x_parameter|basic|daily/);
   assert.match(exported.filename,/campaign-attribution/);
 });
+
+test('campaign report filters standard UTM, referral, landing and independent totals',async()=>{
+  const f=fixture();
+  for(const [index,attribution] of [{utm_source:'Meta',package:'1',parameter:'ranchers',ref:'partner123',landing:'landing1',landingPath:'/landing1?private=redacted'},{utm:'T',package:'2',parameter:'phone',ref:'other',landing:'landing2'}].entries()){
+    const user=f.user('qa-campaign-'+index);
+    const tx=await f.payments.checkout({userId:user.id,planId:index?'yearly':'monthly',idempotencyKey:'fixture-'+index,attribution});
+    f.paidEvent(tx);
+  }
+  const report=f.reports.campaignAttribution(customFilters());
+  assert.equal(report.totals.subscriptions,2);
+  for(const dimension of ['byPlatform','byPackage','byParameter'])assert.equal(Object.values(report.daily[0][dimension]).reduce((a,b)=>a+b,0),2);
+  const filtered=f.reports.campaignAttribution({...customFilters(),product:'Game Arena',platform:'Meta',planId:'1',parameter:'ranchers',landingPage:'/landing1',referral:'partner123'});
+  assert.equal(filtered.totals.subscriptions,1);
+  assert.equal(filtered.totals.amountMinor,99000);
+  assert.equal(filtered.daily[0].byPlatform.M,1);
+  assert.equal(f.reports.campaignAttribution({...customFilters(),referral:'unknown'}).totals.subscriptions,0);
+});

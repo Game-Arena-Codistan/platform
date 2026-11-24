@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {ensureReportingState,PLAN_DEFINITIONS} from './payments.mjs';
-import {attributionDimensions,isOmittedFromCampaignReport} from '../lib/campaign-attribution.mjs';
+import {attributionDimensions,isOmittedFromCampaignReport,platformCode} from '../lib/campaign-attribution.mjs';
 
 const TIME_ZONE='Asia/Karachi';
 const OFFSET_MS=5*60*60*1000;
@@ -34,7 +34,7 @@ export function parseReportFilters(searchParams,clock=()=>Date.now()){
   if(to<=from||to-from>MAX_RANGE_DAYS*DAY_MS)throw Object.assign(new Error(`Report range must be between 1 and ${MAX_RANGE_DAYS} days.`),{status:400,code:'report_range_too_large'});
   const aggregation=String(searchParams.get('aggregation')||'daily').toLowerCase()==='monthly'?'monthly':'daily';
   const planId=String(searchParams.get('planId')||searchParams.get('planCode')||'');
-  return{preset,from,to,fromIso:iso(from),toExclusiveIso:iso(to),aggregation,planId,paymentStatus:String(searchParams.get('paymentStatus')||''),subscriptionStatus:String(searchParams.get('subscriptionStatus')||''),purpose:String(searchParams.get('purpose')||''),autoRenew:String(searchParams.get('autoRenew')||''),query:String(searchParams.get('q')||'').trim().toLowerCase(),cursor:Math.max(0,Number(searchParams.get('cursor'))||0),limit:clamp(Number(searchParams.get('limit'))||50,1,MAX_PAGE_SIZE)};
+  return{preset,from,to,fromIso:iso(from),toExclusiveIso:iso(to),aggregation,planId,product:String(searchParams.get('product')||'').trim().slice(0,80),platform:String(searchParams.get('platform')||'').trim().slice(0,80),parameter:String(searchParams.get('parameter')||'').trim().slice(0,80),landingPage:String(searchParams.get('landingPage')||'').trim().slice(0,120),referral:String(searchParams.get('referral')||'').trim().slice(0,80),paymentStatus:String(searchParams.get('paymentStatus')||''),subscriptionStatus:String(searchParams.get('subscriptionStatus')||''),purpose:String(searchParams.get('purpose')||''),autoRenew:String(searchParams.get('autoRenew')||''),query:String(searchParams.get('q')||'').trim().toLowerCase(),cursor:Math.max(0,Number(searchParams.get('cursor'))||0),limit:clamp(Number(searchParams.get('limit'))||50,1,MAX_PAGE_SIZE)};
 }
 function maskIdentity(store,userId){const identities=[...store.identities.values()].filter(item=>item.userId===userId);const primary=identities[0];if(!primary)return{type:'account',masked:`${String(userId).slice(0,8)}…`};if(primary.type==='phone')return{type:'phone',masked:`${primary.value.slice(0,4)}******${primary.value.slice(-2)}`};return{type:primary.type,masked:String(primary.value).replace(/^(.).+(@.+)$/,'$1***$2')};}
 function safeReference(value){const text=String(value||'');return text.length>80?`${text.slice(0,77)}…`:text;}
@@ -63,8 +63,8 @@ export class SubscriptionReportService{
   reconciliation(filters){const all=this.transactions();const entitlementByPayment=new Set(this.subscriptions().filter(item=>item.sourceId).map(item=>item.sourceId));const cases=this.store.reconciliationCases.map(item=>({...item,transaction:safePayment(this.store,this.store.getTransaction(item.transactionId)||{id:item.transactionId,userId:'unknown',kind:'membership',status:'unknown'},all)}));for(const item of all.filter(item=>item.kind==='membership'&&item.status==='paid'&&!entitlementByPayment.has(item.id)))cases.push({id:`derived:no-entitlement:${item.id}`,status:'open',reason:'provider_completed_without_entitlement',createdAt:item.paidAt,transaction:safePayment(this.store,item,all),derived:true});for(const item of this.subscriptions().filter(item=>item.origin!=='manual_grant'&&['payment','payment-recompute'].includes(item.sourceType)&&!all.some(tx=>tx.id===item.sourceId&&tx.status==='paid')))cases.push({id:`derived:no-payment:${item.id}`,status:'open',reason:'entitlement_without_completed_payment',createdAt:item.createdAt?iso(item.createdAt):null,subscription:safeSubscription(this.store,item,all),derived:true});const filtered=stableSort(cases.filter(item=>(!filters.subscriptionStatus||item.status===filters.subscriptionStatus)&&(!filters.query||JSON.stringify(item).toLowerCase().includes(filters.query))));const paged=paginate(filtered,filters);return{schemaVersion:SCHEMA_VERSION,timeZone:TIME_ZONE,effectiveRange:{from:filters.fromIso,toExclusive:filters.toExclusiveIso},filters,page:paged.page,rows:paged.rows};}
   benefitCosts(filters){let rows=this.store.benefitLedger.filter(item=>inRange(item.createdAt,filters)).map(item=>({...item,customer:maskIdentity(this.store,item.userId),netCostPkr:money(Number(item.redeemedAmountPkr||item.creditedAmountPkr||0)-Number(item.reversedAmountPkr||0))}));rows=stableSort(rows);const paged=paginate(rows,filters);return{schemaVersion:SCHEMA_VERSION,timeZone:TIME_ZONE,effectiveRange:{from:filters.fromIso,toExclusive:filters.toExclusiveIso},filters,page:paged.page,summary:{issuedPkr:money(rows.reduce((sum,item)=>sum+Number(item.issuedAmountPkr||0),0)),redeemedPkr:money(rows.reduce((sum,item)=>sum+Number(item.redeemedAmountPkr||0),0)),reversedPkr:money(rows.reduce((sum,item)=>sum+Number(item.reversedAmountPkr||0),0)),netCostPkr:money(rows.reduce((sum,item)=>sum+Number(item.netCostPkr||0),0))},rows:paged.rows};}
   campaignAttribution(filters){
-    const events=[];
-    for(const item of this.transactions()){
+    const events=[];const all=this.transactions();
+    for(const item of all){
       if(item.kind!=='membership')continue;
       if(!['paid','refunded'].includes(item.status))continue;
       const at=item.paidAt||item.completedAt;
@@ -74,6 +74,12 @@ export class SubscriptionReportService{
       if(filters.planId&&item.planId!==filters.planId&&String(attr.package||'')!==filters.planId)continue;
       if(filters.paymentStatus&&item.status!==filters.paymentStatus&&item.providerStatus!==filters.paymentStatus)continue;
       const dims=attributionDimensions(attr,item.planId||'');
+      if(filters.product&&!['game arena','game-arena','game_arena'].includes(filters.product.toLowerCase()))continue;
+      if(filters.platform&&platformCode(filters.platform)!==dims.platform)continue;
+      if(filters.parameter&&filters.parameter!==dims.parameter)continue;
+      if(filters.landingPage&&!([attr.landing,String(attr.landingPath||'').split(/[?#]/)[0]].includes(filters.landingPage)))continue;
+      if(filters.referral&&filters.referral!==String(attr.referral||attr.ref||''))continue;
+      if(filters.purpose&&purposeOf(item,all)!==filters.purpose)continue;
       const amountMinor=Math.round(Number(item.amountPkr||0)*100);
       const date=filters.aggregation==='monthly'?localMonthLabel(asMs(at)):localDateLabel(asMs(at));
       events.push({date,platform:dims.platform,package:dims.package,parameter:dims.parameter,subscriptions:1,amountMinor});
@@ -81,10 +87,10 @@ export class SubscriptionReportService{
     const bump=(map,key,fields)=>{const row=map.get(key)||{...fields,subscriptions:0,amountMinor:0};row.subscriptions+=1;row.amountMinor+=fields.amountMinor;map.set(key,row);};
     const basicMap=new Map();const platformParamMap=new Map();const packageParamMap=new Map();const dailyMap=new Map();
     for(const event of events){
-      bump(basicMap,`${event.date}|${event.platform}|${event.package}|${event.parameter}`,{date:event.date,platform:event.platform,package:event.package,parameter:event.parameter,amountMinor:event.amountMinor});
-      bump(platformParamMap,`${event.date}|${event.platform}|${event.parameter}`,{date:event.date,platform:event.platform,parameter:event.parameter,amountMinor:event.amountMinor});
-      bump(packageParamMap,`${event.date}|${event.package}|${event.parameter}`,{date:event.date,package:event.package,parameter:event.parameter,amountMinor:event.amountMinor});
-      const day=dailyMap.get(event.date)||{date:event.date,subscriptions:0,amountMinor:0,byPlatform:{},byPackage:{},byParameter:{}};
+      bump(basicMap,JSON.stringify([event.date,event.platform,event.package,event.parameter]),{date:event.date,platform:event.platform,package:event.package,parameter:event.parameter,amountMinor:event.amountMinor});
+      bump(platformParamMap,JSON.stringify([event.date,event.platform,event.parameter]),{date:event.date,platform:event.platform,parameter:event.parameter,amountMinor:event.amountMinor});
+      bump(packageParamMap,JSON.stringify([event.date,event.package,event.parameter]),{date:event.date,package:event.package,parameter:event.parameter,amountMinor:event.amountMinor});
+      const day=dailyMap.get(event.date)||{date:event.date,subscriptions:0,amountMinor:0,byPlatform:Object.create(null),byPackage:Object.create(null),byParameter:Object.create(null)};
       day.subscriptions+=1;day.amountMinor+=event.amountMinor;
       day.byPlatform[event.platform]=(day.byPlatform[event.platform]||0)+1;
       day.byPackage[event.package]=(day.byPackage[event.package]||0)+1;
