@@ -1,6 +1,6 @@
 const KEYS=['utm','utm_source','utm_campaign','utm_medium','utm_content','utm_term','package','parameter','payment','landing','landingPath','ref','referral','campaign_id','creative_id'];
 const clip=(value,max)=>typeof value==='string'||typeof value==='number'?String(value).trim().slice(0,max):'';
-export function platformCode(value){const raw=clip(value,80);const code=raw.toLowerCase();return ({t:'T',tiktok:'T',m:'M',meta:'M',facebook:'M',instagram:'M',s:'S',snapchat:'S',g:'G',google:'G',d:'D',direct:'D',organic:'organic'})[code]||raw||'unknown';}
+export function platformCode(value){const raw=clip(value,80);const code=raw.toLowerCase();const aliases={t:'T',tiktok:'T',m:'M',meta:'M',facebook:'M',instagram:'M',s:'S',snapchat:'S',g:'G',google:'G',d:'D',direct:'D',organic:'organic'};return (Object.hasOwn(aliases,code)?aliases[code]:raw)||'unknown';}
 function safePath(value){const raw=clip(value,512);if(!raw.startsWith('/')||raw.startsWith('//')||raw.includes('\\'))return '';return raw.split(/[?#]/)[0].slice(0,120);}
 
 /** Allowlist + length-clip attribution for storage on payment rows. */

@@ -2,7 +2,7 @@
 // Each dimension represents the same subscriptions, not additive totals.
 const keys=(records,field)=>[...new Set(records.flatMap(row=>Object.keys(row[field]||{})))].sort();
 const labels={T:'TikTok',M:'Meta',S:'Snapchat',G:'Google',D:'Direct',unknown:'Unknown'};
-const label=(value,field)=>field==='byPlatform'?(labels[value]||value):value;
+const label=(value,field)=>field==='byPlatform'?((Object.hasOwn(labels,value)?labels[value]:value)):value;
 const number=value=>Number.isFinite(Number(value))?Number(value):0;
 const total=(rows,i)=>rows.reduce((sum,row)=>sum+number(row[i]),0);
 const withTotal=(rows,width)=>[...rows,['Total',...Array.from({length:width-1},(_,i)=>total(rows,i+1))]];
