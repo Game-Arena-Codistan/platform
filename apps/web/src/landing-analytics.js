@@ -1,6 +1,7 @@
 import {logGa4Event} from './ga4.js';
 import {logTikTokEvent} from './tiktok-pixel.js';
 import {commerceForCampaign} from './landing-campaign.js';
+import {telemetryEnabled} from './state.js';
 
 const CONTEXT_KEY='lp_context';
 const TOKENS_KEY='lp_sent_tokens';
@@ -9,7 +10,10 @@ function trafficSource(utm){
   const value=String(utm||'').trim().toUpperCase();
   if(value==='M'||value==='META'||value==='FACEBOOK')return 'meta';
   if(value==='T'||value==='TIKTOK')return 'tiktok';
-  return 'direct';
+  if(value==='S'||value==='SNAPCHAT')return 'snapchat';
+  if(value==='G'||value==='GOOGLE')return 'google';
+  if(value==='D'||value==='DIRECT')return 'direct';
+  return value?value.toLowerCase():'unknown';
 }
 
 function commercePayload(context){
@@ -64,6 +68,7 @@ function markToken(id){
 }
 
 export function trackLandingView(context){
+  if(!telemetryEnabled())return;
   persistLandingAnalyticsContext(context);
   logGa4Event('landing_view',{...context});
   logGa4Event('view_item',{item_id:context.item_id,item_name:context.item_name,value:context.value,currency:context.currency,landing:context.landing});
@@ -71,19 +76,22 @@ export function trackLandingView(context){
   logTikTokEvent('ViewContent',commercePayload(context));
 }
 export function trackAddToCart(context){
+  if(!telemetryEnabled())return;
   persistLandingAnalyticsContext(context);
+  logGa4Event('landing_cta',{...context});
+  logGa4Event('subscribe',{...context});
   logGa4Event('add_to_cart',{...context,user_state:'new'});
   logGa4Event('begin_checkout',{...context});
   const payload=commercePayload(context);
   logTikTokEvent('AddToCart',payload);
   logTikTokEvent('InitiateCheckout',payload);
 }
-export function trackPaymentConversion({paymentStatus,transactionId,context}={}){
+export function trackPaymentConversion({verified,transactionId,value,currency,planCode,context}={}){
+  if(!telemetryEnabled()||verified!==true||!transactionId||!Number.isFinite(value)||value<=0||!/^[A-Z]{3}$/.test(currency))return;
   const ctx=context||readLandingAnalyticsContext();
-  logGa4Event('payment_result',{payment_status:paymentStatus,landing:ctx?.landing,plan_code:ctx?.plan_code});
-  if(paymentStatus!=='succeeded'||!transactionId||!ctx)return;
-  if(!markToken(String(transactionId)))return;
-  logGa4Event(ctx.conversion_event,{transaction_id:String(transactionId),value:ctx.value,currency:ctx.currency,item_id:ctx.item_id,item_name:ctx.item_name,landing:ctx.landing});
-  const tiktokEvent=ctx.conversion_event==='purchase'?'CompletePayment':'Subscribe';
-  logTikTokEvent(tiktokEvent,commercePayload(ctx),{event_id:String(transactionId)});
+  if(!ctx||!markToken(String(transactionId)))return;
+  const itemId=planCode||ctx.plan_code;
+  const actual={...ctx,item_id:itemId,plan_code:itemId,value,currency};
+  logGa4Event('purchase',{transaction_id:String(transactionId),value,currency,items:[{item_id:itemId,item_name:itemId==='yearly'?'Game Premium Yearly':'Game Premium Monthly',price:value,quantity:1}],traffic_source:ctx.traffic_source,utm_code:ctx.utm_code,banner_parameter:ctx.banner_parameter,landing:ctx.landing});
+  logTikTokEvent('CompletePayment',commercePayload(actual),{event_id:String(transactionId)});
 }

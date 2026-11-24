@@ -4,6 +4,7 @@ import {assertCsrf,normalizeIdentifier,parseCookies,requestIp,sha256} from './li
 import {PLAN_DEFINITIONS} from './services/payments.mjs';
 import {jazzCashRequestId,jazzCashTxnRefNo} from './adapters/jazzcash-orchestrator.mjs';
 import {sanitizeAttribution} from './lib/campaign-attribution.mjs';
+import {issueCampaignReceipt,verifiedCampaignConversion} from './lib/verified-campaign-conversion.mjs';
 
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const msisdn=value=>{const phone=String(value||'').trim();if(!/^(\+92|0)?3\d{9}$/.test(phone.replace(/\s/g,'')))throw fail('JazzCash mobile number must be a valid Pakistani MSISDN (03XXXXXXXXX).',400,'invalid_body');const digits=phone.replace(/\D/g,'');return digits.startsWith('92')?`0${digits.slice(2)}`:digits.startsWith('0')?digits:`0${digits}`;};
@@ -98,7 +99,7 @@ function openToken(sealed){
   try{return Buffer.from(String(sealed),'base64url').toString('utf8');}catch{return '';}
 }
 
-export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>Date.now()}){
+export function createJazzCashRecurringApp({config,store,orchestrator,campaignAnalytics,clock=()=>Date.now()}){
   if(!['orchestrator','mock'].includes(config.jazzcashMode))return async()=>false;
   ensureJazzCashState(store);
 
@@ -211,8 +212,9 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     const txnRefNo=jazzCashTxnRefNo(randomUUID().replaceAll('-',''));
     const amountMinor=Math.round(plan.pricePkr*100);
     const billReference=randomUUID();
+    if(campaignAnalytics)await campaignAnalytics.stage('payment_attempt',{attemptId:txnRefNo,attribution:attributionRaw||{},userId}).catch(()=>{});
     const pay=await orchestrator.payViaToken({paymentToken:token,txnRefNo,amountMinor,billReference,description:`Game Arena+ ${planCodeValue}`});
-    if(String(pay?.pp_ResponseCode)!=='000')throw fail(String(pay?.pp_ResponseMessage||'JazzCash payment failed.'),402,'payment_failed');
+    if(String(pay?.pp_ResponseCode)!=='000'){if(campaignAnalytics)await campaignAnalytics.stage('payment_failed',{attemptId:txnRefNo,attribution:attributionRaw||{},userId,failureCode:String(pay?.pp_ResponseCode||'unknown')}).catch(()=>{});throw fail(String(pay?.pp_ResponseMessage||'JazzCash payment failed.'),402,'payment_failed');}
     // Reconcile with Status Inquiry (no pp_Version). PayViaToken 000 remains authoritative if inquiry is unavailable.
     let inquiry=null;
     try{inquiry=await orchestrator.statusInquiry({txnRefNo});}catch(error){
@@ -223,7 +225,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
       store.audit.write({actor:userId,action:'jazzcash.status_inquiry_mismatch',targetType:'provider_reference',targetId:txnRefNo,metadata:{payCode:pay?.pp_ResponseCode,inquiryCode,inquiryMessage:String(inquiry.pp_ResponseMessage||'').slice(0,180)}});
     }
     const now=clock();const expiresAt=now+plan.durationDays*86400000;
-    const attribution=sanitizeAttribution(attributionRaw);
+    const attribution=campaignAnalytics?attributionRaw:sanitizeAttribution(attributionRaw);
     const paidAt=new Date(now).toISOString();
     const priorPaid=[...store.transactions.values()].some(item=>item.userId===userId&&item.kind==='membership'&&item.status==='paid');
     const purpose=priorPaid?'extension':'activation';
@@ -366,13 +368,21 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
           await completeWalletLink(userId,fields);
           const planCodeValue=intent?.planCode||'monthly';
           const sub=await chargeLinkedWallet(userId,planCodeValue,intent?.attribution);
-          return redirect(res,303,`${appOrigin}/?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
+          const receipt=issueCampaignReceipt(store,sub.id,clock());
+          return redirect(res,303,`${appOrigin}/?payment=succeeded&orderId=${encodeURIComponent(sub.id)}${receipt?`&receipt=${encodeURIComponent(receipt)}`:''}`);
+
         }catch(error){
           store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
           return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);
         }
       }
 
+      if(method==='POST'&&path==='/v1/billing/verified-conversion'){
+        assertOrigin(req);const ip=sha256(requestIp(req));if(store.hitRateLimit(`conversion-receipt:${ip}`,40,60000,clock()))throw fail('Too many requests.',429,'rate_limited');
+        const {value}=await readJson(req,4096);const proof=verifiedCampaignConversion(store,{id:value.orderId,receipt:value.receipt,userId:authContext(req)?.user?.id,now:clock()});
+        if(!proof)throw fail('Payment confirmation unavailable.',404,'payment_unverified');
+        return reply(200,proof);
+      }
       if(method==='GET'&&path==='/v1/billing/plans')return reply(200,{enabled:true,mode:'jazzcash_orchestrator',plans:planCatalog()});
 
       // Proxies JazzCash Status Inquiry (no pp_Version). Frontend never calls JazzCash directly.
@@ -419,7 +429,9 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         const requestIdValue=jazzCashRequestId();
         const returnPath=safeReturnPath(value.returnPath||value.landingPath);
         const returnOrigin=resolveAppOrigin(req,config);
-        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,returnOrigin,attribution:sanitizeAttribution(value.attribution)});
+        const attribution=campaignAnalytics?await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:authContext(req)?.user?.id||null}).catch(()=>null):sanitizeAttribution(value.attribution);
+        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,returnOrigin,attribution});
+        if(campaignAnalytics)await campaignAnalytics.stage('jazzcash_initiated',{attemptId:requestIdValue,attribution:attribution||{},userId:authContext(req)?.user?.id||null}).catch(()=>{});
         const form=orchestrator.createLinkWalletForm({msisdn:phone,requestId:requestIdValue});
         store.audit.write({actor:user.id,action:'jazzcash.wallet_link_started',targetType:'user',targetId:user.id,metadata:{requestId:requestIdValue,planCode:selectedPlan,returnOrigin,guest:!authContext(req)}});
         return reply(201,{requestId:requestIdValue,portalUrl:form.portalUrl,actionUrl:form.actionUrl,method:form.method,fields:form.fields});
@@ -449,7 +461,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
 
       if(method==='POST'&&path==='/v1/billing/subscriptions'){
         const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,8192);
-        const sub=await chargeLinkedWallet(user.id,planCode(value.planCode||'monthly'),value.attribution);
+        const attribution=campaignAnalytics?await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:user.id}).catch(()=>null):sanitizeAttribution(value.attribution);const sub=await chargeLinkedWallet(user.id,planCode(value.planCode||'monthly'),attribution);
         return reply(201,sub);
       }
 

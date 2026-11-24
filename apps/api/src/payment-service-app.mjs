@@ -20,7 +20,7 @@ function subscriptionFrom(status){
   return subscriptions.find(item=>OPEN.has(item.status))||subscriptions[0]||null;
 }
 
-export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetchImpl=globalThis.fetch,settings:settingsOverride}={}){
+export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetchImpl=globalThis.fetch,settings:settingsOverride,campaignAnalytics}={}){
   const settings=settingsOverride??loadPaymentServiceSettings({publicOrigin:config.publicOrigin});
   if(settings.mode!=='external'){
     return async function disabledPaymentServiceApp(req,res){
@@ -93,6 +93,8 @@ export function createPaymentServiceApp({config,store,clock=()=>Date.now(),fetch
       if(method==='POST'&&path==='/v1/billing/wallets/link'){
         const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,16384);
         const result=await client.linkWallet(user.id,{msisdn:msisdn(value.msisdn),planCode:value.planCode?planCode(value.planCode):undefined,appReturnUrl:settings.appReturnUrl||undefined});
+        // Log initiation only. Do not fabricate a provider/order correlation from a user or timestamp.
+        if(campaignAnalytics){const attribution=await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:user.id}).catch(()=>null);if(result?.requestId)await campaignAnalytics.stage('jazzcash_initiated',{attemptId:String(result.requestId),attribution:attribution||{},userId:user.id}).catch(()=>{});}
         store.audit.write({actor:user.id,action:'payment_service.wallet_link_started',targetType:'user',targetId:user.id,requestId,metadata:{planCode:value.planCode||null}});
         return reply(201,result);
       }
