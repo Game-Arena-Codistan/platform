@@ -224,7 +224,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,campaignAn
       store.audit.write({actor:userId,action:'jazzcash.status_inquiry_mismatch',targetType:'provider_reference',targetId:txnRefNo,metadata:{payCode:pay?.pp_ResponseCode,inquiryCode,inquiryMessage:String(inquiry.pp_ResponseMessage||'').slice(0,180)}});
     }
     const now=clock();const expiresAt=now+plan.durationDays*86400000;
-    const attribution=attributionRaw?.attribution_id?attributionRaw:sanitizeAttribution(attributionRaw);
+    const attribution=campaignAnalytics?attributionRaw:sanitizeAttribution(attributionRaw);
     const paidAt=new Date(now).toISOString();
     const priorPaid=[...store.transactions.values()].some(item=>item.userId===userId&&item.kind==='membership'&&item.status==='paid');
     const purpose=priorPaid?'extension':'activation';

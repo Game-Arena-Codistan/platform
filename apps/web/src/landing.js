@@ -294,7 +294,7 @@ export function bootLandingIfNeeded(){
   const rawAttribution=attributionForLanding(campaign,{landing,landingPath:location.pathname});
   campaignEvent('landing_view',rawAttribution);
   const analyticsOption=document.createElement('label');analyticsOption.className='ga-lp-analytics-consent';const analyticsToggle=document.createElement('input');analyticsToggle.type='checkbox';analyticsToggle.checked=telemetryEnabled();analyticsOption.append(analyticsToggle,document.createTextNode(' Allow campaign analytics (optional)'));document.querySelector('#landing-subscribe')?.append(analyticsOption);
-  analyticsToggle.addEventListener('change',()=>{setSetting('analytics',analyticsToggle.checked);campaignEvent('landing_cta',rawAttribution);});
+  analyticsToggle.addEventListener('change',()=>{setSetting('analytics',analyticsToggle.checked);campaignEvent('consent_changed',rawAttribution);});
   handleLandingReturn(campaign,landing);
   document.querySelector('#landing-subscribe')?.addEventListener('submit',event=>{event.preventDefault();startCheckout({landing,campaign,commerce});});
   const runFit=()=>fitLandingAboveFold();

@@ -2,12 +2,13 @@ import {randomUUID} from 'node:crypto';
 import {randomToken,sha256,parseCookies} from '../lib/security.mjs';
 const TTL=30*86400000,COOKIE='ga_campaign',UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const paths=new Set(['/mainLanding','/landing1','/landing2']);
-const publicEvents=new Set(['landing_view','landing_cta','subscribe','begin_checkout']);
+const publicEvents=new Set(['landing_view','landing_cta','subscribe','begin_checkout','consent_changed']);
 const stageEvents=new Set(['jazzcash_initiated','payment_attempt','payment_failed','payment_cancelled','payment_succeeded','wallet_link_failed']);
 const safeCode=value=>{const s=typeof value==='string'?value.trim().slice(0,80):'';return /^[A-Za-z0-9._ -]+$/.test(s)&&!/\d{10,}/.test(s)?s:'';};
 const platform=value=>{const s=safeCode(value).toLowerCase();const aliases={m:'Meta',meta:'Meta',facebook:'Meta',instagram:'Meta',t:'TikTok',tiktok:'TikTok',s:'Snapchat',snapchat:'Snapchat',g:'Google',google:'Google',d:'Direct',direct:'Direct',organic:'Organic'};return Object.hasOwn(aliases,s)?aliases[s]:s?'Unknown':'Direct';};
 export const campaignError=(message,status=400,code='invalid_campaign')=>Object.assign(new Error(message),{status,code});
 export function campaignSnapshot(raw={}){
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))raw={};
   const out={};
   for(const key of ['utm','utm_source','utm_campaign','utm_medium','utm_content','utm_term','package','parameter','ref','creative_id']){const value=safeCode(raw[key]);if(value)out[key]=value;}
   if(raw.campaign_id&&UUID.test(raw.campaign_id))out.campaign_id=raw.campaign_id;
@@ -117,7 +118,7 @@ export class CampaignAnalytics{
   }
   async stage(name,{attemptId,orderId=null,attribution={},failureCode=null,userId=null}){
     if(!stageEvents.has(name)||!attemptId||String(attemptId).length>100)return false;
-    const snapshot=await this.snapshot(attribution),id=String(attemptId);
+    const snapshot=campaignSnapshot(attribution),id=String(attemptId);
     return this.repo.event({eventKey:'server:'+name+':'+id,eventName:name,occurredAt:new Date(this.clock()).toISOString(),attributionId:UUID.test(attribution.attribution_id||'')?attribution.attribution_id:null,anonymousId:UUID.test(attribution.anonymous_id||'')?attribution.anonymous_id:null,userId,attemptId:id,orderId,snapshot,failureCode:safeCode(failureCode)||null,consent:['granted','denied'].includes(attribution.consent)?attribution.consent:'unknown'});
   }
   async daily(date,filters={}){return{date,timezone:'Asia/Karachi',generatedAt:new Date(this.clock()).toISOString(),filters,...await this.repo.daily(pakistanDay(date),filters),limitations:{he:'unavailable — provider/product classification required',mpin:'unavailable — provider telemetry required',paywall:'provider page visits unavailable; JazzCash initiations reported separately',failureReasons:'provider code mapping pending; observed charge failures only',uniqueVisitors:'only consented server attribution identities counted; unconsented traffic counted separately',success:'captured membership payment projection; external provider projection and refund/renewal policy pending'}};}
