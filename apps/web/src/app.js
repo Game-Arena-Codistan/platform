@@ -5,6 +5,7 @@ import {ensureCatalogue} from './catalogue-runtime.js';
 import {openAuth,toast} from './ui.js';
 import {bootLandingIfNeeded} from './landing.js';
 import {trackPaymentConversion} from './landing-analytics.js';
+import {fetchVerifiedCampaignConversion} from './billing-api.js';
 import {renderHome,bindHome} from './views/home.js';
 import {renderFeed,bindFeed} from './views/feed.js';
 import {renderLibrary,bindLibrary} from './views/library.js';
@@ -99,26 +100,30 @@ function promptAuthAfterJazzCashReturn(txn=''){
     openAuth('signup');
   },350);
 }
+let paymentProof=null,paymentProofPromise=null;
 function paymentBanner(){
   const params=paymentSuccessParams();
-  if(params.get('payment')!=='succeeded')return;
-  const txn=params.get('orderId')||params.get('txn')||'';
-  if(txn)trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
-  try{
-    const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
-    if(!getState().user)sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:'monthly',at:Date.now(),source:'home-return'}));
-  }catch{/* ignore */}
-  if(getState().entitlement!=='premium')update({entitlement:'premium'});
+  if(params.get('payment')!=='succeeded'&&!paymentProof)return;
+  const orderId=params.get('orderId')||params.get('txn')||'';
+  const receipt=params.get('receipt')||'';
+  if(!paymentProof&&!paymentProofPromise&&orderId){
+    // Receipt is removed from the address before other rendering/network calls.
+    if(receipt){const clean=new URL(location.href);clean.searchParams.delete('receipt');history.replaceState(null,'',clean.pathname+clean.search+clean.hash);}
+    paymentProofPromise=fetchVerifiedCampaignConversion({orderId,receipt}).then(proof=>{
+      if(proof?.verified!==true||proof.orderId!==orderId)return;
+      paymentProof=proof;trackPaymentConversion(proof);
+      render(true);
+    }).catch(()=>{paymentProofPromise=null;});
+  }
   if(!document.querySelector('#payment-success-banner')){
     const banner=document.createElement('div');
-    banner.id='payment-success-banner';
-    banner.className='notice payment-success-banner';
-    banner.innerHTML=getState().user
-      ?'<b>Premium Features Unlocked.</b> Your JazzCash subscription is active.'
-      :'<b>Premium Features Unlocked.</b> Sign up or sign in with your JazzCash number to attach Game Premium to your profile.';
+    banner.id='payment-success-banner';banner.className='notice payment-success-banner';
+    banner.textContent=paymentProof
+      ?(getState().user?'Payment confirmed. Your subscription status is verified by the account service.':'Payment confirmed. Sign up or sign in with your JazzCash number to attach Game Premium to your profile.')
+      :'Checking payment confirmation. Sign in to view your subscription status.';
     app.prepend(banner);
   }
-  if(!getState().user)promptAuthAfterJazzCashReturn(txn);
+  if(paymentProof&&!getState().user)promptAuthAfterJazzCashReturn(paymentProof.orderId);
 }
 function syncProfileChrome(){
   const state=getState();

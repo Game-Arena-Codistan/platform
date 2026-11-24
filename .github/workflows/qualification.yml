@@ -95,10 +95,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Prepare temporary Admin test accounts
+        run: node scripts/prepare-admin-browser-qa.mjs
       - name: Build and start complete local stack
         run: docker compose -f infra/docker-compose.yml up --build --detach
       - name: Run gateway, service and persistence journeys
         run: bash scripts/compose-integration.sh
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: tests/e2e
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/e2e
+      - name: Integrated Admin browser acceptance
+        run: npx playwright test --config admin-acceptance.config.mjs
+        working-directory: tests/e2e
       - name: Capture Compose evidence
         if: always()
         run: |

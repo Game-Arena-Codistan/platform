@@ -21,8 +21,8 @@ services:
     environment:
       NODE_ENV: development
       PORT: 8081
-      PUBLIC_ORIGIN: http://localhost:8080
-      ALLOWED_ORIGINS: http://localhost:8080,http://localhost:8083
+      PUBLIC_ORIGIN: ${LOCAL_PUBLIC_ORIGIN:-http://localhost:8080}
+      ALLOWED_ORIGINS: ${LOCAL_ALLOWED_ORIGINS:-http://localhost:8080,http://localhost:8083}
       DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD:-local-only-change-me}@postgres:5432/game_arena
       DATABASE_SSL: "false"
       REQUIRE_DATABASE: "true"
@@ -37,6 +37,12 @@ services:
       JAZZCASH_MODE: mock
       JAZZCASH_WEBHOOK_SECRET: ${JAZZCASH_WEBHOOK_SECRET:-local-jazzcash-secret}
       ADMIN_API_KEYS: ${ADMIN_API_KEYS:-local-admin-key}
+      ADMIN_PASSWORD_HASHES_JSON: ${LOCAL_ADMIN_HASHES:-}
+      ADMIN_IDENTITY_ROLES_JSON: ${LOCAL_ADMIN_ROLES:-}
+      ADMIN_LOGIN_ORIGINS: ${LOCAL_PUBLIC_ORIGIN:-http://localhost:8080}
+      JAZZCASH_RETURN_URL: ${LOCAL_PUBLIC_ORIGIN:-http://localhost:8080}/callback
+      JAZZCASH_TOKEN_ENCRYPTION_KEY: ${LOCAL_JAZZCASH_TOKEN_KEY:-}
+      CAMPAIGN_REPORT_DELIVERY_ENABLED: "false"
     ports: ["8081:8081"]
     depends_on: {migrate: {condition: service_completed_successfully}}
     restart: unless-stopped

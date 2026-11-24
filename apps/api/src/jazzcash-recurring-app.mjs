@@ -3,7 +3,9 @@ import {readJson,readPayload,send,problem,corsHeaders,redirect} from './lib/http
 import {assertCsrf,normalizeIdentifier,parseCookies,requestIp,sha256} from './lib/security.mjs';
 import {PLAN_DEFINITIONS} from './services/payments.mjs';
 import {jazzCashRequestId,jazzCashTxnRefNo} from './adapters/jazzcash-orchestrator.mjs';
+import {createWalletTokenSeal} from './lib/jazzcash-token-seal.mjs';
 import {sanitizeAttribution} from './lib/campaign-attribution.mjs';
+import {issueCampaignReceipt,verifiedCampaignConversion} from './lib/verified-campaign-conversion.mjs';
 
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const msisdn=value=>{const phone=String(value||'').trim();if(!/^(\+92|0)?3\d{9}$/.test(phone.replace(/\s/g,'')))throw fail('JazzCash mobile number must be a valid Pakistani MSISDN (03XXXXXXXXX).',400,'invalid_body');const digits=phone.replace(/\D/g,'');return digits.startsWith('92')?`0${digits.slice(2)}`:digits.startsWith('0')?digits:`0${digits}`;};
@@ -91,16 +93,10 @@ function billingStatusPayload(userId,store,clock){
   };
 }
 
-function sealToken(token){
-  return Buffer.from(String(token),'utf8').toString('base64url');
-}
-function openToken(sealed){
-  try{return Buffer.from(String(sealed),'base64url').toString('utf8');}catch{return '';}
-}
-
-export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>Date.now()}){
+export function createJazzCashRecurringApp({config,store,orchestrator,campaignAnalytics,clock=()=>Date.now()}){
   if(!['orchestrator','mock'].includes(config.jazzcashMode))return async()=>false;
   ensureJazzCashState(store);
+  const tokenSeal=createWalletTokenSeal(config);
 
   function authContext(req){
     const cookies=parseCookies(req.headers.cookie);const token=cookies[config.sessionCookieName];if(!token)return null;
@@ -192,27 +188,40 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     const normalized=orchestrator.normalizeLinkReturn(fields);
     ensureJazzCashState(store);
     const intent=store.jazzcashLinkIntents.get(normalized.requestId);
-    if(intent&&intent.userId!==userId)throw fail('Wallet link intent does not belong to this account.',403,'forbidden');
+    if(!intent||intent.userId!==userId)throw fail('Wallet link intent does not belong to this account.',403,'forbidden');
     if(!normalized.success)throw fail(normalized.responseMessage||'JazzCash wallet linking failed.',422,'wallet_link_failed');
-    const msisdnValue=normalized.msisdn||intent?.msisdn||'';
-    store.jazzcashWallets.set(userId,{status:'linked',msisdn:msisdnValue,paymentTokenSeal:sealToken(normalized.paymentToken),linkedAt:new Date(clock()).toISOString(),requestId:normalized.requestId});
-    if(intent){intent.status='completed';intent.completedAt=clock();store.jazzcashLinkIntents.set(normalized.requestId,intent);}
+    const msisdnValue=normalized.msisdn?msisdn(normalized.msisdn):intent.msisdn;
+    if(msisdnValue!==intent.msisdn)throw fail('Wallet number does not match the request.',403,'forbidden');
+    store.jazzcashWallets.set(userId,{status:'linked',msisdn:msisdnValue,paymentTokenSeal:tokenSeal.seal(normalized.paymentToken,userId),linkedAt:new Date(clock()).toISOString(),requestId:normalized.requestId});
+    // The callback records charge state separately. Do not mark the request paid before capture.
     store.audit.write({actor:userId,action:'jazzcash.wallet_linked',targetType:'user',targetId:userId,metadata:{requestId:normalized.requestId,alreadyLinked:normalized.alreadyLinked}});
     return normalized;
   }
 
-  async function chargeLinkedWallet(userId,planCodeValue,attributionRaw=null){
+  async function chargeLinkedWallet(userId,planCodeValue,attributionRaw=null,intentId=null){
     ensureJazzCashState(store);
     const wallet=store.jazzcashWallets.get(userId);
     if(!wallet||wallet.status!=='linked')throw fail('Link a JazzCash wallet before subscribing.',409,'wallet_not_linked');
     const plan=PLAN_DEFINITIONS[planCodeValue];if(!plan)throw fail('Unknown premium plan.',400,'invalid_plan');
     if(plan.status==='coming_soon')throw fail('This plan is coming soon.',409,'plan_unavailable');
-    const token=openToken(wallet.paymentTokenSeal);
+    const existing=store.jazzcashChargeReservations.get(userId);
+    if(existing&&['reserved','uncertain'].includes(existing.status))throw fail('A payment is awaiting reconciliation. Do not retry.',409,'payment_reconciliation_required');
+    if(activeSubscriptionSnapshot(userId))throw fail('A subscription is already active.',409,'already_subscribed');
+    const token=tokenSeal.open(wallet.paymentTokenSeal,userId);
+    if(!token)throw fail('Wallet credentials unavailable. Relink your wallet.',409,'wallet_relink_required');
     const txnRefNo=jazzCashTxnRefNo(randomUUID().replaceAll('-',''));
     const amountMinor=Math.round(plan.pricePkr*100);
     const billReference=randomUUID();
-    const pay=await orchestrator.payViaToken({paymentToken:token,txnRefNo,amountMinor,billReference,description:`Game Arena+ ${planCodeValue}`});
-    if(String(pay?.pp_ResponseCode)!=='000')throw fail(String(pay?.pp_ResponseMessage||'JazzCash payment failed.'),402,'payment_failed');
+    const reservation={txnRefNo,billReference,userId,intentId,planCode:planCodeValue,amountMinor,status:'reserved',createdAt:clock()};
+    store.jazzcashChargeReservations.set(userId,reservation);
+    if(intentId){const intent=store.jazzcashLinkIntents.get(intentId);store.jazzcashLinkIntents.set(intentId,{...intent,status:'charging',txnRefNo});}
+    // A normalized PostgreSQL optimistic revision conflict MUST happen before the network call.
+    await store.commit?.();
+    if(campaignAnalytics)await campaignAnalytics.stage('payment_attempt',{attemptId:txnRefNo,attribution:attributionRaw||{},userId}).catch(()=>{});
+    let pay;
+    try{pay=await orchestrator.payViaToken({paymentToken:token,txnRefNo,amountMinor,billReference,description:`Game Arena+ ${planCodeValue}`});}
+    catch(error){store.jazzcashChargeReservations.set(userId,{...reservation,status:'uncertain'});await store.commit?.();throw fail('Payment outcome requires reconciliation.',409,'payment_reconciliation_required');}
+    if(String(pay?.pp_ResponseCode)!=='000'){store.jazzcashChargeReservations.set(userId,{...reservation,status:'uncertain'});await store.commit?.();if(campaignAnalytics)await campaignAnalytics.stage('payment_failed',{attemptId:txnRefNo,attribution:attributionRaw||{},userId,failureCode:String(pay?.pp_ResponseCode||'unknown')}).catch(()=>{});throw fail(String(pay?.pp_ResponseMessage||'JazzCash payment failed.'),402,'payment_failed');}
     // Reconcile with Status Inquiry (no pp_Version). PayViaToken 000 remains authoritative if inquiry is unavailable.
     let inquiry=null;
     try{inquiry=await orchestrator.statusInquiry({txnRefNo});}catch(error){
@@ -223,7 +232,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
       store.audit.write({actor:userId,action:'jazzcash.status_inquiry_mismatch',targetType:'provider_reference',targetId:txnRefNo,metadata:{payCode:pay?.pp_ResponseCode,inquiryCode,inquiryMessage:String(inquiry.pp_ResponseMessage||'').slice(0,180)}});
     }
     const now=clock();const expiresAt=now+plan.durationDays*86400000;
-    const attribution=sanitizeAttribution(attributionRaw);
+    const attribution=campaignAnalytics?attributionRaw:sanitizeAttribution(attributionRaw);
     const paidAt=new Date(now).toISOString();
     const priorPaid=[...store.transactions.values()].some(item=>item.userId===userId&&item.kind==='membership'&&item.status==='paid');
     const purpose=priorPaid?'extension':'activation';
@@ -233,6 +242,9 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     store.createTransaction({id:sub.id,kind:'membership',purpose,userId,provider:'JazzCash',planId:planCodeValue,planSnapshot,listAmountPkr:plan.pricePkr,amountPkr:plan.pricePkr,discountPkr:0,currency:plan.currency||'PKR',status:'paid',providerStatus:inquiryCode||'paid',providerReference:txnRefNo,subscriptionPeriodId:sub.id,attribution,createdAt:paidAt,initiatedAt:paidAt,paidAt,completedAt:paidAt,updatedAt:paidAt,attempts:1});
     store.setEntitlement(userId,{tier:'premium',status:'active',origin:'paid',purpose,planId:planCodeValue,planSnapshot,sourceType:'jazzcash_orchestrator',sourceId:sub.id,startsAt:now,currentPeriodStartsAt:now,currentPeriodEndsAt:expiresAt,expiresAt:expiresAt,autoRenew:true});
     store.audit.write({actor:userId,action:'jazzcash.subscription_activated',targetType:'user',targetId:userId,metadata:{planCode:planCodeValue,txnRefNo,purpose,inquiryCode:inquiryCode||null,attribution:attribution||null}});
+    store.jazzcashChargeReservations.set(userId,{...reservation,status:'paid',transactionId:sub.id,completedAt:clock()});
+    if(intentId){const intent=store.jazzcashLinkIntents.get(intentId);store.jazzcashLinkIntents.set(intentId,{...intent,status:'completed',transactionId:sub.id,completedAt:clock()});}
+    await store.commit?.();
     return sub;
   }
 
@@ -241,7 +253,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     ensureJazzCashState(store);
     const wallet=store.jazzcashWallets.get(userId);
     const msisdnValue=wallet?.msisdn||'';
-    const token=wallet?.status==='linked'?openToken(wallet.paymentTokenSeal):'';
+    const token=wallet?.status==='linked'?tokenSeal.open(wallet.paymentTokenSeal,userId):'';
     let deleteResult=null;
     let inquiryResult=null;
     if(token){
@@ -300,7 +312,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
     if(transaction){
       const recorded=store.addPaymentEvent({transactionId:transaction.id,providerEventId,signatureValid:true,kind:paid?'paid':'provider_notice',providerStatus:responseCode||null,payload:fields});
       if(recorded.duplicate)return{accepted:true,duplicate:true,txnRefNo,transactionId:transaction.id};
-      if(paid&&transaction.status!=='paid'){
+      if(paid&&transaction.status==='pending'&&transaction.provider==='JazzCash'&&!store.jazzcashChargeReservations.get(transaction.userId)){
         transaction.status='paid';
         transaction.providerStatus='paid';
         transaction.providerReference=txnRefNo;
@@ -343,7 +355,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         const {value}=await readPayload(req,65536);
         const fields={...Object.fromEntries(url.searchParams.entries()),...(value&&typeof value==='object'?value:{})};
         if(!Object.keys(fields).length)return reply(200,{accepted:true,ignored:true,reason:'empty'});
-        if(!orchestrator.verifyReturnFields(fields)&&Object.keys(fields).some(key=>key.startsWith('pp_'))){
+        if(!orchestrator.verifyReturnFields(fields)){
           // Soft-fail unknown/unsigned payloads as accepted ignore so JazzCash stops endless retries on probes.
           if(fields.pp_SecureHash)throw fail('JazzCash IPN signature is invalid.',401,'invalid_signature');
           return reply(200,{accepted:true,ignored:true,reason:'unsigned'});
@@ -359,20 +371,30 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         const intent=store.jazzcashLinkIntents.get(intentId);
         const returnPath=safeReturnPath(intent?.returnPath);
         const appOrigin=(intent?.returnOrigin&&config.allowedOrigins.includes(intent.returnOrigin))?intent.returnOrigin:config.publicOrigin;
-        let userId=intent?.userId||null;
-        if(!userId){const session=authContext(req);userId=session?.user?.id||null;}
-        if(!userId)return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);
+        const userId=intent?.userId||null;
+        if(!userId||!orchestrator.verifyReturnFields(fields))return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);
+        const success=(id)=>{const receipt=issueCampaignReceipt(store,id,clock());return redirect(res,303,`${appOrigin}/?payment=succeeded&orderId=${encodeURIComponent(id)}${receipt?`&receipt=${encodeURIComponent(receipt)}`:''}`);};
+        if(intent.status==='completed'&&intent.transactionId&&store.getTransaction(intent.transactionId)?.status==='paid')return success(intent.transactionId);
+        if(intent.status!=='pending'||clock()-intent.createdAt>30*60*1000)return redirect(res,303,`${appOrigin}${returnPath}?payment=pending`);
         try{
+          if(activeSubscriptionSnapshot(userId))throw fail('A subscription is already active.',409,'already_subscribed');
+          if(['reserved','uncertain'].includes(store.jazzcashChargeReservations.get(userId)?.status))throw fail('Payment requires reconciliation.',409,'payment_reconciliation_required');
           await completeWalletLink(userId,fields);
-          const planCodeValue=intent?.planCode||'monthly';
-          const sub=await chargeLinkedWallet(userId,planCodeValue,intent?.attribution);
-          return redirect(res,303,`${appOrigin}/?payment=succeeded&orderId=${encodeURIComponent(sub.id)}`);
+          const sub=await chargeLinkedWallet(userId,intent.planCode,intent.attribution,intentId);
+          return success(sub.id);
         }catch(error){
-          store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{message:String(error.message||error).slice(0,180)}});
-          return redirect(res,303,`${appOrigin}${returnPath}?payment=failed`);
+          store.audit.write({actor:userId,action:'jazzcash.wallet_link_failed',targetType:'user',targetId:userId,metadata:{code:String(error.code||'unknown').slice(0,80)}});
+          const pending=['reserved','uncertain'].includes(store.jazzcashChargeReservations.get(userId)?.status);
+          return redirect(res,303,`${appOrigin}${returnPath}?payment=${pending?'pending':'failed'}`);
         }
       }
 
+      if(method==='POST'&&path==='/v1/billing/verified-conversion'){
+        assertOrigin(req);const ip=sha256(requestIp(req));if(store.hitRateLimit(`conversion-receipt:${ip}`,40,60000,clock()))throw fail('Too many requests.',429,'rate_limited');
+        const {value}=await readJson(req,4096);const proof=verifiedCampaignConversion(store,{id:value.orderId,receipt:value.receipt,userId:authContext(req)?.user?.id,now:clock()});
+        if(!proof)throw fail('Payment confirmation unavailable.',404,'payment_unverified');
+        return reply(200,proof);
+      }
       if(method==='GET'&&path==='/v1/billing/plans')return reply(200,{enabled:true,mode:'jazzcash_orchestrator',plans:planCatalog()});
 
       // Proxies JazzCash Status Inquiry (no pp_Version). Frontend never calls JazzCash directly.
@@ -419,7 +441,9 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
         const requestIdValue=jazzCashRequestId();
         const returnPath=safeReturnPath(value.returnPath||value.landingPath);
         const returnOrigin=resolveAppOrigin(req,config);
-        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,returnOrigin,attribution:sanitizeAttribution(value.attribution)});
+        const attribution=campaignAnalytics?await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:authContext(req)?.user?.id||null}).catch(()=>null):sanitizeAttribution(value.attribution);
+        store.jazzcashLinkIntents.set(requestIdValue,{userId:user.id,msisdn:phone,planCode:selectedPlan,status:'pending',createdAt:clock(),returnPath,returnOrigin,attribution});
+        if(campaignAnalytics)await campaignAnalytics.stage('jazzcash_initiated',{attemptId:requestIdValue,attribution:attribution||{},userId:authContext(req)?.user?.id||null}).catch(()=>{});
         const form=orchestrator.createLinkWalletForm({msisdn:phone,requestId:requestIdValue});
         store.audit.write({actor:user.id,action:'jazzcash.wallet_link_started',targetType:'user',targetId:user.id,metadata:{requestId:requestIdValue,planCode:selectedPlan,returnOrigin,guest:!authContext(req)}});
         return reply(201,{requestId:requestIdValue,portalUrl:form.portalUrl,actionUrl:form.actionUrl,method:form.method,fields:form.fields});
@@ -449,7 +473,7 @@ export function createJazzCashRecurringApp({config,store,orchestrator,clock=()=>
 
       if(method==='POST'&&path==='/v1/billing/subscriptions'){
         const {user}=requireUser(req);mutation(req);const {value}=await readJson(req,8192);
-        const sub=await chargeLinkedWallet(user.id,planCode(value.planCode||'monthly'),value.attribution);
+        const attribution=campaignAnalytics?await campaignAnalytics.checkout(req,{raw:value.attribution||{},userId:user.id}).catch(()=>null):sanitizeAttribution(value.attribution);const sub=await chargeLinkedWallet(user.id,planCode(value.planCode||'monthly'),attribution);
         return reply(201,sub);
       }
 

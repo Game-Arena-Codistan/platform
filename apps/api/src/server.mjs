@@ -2,6 +2,10 @@ import {createServer} from 'node:http';
 import {loadConfig} from './config.mjs';
 import {createApp} from './app.mjs';
 import {createMvpApp} from './mvp-app.mjs';
+import {createAdminSessionApp} from './admin-session-app.mjs';
+import {createCampaignApp} from './campaign-app.mjs';
+import {CampaignDailyDelivery,DailyDeliveryRepository} from './services/campaign-daily-delivery.mjs';
+import {CampaignAnalytics,MemoryCampaignRepository,PostgresCampaignRepository} from './services/campaign-analytics.mjs';
 import {createSupplementalApp} from './admin-app.mjs';
 import {createPostgresReportApp} from './postgres-report-app.mjs';
 import {createPaymentServiceApp} from './payment-service-app.mjs';
@@ -73,15 +77,21 @@ const providers=config.otpProviderMode==='mock'
       ]
       :[...debugMockFallback.length?debugMockFallback:[new DisabledOtpProvider()]];
 const otpDelivery=new OtpDeliveryRouter({providers,audit:store.audit,metrics:store.metrics});
+const campaignAnalytics=new CampaignAnalytics({config,repository:store.pool?new PostgresCampaignRepository(store.pool):new MemoryCampaignRepository({store})});
+const adminSessionApp=createAdminSessionApp({config,store});
+const campaignDelivery=new CampaignDailyDelivery({config,analytics:campaignAnalytics,repository:store.pool?new DailyDeliveryRepository(store.pool):null});
+const campaignApp=createCampaignApp({config,store,analytics:campaignAnalytics,delivery:campaignDelivery});
+const runDailyReport=()=>campaignDelivery.tick().catch(()=>console.error(JSON.stringify({level:'error',message:'Campaign daily report job failed'})));
+const campaignReportTimer=setInterval(runDailyReport,60000);campaignReportTimer.unref();
 const jazzcash=new JazzCashAdapter(config);
 const jazzCashOrchestrator=['orchestrator','mock'].includes(config.jazzcashMode)?new JazzCashOrchestratorAdapter(config):null;
-const jazzCashRecurring=jazzCashOrchestrator?createJazzCashRecurringApp({config,store,orchestrator:jazzCashOrchestrator}):null;
+const jazzCashRecurring=jazzCashOrchestrator?createJazzCashRecurringApp({config,store,orchestrator:jazzCashOrchestrator,campaignAnalytics}):null;
 const payments=new PaymentService({store,provider:jazzcash});
 const rewardPolicy=new RewardPolicy({config,store});
 const supportDelivery=new SupportDelivery({mode:config.supportMode,endpoint:config.supportEndpoint,secret:config.supportSecret});
-const primary=createApp({config,store,jazzcash,otpDelivery,payments,rewardPolicy});
+const primary=createApp({config,store,jazzcash,otpDelivery,payments,rewardPolicy,campaignAnalytics});
 const mvp=createMvpApp({config,store,payments,supportDelivery});
-const paymentService=createPaymentServiceApp({config,store});
+const paymentService=createPaymentServiceApp({config,store,campaignAnalytics});
 const supplemental=createSupplementalApp({config,store});
 const postgresReports=createPostgresReportApp({config,pool:store.pool});
 
@@ -126,6 +136,8 @@ async function dispatch(req,res){
   await store.refresh?.();
   durableResponse(res);
   try{
+    if(await adminSessionApp(req,res)!==false)return;
+    if(await campaignApp(req,res)!==false)return;
     if(postgresReports&&await postgresReports(req,res)!==false)return;
     if(await supplemental(req,res)!==false)return;
     if(jazzCashRecurring&&await jazzCashRecurring(req,res)!==false)return;
@@ -206,6 +218,6 @@ server.listen(config.port,'0.0.0.0',()=>console.log(JSON.stringify({
 })));
 
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{
-  clearInterval(retentionTimer);
+  clearInterval(retentionTimer);clearInterval(campaignReportTimer);
   server.close(async()=>{await store.close?.();process.exit(0);});
 });

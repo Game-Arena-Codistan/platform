@@ -177,3 +177,15 @@ test('Vercel preview mocks match contract 1.0.0',()=>{
     assert.equal(game.rolloutPercentage,0);
   }
 });
+
+test('landing return requires verified payment proof for marketing conversion',async()=>{
+  const app=await readFile(new URL('../src/app.js',import.meta.url),'utf8');
+  const landing=await readFile(new URL('../src/landing.js',import.meta.url),'utf8');
+  const analytics=await readFile(new URL('../src/landing-analytics.js',import.meta.url),'utf8');
+  assert.match(app,/fetchVerifiedCampaignConversion\(\{orderId,receipt\}\)/);
+  assert.doesNotMatch(app,/trackPaymentConversion\(\{paymentStatus:'succeeded'/);
+  assert.doesNotMatch(landing,/trackPaymentConversion\(\{paymentStatus:'succeeded'/);
+  assert.match(analytics,/verified!==true/);
+  assert.match(analytics,/logGa4Event\('purchase'/);
+  assert.match(analytics,/items:\[/);
+});

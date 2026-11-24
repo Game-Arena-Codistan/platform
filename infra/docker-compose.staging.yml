@@ -56,6 +56,10 @@ services:
       JAZZCASH_RETURN_URL: ${JAZZCASH_RETURN_URL:-https://gsmarena-play.codistan.org/callback}
       JAZZCASH_ORCHESTRATOR_BASE_URL: ${JAZZCASH_ORCHESTRATOR_BASE_URL:-https://onlinepayments.jazzcash.com.pk}
       JAZZCASH_TIMEOUT_MS: ${JAZZCASH_TIMEOUT_MS:-8000}
+      CAMPAIGN_REPORT_DELIVERY_ENABLED: ${CAMPAIGN_REPORT_DELIVERY_ENABLED:-false}
+      CAMPAIGN_REPORT_ALLOWED_RECIPIENTS: ${CAMPAIGN_REPORT_ALLOWED_RECIPIENTS:-}
+      ADMIN_PASSWORD_HASHES_JSON: ${ADMIN_PASSWORD_HASHES_JSON:-}
+      ADMIN_LOGIN_ORIGINS: ${ADMIN_LOGIN_ORIGINS:-https://gsmarena-play.codistan.org}
       ADMIN_AUTH_MODE: signed-headers
       # Optional staging browser login for https://…/admin (min 16 chars). CI continues to use signed headers.
       ADMIN_API_KEYS: ${ADMIN_API_KEYS:-}

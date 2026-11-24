@@ -35,13 +35,13 @@ export class PostgresSubscriptionReportService{
     return bounded(result.rows,'Identity lookup');
   }
 
-  async transactions(filters,{userIds=[],membershipOnly=false,extensionsOnly=false}={}){
+  async transactions(filters,{userIds=[],membershipOnly=false,extensionsOnly=false,campaign=false}={}){
     const values=[];const conditions=[];
     if(userIds.length)conditions.push(`user_id=ANY(${push(values,userIds)}::uuid[])`);
     else conditions.push(rangeClause(filters,['created_at','completed_at','refunded_at','updated_at'],values));
     if(membershipOnly)conditions.push("kind='membership'");
     if(extensionsOnly)conditions.push("kind='membership' AND purpose='extension' AND internal_status='paid'");
-    if(filters.planId)conditions.push(`plan_id=${push(values,filters.planId)}`);
+    if(filters.planId){const param=push(values,filters.planId);conditions.push(campaign?`(plan_id=${param} OR safe_record->'attribution'->>'package'=${param})`:`plan_id=${param}`);}
     if(filters.paymentStatus){const status=push(values,filters.paymentStatus);conditions.push(`(internal_status=${status} OR provider_status=${status})`);}
     if(filters.purpose)conditions.push(`purpose=${push(values,filters.purpose)}`);
     if(filters.query){const query=push(values,searchPattern(filters.query));conditions.push(`(lower(id::text) LIKE ${query} OR lower(user_id::text) LIKE ${query} OR lower(COALESCE(provider_reference,'')) LIKE ${query})`);}
@@ -101,7 +101,7 @@ export class PostgresSubscriptionReportService{
 
     let transactions=[];let subscriptions=[];
     if(['summary','payments','subscriptions','recurring-customers','campaign-attribution','campaign_attribution'].includes(type)){
-      transactions=await this.transactions(filters,{membershipOnly:type==='summary'||type==='subscriptions'||type==='recurring-customers'||type==='campaign-attribution'||type==='campaign_attribution',extensionsOnly:type==='recurring-customers'});
+      transactions=await this.transactions(filters,{membershipOnly:type==='summary'||type==='subscriptions'||type==='recurring-customers'||type==='campaign-attribution'||type==='campaign_attribution',extensionsOnly:type==='recurring-customers',campaign:type==='campaign-attribution'||type==='campaign_attribution'});
     }
     if(['summary','subscriptions','recurring-customers'].includes(type))subscriptions=await this.subscriptions(filters);
     if((type==='subscriptions'||type==='recurring-customers')&&subscriptions.length){
@@ -143,6 +143,11 @@ export class PostgresSubscriptionReportService{
   async campaignAttribution(filters){return response((await this.calculator(filters,'campaign-attribution')).campaignAttribution(filters));}
   async exportHistory(filters){return response((await this.calculator(filters,'exports')).exportHistory(filters));}
 
+  async exportCampaignWorkbook(kind,filters,principal){
+    const result=(await this.calculator(filters,'campaign-attribution')).exportCampaignWorkbook(kind,filters,principal),a=result.audit;
+    await this.pool.query('INSERT INTO ga_report_export_audit(id,actor_id,report_type,selected_range,safe_filters,row_count,schema_version,content_hash,generated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[a.id,a.actor,a.reportType,{from:filters.fromIso,toExclusive:filters.toExclusiveIso},a.filters,a.rowCount,a.schemaVersion,a.contentHash,a.generatedAt]);
+    return{...result,dataSource:'postgresql-indexed'};
+  }
   async export(type,filters,principal){
     const calculator=await this.calculator(filters,type);
     const result=calculator.export(type,filters,principal);
