@@ -34,9 +34,9 @@ test('jazzCashSecureHash uses ASCII sort and excludes empty pp_ fields',()=>{
 test('orchestrator billing BFF starts LinkWallet and completes callback with pay-via-token',async()=>{
   const store=new MemoryStore();
   const config=loadConfig({nodeEnv:'test',port:1,publicOrigin:'http://localhost:8080',allowedOrigins:['http://localhost:8080'],allowDebugOtp:true,jazzcashMode:'orchestrator',jazzcashMerchantId:'MC990983',jazzcashPassword:'pw',jazzcashIntegritySalt:'salt',jazzcashReturnUrl:'http://localhost:8080/callback',jazzcashWebhookSecret:'test-secret'});
-  let tokenDeleted=false;
+  let tokenDeleted=false,chargeCalls=0;
   const fetchImpl=async(url)=>{
-    if(String(url).includes('/payments/m-wallet'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA123'})};
+    if(String(url).includes('/payments/m-wallet')){chargeCalls++;return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'GA123'})};}
     if(String(url).includes('/status/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success',pp_TxnRefNo:'inq',pp_Amount:'99000'})};
     if(String(url).includes('mobile-tokens/delete')){tokenDeleted=true;return{ok:true,json:async()=>({pp_ResponseCode:'000',pp_ResponseMessage:'Success'})};}
     if(String(url).includes('mobile-tokens/inquiry'))return{ok:true,json:async()=>({pp_ResponseCode:tokenDeleted?'999':'000',pp_ResponseMessage:tokenDeleted?'No Payment Token exists against the provided pp_MobileNumber.':'Success'})};
@@ -63,9 +63,14 @@ test('orchestrator billing BFF starts LinkWallet and completes callback with pay
     const returnUrl=new URL(response.headers.get('location'));
     const receipt=returnUrl.searchParams.get('receipt'),orderId=returnUrl.searchParams.get('orderId');
     assert.ok(receipt);assert.ok(orderId);
+    const replay=await fetch(`${base}/v1/jazzcash/wallet/callback`,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(returnFields).toString(),redirect:'manual'});
+    assert.equal(new URL(replay.headers.get('location')).searchParams.get('orderId'),orderId);assert.equal(chargeCalls,1);
+    assert.match([...store.jazzcashWallets.values()][0].paymentTokenSeal,/^v1\./);assert.equal([...store.jazzcashWallets.values()][0].paymentTokenSeal.includes('token-abc'),false);
+    const forged={...returnFields,pp_RequestID:'unrecognized'};forged.pp_SecureHash=jazzCashSecureHash(forged,'salt');
+    const rejected=await fetch(`${base}/v1/jazzcash/wallet/callback`,{method:'POST',headers:{...headers(auth.cookie,auth.csrf),'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(forged).toString(),redirect:'manual'});assert.match(rejected.headers.get('location'),/payment=failed/);assert.equal(chargeCalls,1);
     const conversion=body=>fetch(`${base}/v1/billing/verified-conversion`,{method:'POST',headers:{'content-type':'application/json',origin:config.publicOrigin},body:JSON.stringify(body)});
     assert.equal((await conversion({orderId,receipt:'forged'})).status,404);
-    const verified=await conversion({orderId,receipt});assert.equal(verified.status,200);const evidence=await verified.json();assert.equal(evidence.verified,true);assert.equal(evidence.value,990);assert.equal(evidence.currency,'PKR');assert.ok(evidence.transactionId);assert.equal(evidence.userId,undefined);
+    const verified=await conversion({orderId,receipt:new URL(replay.headers.get('location')).searchParams.get('receipt')});assert.equal(verified.status,200);const evidence=await verified.json();assert.equal(evidence.verified,true);assert.equal(evidence.value,990);assert.equal(evidence.currency,'PKR');assert.ok(evidence.transactionId);assert.equal(evidence.userId,undefined);
     response=await fetch(`${base}/v1/billing/status`,{headers:{cookie:auth.cookie}});
     const status=await response.json();
     assert.equal(status.wallet.status,'linked');

@@ -5,7 +5,7 @@ import {AuditLog,Metrics} from '../lib/observability.mjs';
 import {NORMALIZED_POSTGRES_MODEL} from '../lib/persistence-readiness.mjs';
 
 const MAPS=[
-  ['adminSessions','ga_runtime_admin_sessions'],['campaignPaymentLinks','ga_runtime_campaign_payment_links'],['campaignSubscriptionBindings','ga_runtime_campaign_subscription_bindings'],['users','ga_runtime_users'],['identities','ga_runtime_identities'],['otp','ga_runtime_otp'],
+  ['jazzcashLinkIntents','ga_runtime_jazzcash_link_intents'],['jazzcashWallets','ga_runtime_jazzcash_wallets'],['jazzcashSubscriptions','ga_runtime_jazzcash_subscriptions'],['jazzcashChargeReservations','ga_runtime_jazzcash_charge_reservations'],['adminSessions','ga_runtime_admin_sessions'],['campaignPaymentLinks','ga_runtime_campaign_payment_links'],['campaignSubscriptionBindings','ga_runtime_campaign_subscription_bindings'],['users','ga_runtime_users'],['identities','ga_runtime_identities'],['otp','ga_runtime_otp'],
   ['sessions','ga_runtime_sessions'],['devices','ga_runtime_devices'],['entitlements','ga_runtime_entitlements'],
   ['transactions','ga_runtime_transactions'],['paymentEvents','ga_runtime_payment_events'],
   ['playSessions','ga_runtime_play_sessions'],['rateLimits','ga_runtime_rate_limits'],
