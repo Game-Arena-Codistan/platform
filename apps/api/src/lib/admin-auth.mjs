@@ -44,7 +44,11 @@ function hasSignedAssertion(req){
   return Boolean(String(req.headers['x-admin-identity']||'').trim()||String(req.headers['x-admin-signature']||'').trim());
 }
 
+const nativePrincipalKey=Symbol('verified-admin-session');
+export function attachNativeAdminPrincipal(req,principal){req[nativePrincipalKey]=principal;}
 export function authenticateAdmin(req,config,allowedRoles=['admin']){
+  // Only server-side session middleware can attach this Symbol. Signed proxy assertions remain supported.
+  if(req[nativePrincipalKey]&&!hasSignedAssertion(req))return authorize(req[nativePrincipalKey],allowedRoles);
   // Staging/dev signed-header deployments may also accept a local admin key so the
   // public /admin console can authenticate browsers without an SSO signing proxy.
   if(config.adminAuthMode==='signed-headers'){

@@ -2,6 +2,7 @@ import {createServer} from 'node:http';
 import {loadConfig} from './config.mjs';
 import {createApp} from './app.mjs';
 import {createMvpApp} from './mvp-app.mjs';
+import {createAdminSessionApp} from './admin-session-app.mjs';
 import {createSupplementalApp} from './admin-app.mjs';
 import {createPostgresReportApp} from './postgres-report-app.mjs';
 import {createPaymentServiceApp} from './payment-service-app.mjs';
@@ -83,6 +84,7 @@ const primary=createApp({config,store,jazzcash,otpDelivery,payments,rewardPolicy
 const mvp=createMvpApp({config,store,payments,supportDelivery});
 const paymentService=createPaymentServiceApp({config,store});
 const supplemental=createSupplementalApp({config,store});
+const adminSessionApp=createAdminSessionApp({config,store});
 const postgresReports=createPostgresReportApp({config,pool:store.pool});
 
 function durableResponse(res){
@@ -126,6 +128,7 @@ async function dispatch(req,res){
   await store.refresh?.();
   durableResponse(res);
   try{
+    if(await adminSessionApp(req,res)!==false)return;
     if(postgresReports&&await postgresReports(req,res)!==false)return;
     if(await supplemental(req,res)!==false)return;
     if(jazzCashRecurring&&await jazzCashRecurring(req,res)!==false)return;
