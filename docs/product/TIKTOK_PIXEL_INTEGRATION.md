@@ -6,8 +6,8 @@
 
 | Item | Value |
 | --- | --- |
-| Landing URL | `https://gsmarena-play.com/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash` |
-| Staging equivalent | `https://gsmarena-play.codistan.org/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash` |
+| Landing URL | `https://gsmarena-play.com/landing1?utm=T&package=1&parameter=gamingconsole&payment=jazzcash` |
+| Staging equivalent | `https://gsmarena-play.codistan.org/landing1?utm=T&package=1&parameter=gamingconsole&payment=jazzcash` |
 | TikTok Pixel ID | `DBU5QTJC77UCDH70PUBG` |
 | Traffic marker | `utm=T` → `traffic_source: tiktok` |
 

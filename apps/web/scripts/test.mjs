@@ -13,6 +13,7 @@ const accountSource=await readFile(new URL('../src/views/account.js',import.meta
 const librarySource=await readFile(new URL('../src/views/library.js',import.meta.url),'utf8');
 const competeSource=await readFile(new URL('../src/views/compete.js',import.meta.url),'utf8');
 const landingSource=await readFile(new URL('../src/landing.js',import.meta.url),'utf8');
+const landingCampaignSource=await readFile(new URL('../src/landing-campaign.js',import.meta.url),'utf8');
 const stateSource=await readFile(new URL('../src/state.js',import.meta.url),'utf8');
 const billingAccountSource=await readFile(new URL('../src/billing-account.js',import.meta.url),'utf8');
 
@@ -113,7 +114,9 @@ test('external billing UI remains a BFF-only trust boundary',()=>{
   assert.match(landingSource,/\/mainLanding/);
   assert.match(landingSource,/Terms and Conditions/);
   assert.match(landingSource,/jazzcash-logo\.png/);
-  assert.match(landingSource,/main-mobile\.jpeg|landing1-mobile\.jpeg/);
+  assert.match(landingSource,/main-mobile\.jpeg|landing1-mobile\.png/);
+  assert.match(landingSource,/landing1-web\.png/);
+  assert.match(landingCampaignSource,/parameter:'gamingconsole'/);
   assert.match(premiumSource,/mainLanding|defaultLandingHref/);
   assert.match(premiumSource,/createBillingSubscription/);
   assert.match(librarySource,/10 free games for guests|Unlock with JazzCash/);

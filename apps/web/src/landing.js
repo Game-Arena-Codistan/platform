@@ -11,9 +11,9 @@ const megaphoneIcon=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none"
 function bannerFor(landing){
   if(landing==='landing1'){
     return{
-      mobile:'/assets/landings/landing1-mobile.jpeg',
-      web:'/assets/landings/landing1-web.jpeg',
-      alt:'Game Premium TikTok — Win PKR 10,000 JazzCash Credit Every Month'
+      mobile:'/assets/landings/landing1-mobile.png',
+      web:'/assets/landings/landing1-web.png',
+      alt:'Game Arena TikTok — Play & Win a Handheld Gaming Console'
     };
   }
   return{

@@ -17,7 +17,7 @@ Install the client’s TikTok Pixel so TikTok Ads can measure visits and convers
 When a client sends something like:
 
 ```text
-https://watch-jalwa.com/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash
+https://gsmarena-play.com/landing1?utm=T&package=1&parameter=gamingconsole&payment=jazzcash
 Jalwa pixel id: DBU5R83C77UCDH70PUCG
 ```
 
@@ -89,7 +89,7 @@ If only a TikTok Pixel ID is provided, implement **TikTok only**. Do not invent 
 
 **Symptom:** TikTok Events Manager listed `ViewContent`, `InitiateCheckout`, `AddPaymentInfo` as Active, but **no `Subscribe`**, after JazzCash journeys on:
 
-`https://watch-jalwa.com/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash`
+`https://gsmarena-play.com/landing1?utm=T&package=1&parameter=gamingconsole&payment=jazzcash`
 
 Upper-funnel beacons worked; this was **not** a wrong Pixel ID / CSP / CTA wiring failure.
 
@@ -275,7 +275,7 @@ Resolution order agents should implement:
 
 | Item | Value |
 | --- | --- |
-| Landing | `/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash` |
+| Landing | `/landing1?utm=T&package=1&parameter=gamingconsole&payment=jazzcash` |
 | Pixel ID | `DBU5R83C77UCDH70PUCG` |
 | Approved events | `PageView`, `ViewContent`, `InitiateCheckout`, `AddPaymentInfo`, `Subscribe` only |
 | Loader | `apps/web/lib/tiktok-pixel.mjs` |

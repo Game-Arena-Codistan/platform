@@ -8,7 +8,7 @@ import {sanitizeAttribution} from './lib/campaign-attribution.mjs';
 const fail=(message,status=400,code='invalid_request',details)=>Object.assign(new Error(message),{status,code,details});
 const msisdn=value=>{const phone=String(value||'').trim();if(!/^(\+92|0)?3\d{9}$/.test(phone.replace(/\s/g,'')))throw fail('JazzCash mobile number must be a valid Pakistani MSISDN (03XXXXXXXXX).',400,'invalid_body');const digits=phone.replace(/\D/g,'');return digits.startsWith('92')?`0${digits.slice(2)}`:digits.startsWith('0')?digits:`0${digits}`;};
 const planCode=value=>{const code=String(value||'').trim();if(!/^[A-Za-z0-9._-]{1,64}$/.test(code))throw fail('A valid planCode is required.',400,'invalid_body');return code;};
-const safeReturnPath=value=>{const raw=String(value||'/mainLanding').trim();if(raw.startsWith('/mainLanding')||raw.startsWith('/landing2'))return raw.split('#')[0].slice(0,200);return '/mainLanding';};
+const safeReturnPath=value=>{const raw=String(value||'/mainLanding').trim();if(raw.startsWith('/mainLanding')||raw.startsWith('/landing1')||raw.startsWith('/landing2'))return raw.split('#')[0].slice(0,200);return '/mainLanding';};
 function resolveAppOrigin(req,config){
   const allowed=config.allowedOrigins||[];
   const origin=req.headers.origin;

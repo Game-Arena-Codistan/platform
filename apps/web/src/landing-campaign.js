@@ -1,5 +1,5 @@
 const DEFAULT_LANDING_CAMPAIGN={utm:'D',package:'default',parameter:'default',payment:'jazzcash'};
-const LANDING1_CAMPAIGN={utm:'T',package:'1',parameter:'monthly10k',payment:'jazzcash'};
+const LANDING1_CAMPAIGN={utm:'T',package:'1',parameter:'gamingconsole',payment:'jazzcash'};
 const pick=(value,fallback)=>{const raw=String(value??'').trim();return raw||fallback;};
 
 export function normalizeLandingCampaign(input={},defaults=DEFAULT_LANDING_CAMPAIGN){
@@ -41,7 +41,7 @@ export function campaignFromSearchParams(searchParams,landing){
 
 export function commerceForCampaign(campaign){
   const planCode=planCodeForPackage(campaign.package);
-  const monthly10k=String(campaign.parameter).toLowerCase()==='monthly10k';
+  const gamingconsole=String(campaign.parameter).toLowerCase()==='gamingconsole';
   const discounted=planCode==='yearly'&&String(campaign.parameter).toLowerCase()==='20percentoff';
   const value=planCode==='yearly'?(discounted?3999:4999):990;
   return{
@@ -52,9 +52,9 @@ export function commerceForCampaign(campaign){
     currency:'PKR',
     conversion_event:planCode==='yearly'?'purchase':'subscribe',
     comingSoon:planCode==='yearly',
-    promotion:monthly10k?'Win PKR 10,000 JazzCash Credit Every Month':null,
-    offerNote:monthly10k
-      ?'Subscribe Now click kartay hi Rs. 1 kat lia jayega. Ye limited offer sirf aaj ke din ke liye valid hai. Us ke baad PKR 990/month, tax inclusive, lagu hon gay.'
+    promotion:gamingconsole?'Play & Win a Handheld Gaming Console':null,
+    offerNote:gamingconsole
+      ?'Subscribe Now click kartay hi Rs. 1 kat lia jayega. Ye limited offer sirf aaj ke din ke liye valid hai. Us ke baad PKR 990/month, tax inclusive, lagu hon gay. T&Cs apply.'
       :'Subscribe Now click kartay hi Rs. 1 kat lia jayega. Ye limited offer sirf aaj ke din ke liye valid hai. Us ke baad PKR 990/month, tax inclusive, lagu hon gay.'
   };
 }
