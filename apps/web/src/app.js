@@ -4,7 +4,8 @@ import {getSession,refreshEntitlement,paymentStatus,fetchWallet,releaseSha} from
 import {ensureCatalogue} from './catalogue-runtime.js';
 import {openAuth,toast} from './ui.js';
 import {bootLandingIfNeeded} from './landing.js';
-import {trackPaymentConversion} from './landing-analytics.js';
+import {digisphereReturnFromParams,persistCheckoutPending,trackPaymentConversion} from './landing-analytics.js';
+import {fetchBillingStatus} from './billing-api.js';
 import {renderHome,bindHome} from './views/home.js';
 import {renderFeed,bindFeed} from './views/feed.js';
 import {renderLibrary,bindLibrary} from './views/library.js';
@@ -101,14 +102,30 @@ function promptAuthAfterJazzCashReturn(txn=''){
 }
 function paymentBanner(){
   const params=paymentSuccessParams();
-  if(params.get('payment')!=='succeeded')return;
-  const txn=params.get('orderId')||params.get('txn')||'';
-  if(txn)trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
+  const digisphere=digisphereReturnFromParams(params);
+  const linked=digisphere.wallet==='linked'||params.get('payment')==='succeeded';
+  if(!linked)return;
+  const txn=digisphere.orderId||params.get('orderId')||params.get('txn')||'';
+  trackPaymentConversion({
+    paymentStatus:'succeeded',
+    transactionId:txn,
+    wallet:digisphere.wallet||(params.get('payment')==='succeeded'?'linked':''),
+    userId:digisphere.userId,
+    trialEndsAt:digisphere.trialEndsAt,
+    requestId:digisphere.requestId,
+    subscriptionStatus:digisphere.subscriptionStatus,
+    checkoutMode:digisphere.wallet?'digisphere':undefined
+  });
   try{
     const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
-    if(!getState().user)sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:'monthly',at:Date.now(),source:'home-return'}));
+    if(!getState().user)persistCheckoutPending({msisdn,planCode:'monthly',at:Date.now(),source:'home-return',requestId:digisphere.requestId||null,userId:digisphere.userId||null,checkoutMode:digisphere.wallet?'digisphere':'diy',trialEndsAt:digisphere.trialEndsAt||null});
   }catch{/* ignore */}
-  if(getState().entitlement!=='premium')update({entitlement:'premium'});
+  if(getState().user){
+    fetchBillingStatus().then(billing=>{
+      if(billing?.appEntitlement?.tier)update({entitlement:billing.appEntitlement.tier});
+      else if(getState().entitlement!=='premium')update({entitlement:'premium'});
+    }).catch(()=>{if(getState().entitlement!=='premium')update({entitlement:'premium'});});
+  }else if(getState().entitlement!=='premium')update({entitlement:'premium'});
   if(!document.querySelector('#payment-success-banner')){
     const banner=document.createElement('div');
     banner.id='payment-success-banner';
@@ -118,7 +135,7 @@ function paymentBanner(){
       :'<b>Premium Features Unlocked.</b> Sign up or sign in with your JazzCash number to attach Game Premium to your profile.';
     app.prepend(banner);
   }
-  if(!getState().user)promptAuthAfterJazzCashReturn(txn);
+  if(!getState().user)promptAuthAfterJazzCashReturn(txn||digisphere.userId||'digisphere');
 }
 function syncProfileChrome(){
   const state=getState();

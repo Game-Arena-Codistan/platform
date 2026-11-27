@@ -20,7 +20,7 @@ This is the current Premium architecture.
 
 Direct browser-to-Payment-Service or browser-to-JazzCash API calls are not allowed. The browser never receives the product `X-Api-Key`, webhook shared secret or provider credentials.
 
-The Game Arena API derives `userId` only from the authenticated Game Arena session.
+The Game Arena API derives `userId` from the authenticated session when present. Guest landing checkout creates/binds a phone stub account server-side — the browser never chooses Digisphere `userId`.
 
 ## Server-side BFF routes
 
@@ -80,13 +80,17 @@ Browser redirects are never entitlement authority.
 Set on the **Game Arena API/server only**:
 
 ```text
+# Either mode flag is enough once Digisphere secrets are present:
 PAYMENT_SERVICE_MODE=external
-PAYMENT_SERVICE_URL=https://<payment-service-staging-host>
+# PREMIUM_PREFERRED_CHECKOUT=digisphere
+PAYMENT_SERVICE_URL=https://payments.codistan.org
 PAYMENT_SERVICE_API_KEY=<server-only-product-api-key>
 PAYMENT_SERVICE_WEBHOOK_SECRET=<server-only-shared-secret>
 PAYMENT_SERVICE_APP_RETURN_URL=https://gsmarena-play.codistan.org/#/premium
-PAYMENT_SERVICE_TIMEOUT_MS=8000
+PAYMENT_SERVICE_TIMEOUT_MS=20000
 ```
+
+When external/Digisphere mode is on, the API mounts Digisphere **before** DIY JazzCash orchestrator for `/v1/billing/*` and the JazzCash merchant `/callback` bridge (`productId` + `userId` → Digisphere `/v1/jazzcash/wallet-return`).
 
 Do not expose these through the web container, browser runtime config, source control, screenshots, logs or demo video.
 
@@ -95,7 +99,11 @@ The Payment Service product configuration must register:
 ```text
 webhook_url = https://gsmarena-play.codistan.org/api/v1/webhooks/payments
 app return origin = https://gsmarena-play.codistan.org
+# If JazzCash can only allowlist the product domain:
+# JAZZCASH_WALLET_RETURN_OVERRIDES = gamearena=https://gsmarena-play.codistan.org/callback
 ```
+
+TikTok **Subscribe** must fire on Digisphere success returns even when JazzCash `order`/`cv` are absent — the SPA synthesizes a stable `event_id` from `requestId` or `digisphere:{userId}:{trialEndsAt}` when `wallet=linked`.
 
 No AWS role, S3 bucket or EKS setup is required for this integration or for the current local-server deployment.
 

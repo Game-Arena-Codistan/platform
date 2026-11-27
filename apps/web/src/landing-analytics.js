@@ -4,6 +4,7 @@ import {commerceForCampaign} from './landing-campaign.js';
 
 const CONTEXT_KEY='lp_context';
 const TOKENS_KEY='lp_sent_tokens';
+const PENDING_KEY='game-arena:pending-subscription';
 const PLACEHOLDER_ORDERS=new Set(['landing-return','mock-landing']);
 
 function trafficSource(utm){
@@ -13,7 +14,7 @@ function trafficSource(utm){
   return 'direct';
 }
 
-function commercePayload(context){
+function commercePayload(context,extra={}){
   return{
     contents:[{
       content_id:context.item_id,
@@ -26,7 +27,8 @@ function commercePayload(context){
     traffic_source:context.traffic_source,
     utm_code:context.utm_code,
     banner_parameter:context.banner_parameter,
-    landing:context.landing
+    landing:context.landing,
+    ...extra
   };
 }
 
@@ -61,16 +63,45 @@ export function readLandingAnalyticsContext(){
   }catch{/* ignore */}
   try{return JSON.parse(localStorage.getItem(CONTEXT_KEY)||'null');}catch{return null;}
 }
+
+export function persistCheckoutPending(pending){
+  const raw=JSON.stringify(pending||{});
+  try{sessionStorage.setItem(PENDING_KEY,raw);}catch{/* ignore */}
+  try{localStorage.setItem(PENDING_KEY,raw);}catch{/* ignore */}
+}
+export function readCheckoutPending(){
+  try{
+    const session=sessionStorage.getItem(PENDING_KEY);
+    if(session)return JSON.parse(session);
+  }catch{/* ignore */}
+  try{return JSON.parse(localStorage.getItem(PENDING_KEY)||'null');}catch{return null;}
+}
+
 function grantedOrderId(transactionId){
   const id=String(transactionId||'').trim();
   if(!id||PLACEHOLDER_ORDERS.has(id))return '';
   return id;
 }
+
+/** Digisphere returns have no JazzCash order/cv — synthesize a stable Subscribe event id. */
+export function resolveSubscribeOrderId({transactionId,requestId,userId,trialEndsAt,wallet}={}){
+  const explicit=grantedOrderId(transactionId)||grantedOrderId(requestId);
+  if(explicit)return explicit;
+  const pending=readCheckoutPending();
+  const pendingRequest=grantedOrderId(pending?.requestId);
+  if(pendingRequest)return pendingRequest;
+  if(String(wallet||'').toLowerCase()==='linked'&&userId){
+    return `digisphere:${String(userId).trim()}:${String(trialEndsAt||'linked').trim()}`;
+  }
+  return '';
+}
+
 function markToken(id){
+  const token=`subscribe:${id}`;
   try{
     const list=JSON.parse(sessionStorage.getItem(TOKENS_KEY)||'[]');
-    if(list.includes(id))return false;
-    list.push(id);
+    if(list.includes(id)||list.includes(token))return false;
+    list.push(token);
     sessionStorage.setItem(TOKENS_KEY,JSON.stringify(list.slice(-50)));
     return true;
   }catch{return true;}
@@ -92,14 +123,57 @@ export function trackAddToCart(context){
   logTikTokEvent('InitiateCheckout',payload);
   logTikTokEvent('AddPaymentInfo',payload);
 }
-export function trackPaymentConversion({paymentStatus,transactionId,context}={}){
+export function trackPaymentConversion({
+  paymentStatus,
+  transactionId,
+  context,
+  wallet,
+  userId,
+  trialEndsAt,
+  requestId,
+  checkoutMode,
+  subscriptionStatus
+}={}){
   const ctx=context||readLandingAnalyticsContext();
-  const orderId=grantedOrderId(transactionId);
-  logGa4Event('payment_result',{payment_status:paymentStatus,landing:ctx?.landing,plan_code:ctx?.plan_code});
-  // Subscribe only after a server-granted subscription/charge id. Wallet-link or a placeholder is not a conversion.
-  if(paymentStatus!=='succeeded'||!orderId)return;
+  const pending=readCheckoutPending();
+  const linked=String(wallet||'').toLowerCase()==='linked'
+    || paymentStatus==='succeeded'
+    || ['trialing','active','initiated'].includes(String(subscriptionStatus||'').toLowerCase());
+  const mode=checkoutMode||pending?.checkoutMode||(wallet||userId?'digisphere':undefined);
+  const orderId=resolveSubscribeOrderId({
+    transactionId,
+    requestId:requestId||pending?.requestId,
+    userId,
+    trialEndsAt,
+    wallet:linked?'linked':wallet
+  });
+  logGa4Event('payment_result',{
+    payment_status:paymentStatus||(linked?'succeeded':'failed'),
+    landing:ctx?.landing,
+    plan_code:ctx?.plan_code,
+    checkout_mode:mode||null,
+    wallet:wallet||null,
+    subscription_status:subscriptionStatus||null
+  });
+  // Subscribe after DIY granted orderId OR Digisphere wallet=linked (no JazzCash order/cv).
+  if(!linked||!orderId)return;
   if(!markToken(orderId))return;
-  if(ctx)logGa4Event(ctx.conversion_event,{transaction_id:orderId,value:ctx.value,currency:ctx.currency,item_id:ctx.item_id,item_name:ctx.item_name,landing:ctx.landing});
+  if(ctx)logGa4Event(ctx.conversion_event,{transaction_id:orderId,value:ctx.value,currency:ctx.currency,item_id:ctx.item_id,item_name:ctx.item_name,landing:ctx.landing,checkout_mode:mode||null});
   // Client-approved TikTok conversion only: Subscribe (no CompletePayment).
-  logTikTokEvent('Subscribe',ctx?commercePayload(ctx):{content_type:'product',currency:'PKR'},{event_id:orderId});
+  logTikTokEvent(
+    'Subscribe',
+    ctx?commercePayload(ctx,{checkout_mode:mode||'diy',txnRefNo:orderId,paymentId:orderId}):{content_type:'product',currency:'PKR',checkout_mode:mode||'diy'},
+    {event_id:orderId}
+  );
+}
+
+export function digisphereReturnFromParams(params){
+  const wallet=String(params.get('wallet')||'').trim().toLowerCase();
+  const payment=String(params.get('payment')||'').trim().toLowerCase();
+  const subscriptionStatus=String(params.get('subscriptionStatus')||params.get('subscription_status')||'').trim();
+  const userId=String(params.get('userId')||params.get('user_id')||'').trim();
+  const trialEndsAt=String(params.get('trialEndsAt')||params.get('trial_ends_at')||'').trim();
+  const requestId=String(params.get('requestId')||params.get('request_id')||'').trim();
+  const orderId=String(params.get('orderId')||params.get('txn')||params.get('transactionId')||params.get('txnRefNo')||'').trim();
+  return{wallet,payment,subscriptionStatus,userId,trialEndsAt,requestId,orderId};
 }

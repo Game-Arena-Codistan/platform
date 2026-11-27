@@ -35,11 +35,39 @@ async function fixture(){
   return{base,store,upstream,authHeaders,close:()=>new Promise(resolve=>server.close(resolve))};
 }
 
-test('billing BFF rejects anonymous mutation and maps authenticated user server-side',async()=>{const f=await fixture();try{
-  let response=await fetch(`${f.base}/v1/billing/wallets/link`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'attacker',msisdn:'03001234567',planCode:'monthly',amountMinor:1})});assert.equal(response.status,401);
-  response=await fetch(`${f.base}/v1/billing/wallets/link`,{method:'POST',headers:f.authHeaders,body:JSON.stringify({userId:'attacker',msisdn:'03001234567',planCode:'monthly',amountMinor:1})});assert.equal(response.status,201);
-  const call=f.upstream.calls.find(item=>item.path==='/v1/wallets/link');assert.equal(call.body.userId,f.upstream.userId);assert.equal(call.body.amountMinor,undefined);assert.equal(call.apiKey,'server-only-key');
+test('billing BFF allows guest link with trusted origin and maps authenticated user server-side',async()=>{const f=await fixture();try{
+  let response=await fetch(`${f.base}/v1/billing/wallets/link`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'attacker',msisdn:'03001234567',planCode:'monthly',amountMinor:1,consentToAutoPay:true})});assert.equal(response.status,403);
+  response=await fetch(`${f.base}/v1/billing/wallets/link`,{method:'POST',headers:{'content-type':'application/json',origin:'http://localhost'},body:JSON.stringify({userId:'attacker',msisdn:'03009998877',planCode:'monthly',amountMinor:1,consentToAutoPay:true,returnPath:'/landing1?utm=T&package=1&parameter=gamingconsole&payment=jazzcash'})});assert.equal(response.status,201);
+  const guestBody=await response.json();assert.equal(guestBody.checkoutMode,'digisphere');assert.ok(guestBody.userId);assert.notEqual(guestBody.userId,'attacker');
+  const guestCall=f.upstream.calls.find(item=>item.path==='/v1/wallets/link'&&item.body.msisdn==='03009998877');assert.equal(guestCall.body.userId,guestBody.userId);assert.match(guestCall.body.appReturnUrl,/\/landing1\?/);assert.equal(guestCall.body.amountMinor,undefined);
+  response=await fetch(`${f.base}/v1/billing/wallets/link`,{method:'POST',headers:f.authHeaders,body:JSON.stringify({userId:'attacker',msisdn:'03001234567',planCode:'monthly',amountMinor:1,consentToAutoPay:true})});assert.equal(response.status,201);
+  const call=f.upstream.calls.find(item=>item.path==='/v1/wallets/link'&&item.body.msisdn==='03001234567');assert.equal(call.body.userId,f.upstream.userId);assert.equal(call.body.amountMinor,undefined);assert.equal(call.apiKey,'server-only-key');
 }finally{await f.close();}});
+
+test('merchant callback bridge forwards Digisphere wallet-return without following redirects',async()=>{
+  const upstream=fakePaymentService();
+  upstream.fetchImpl=async(url,options={})=>{
+    const parsed=new URL(url);
+    if(parsed.pathname==='/v1/jazzcash/wallet-return'){
+      upstream.calls.push({path:parsed.pathname+parsed.search,method:options.method||'GET',body:options.body,apiKey:options.headers?.['x-api-key'],redirect:options.redirect});
+      return new Response('',{status:303,headers:{location:'http://localhost/#/premium?wallet=linked&userId=11111111-1111-4111-8111-111111111111&subscriptionStatus=trialing'}});
+    }
+    return fakePaymentService().fetchImpl(url,options);
+  };
+  const store=new MemoryStore();
+  const config={sessionCookieName:'ga_session',csrfCookieName:'ga_csrf',allowedOrigins:['http://localhost'],publicOrigin:'http://localhost'};
+  const settings={mode:'external',baseUrl:'https://payments.example',apiKey:'server-only-key',webhookSecret:'webhook-secret',appReturnUrl:'http://localhost/#/premium',timeoutMs:2000};
+  const handler=createPaymentServiceApp({config,store,fetchImpl:upstream.fetchImpl,settings});
+  const server=createServer(handler);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const base=`http://127.0.0.1:${server.address().port}`;
+  try{
+    const response=await fetch(`${base}/v1/jazzcash/wallet/callback?productId=gamearena&userId=11111111-1111-4111-8111-111111111111`,{method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded'},body:'pp_ResponseCode=000&pp_RequestID=R1'});
+    assert.equal(response.status,303);
+    assert.match(response.headers.get('location')||'',/wallet=linked/);
+    const call=upstream.calls.find(item=>String(item.path).startsWith('/v1/jazzcash/wallet-return'));
+    assert.ok(call);assert.equal(call.redirect,'manual');assert.equal(call.apiKey,'server-only-key');
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
 
 test('authoritative trial and paid states drive application entitlement',async()=>{const f=await fixture();try{
   const trialEnd=new Date(Date.now()+3600000).toISOString();f.upstream.state.wallet={status:'linked'};f.upstream.state.subscriptions=[{id:'22222222-2222-4222-8222-222222222222',plan_code:'monthly',status:'trialing',trial_ends_at:trialEnd,amount_minor:99000}];f.upstream.state.status={wallet_linked:true,subscription_status:'trialing',current_period_paid:false};

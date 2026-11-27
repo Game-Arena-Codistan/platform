@@ -26,6 +26,8 @@ test('external mode fails closed on missing secrets, insecure remote URL or cros
   assert.throws(()=>loadPaymentServiceSettings({env:{PAYMENT_SERVICE_MODE:'external'},publicOrigin:'https://game.example'}),/required/);
   assert.throws(()=>loadPaymentServiceSettings({env:{PAYMENT_SERVICE_MODE:'external',PAYMENT_SERVICE_URL:'http://payments.example',PAYMENT_SERVICE_API_KEY:'key',PAYMENT_SERVICE_WEBHOOK_SECRET:'secret'},publicOrigin:'https://game.example'}),/HTTPS/);
   assert.throws(()=>loadPaymentServiceSettings({env:{PAYMENT_SERVICE_MODE:'external',PAYMENT_SERVICE_URL:'https://payments.example',PAYMENT_SERVICE_API_KEY:'key',PAYMENT_SERVICE_WEBHOOK_SECRET:'secret',PAYMENT_SERVICE_APP_RETURN_URL:'https://evil.example/return'},publicOrigin:'https://game.example'}),/PUBLIC_ORIGIN/);
+  const preferred=loadPaymentServiceSettings({env:{PREMIUM_PREFERRED_CHECKOUT:'digisphere',PAYMENT_SERVICE_URL:'https://payments.codistan.org',PAYMENT_SERVICE_API_KEY:'key',PAYMENT_SERVICE_WEBHOOK_SECRET:'secret',PAYMENT_SERVICE_APP_RETURN_URL:'https://game.example/#/premium'},publicOrigin:'https://game.example'});
+  assert.equal(preferred.mode,'external');assert.equal(preferred.preferredCheckout,'digisphere');
 });
 
 test('payment-service client maps malformed upstream responses and bounded timeouts safely',async()=>{

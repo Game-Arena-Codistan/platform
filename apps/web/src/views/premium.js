@@ -3,6 +3,7 @@ import {getState,update,isPremium} from '../state.js';
 import {money,escapeHtml,toast} from '../ui.js';
 import {amountPkr,createBillingSubscription,fetchBillingPlans,pollBillingStatus} from '../billing-api.js';
 import {defaultLandingHref} from '../landing-campaign.js';
+import {digisphereReturnFromParams,persistCheckoutPending,trackPaymentConversion} from '../landing-analytics.js';
 import {track} from '../analytics.js';
 
 let externalPlans=[];
@@ -16,7 +17,37 @@ function billingState(result){const sub=(result?.subscriptions||[])[0];return{su
 function hasOpenSubscription(result){return (result?.subscriptions||[]).some(item=>['initiated','trialing','active','past_due','paused'].includes(item.status));}
 async function applyAuthoritativeStatus(result,planId){const {state,wallet}=billingState(result);if(result?.appEntitlement?.tier)update({entitlement:result.appEntitlement.tier,selectedPlan:planId||getState().selectedPlan});if(wallet==='failed'||['payment_failed','expired'].includes(state)){toast('JazzCash linking or payment was not completed. You can try again.');return false;}if(state==='trialing'){toast('JazzCash wallet linked. Game Premium trial is active.');return true;}if(state==='active'&&result?.status?.current_period_paid){toast('Game Premium payment confirmed and access is active.');return true;}if(state==='past_due'){toast('Payment is past due. JazzCash retry handling is automatic.');return Boolean(result?.appEntitlement?.tier==='premium');}if(state==='initiated'){toast('Wallet linked. First payment is being confirmed.');return false;}if(state==='canceled'){toast('Subscription is canceled. Game Premium access ends immediately.');return false;}return false;}
 async function reconcileOrResubscribe(plan){const current=await pollBillingStatus({attempts:4,intervalMs:1500});if(hasOpenSubscription(current)){await applyAuthoritativeStatus(current,plan.id);return current;}if(current?.wallet?.status!=='linked')return current;try{await createBillingSubscription({planCode:plan.id});}catch(error){if(!(error.status===409&&error.code==='already_subscribed'))throw error;}return pollBillingStatus({attempts:20,intervalMs:2500});}
-async function resumeWalletLink(){const pending=JSON.parse(sessionStorage.getItem('game-arena:pending-wallet')||'null');if(!pending)return;try{const result=await pollBillingStatus({attempts:20,intervalMs:2500});const resolved=await applyAuthoritativeStatus(result,pending.planId);const {wallet,state}=billingState(result);if(wallet!=='pending'&&state!=='initiated')sessionStorage.removeItem('game-arena:pending-wallet');if(resolved){track('wallet_subscription_ready',{planId:pending.planId,state});location.hash='#/account';}}catch(error){toast(error.message);}}
+async function resumeWalletLink(){const pending=JSON.parse(sessionStorage.getItem('game-arena:pending-wallet')||'null');if(!pending)return;try{const result=await pollBillingStatus({attempts:20,intervalMs:2500});const resolved=await applyAuthoritativeStatus(result,pending.planId);const {wallet,state}=billingState(result);if(wallet!=='pending'&&state!=='initiated')sessionStorage.removeItem('game-arena:pending-wallet');if(resolved){trackPaymentConversion({paymentStatus:'succeeded',wallet:'linked',subscriptionStatus:state,checkoutMode:'digisphere',requestId:pending.requestId,userId:pending.userId,trialEndsAt:pending.trialEndsAt});track('wallet_subscription_ready',{planId:pending.planId,state});location.hash='#/account';}}catch(error){toast(error.message);}}
+async function handleDigispherePremiumReturn(){
+  const hashQuery=location.hash.includes('?')?location.hash.split('?')[1]:'';
+  const params=new URLSearchParams(hashQuery||location.search);
+  const digisphere=digisphereReturnFromParams(params);
+  if(digisphere.wallet!=='linked'&&params.get('payment')!=='succeeded')return false;
+  trackPaymentConversion({
+    paymentStatus:'succeeded',
+    transactionId:digisphere.orderId,
+    wallet:digisphere.wallet||'linked',
+    userId:digisphere.userId,
+    trialEndsAt:digisphere.trialEndsAt,
+    requestId:digisphere.requestId,
+    subscriptionStatus:digisphere.subscriptionStatus,
+    checkoutMode:'digisphere'
+  });
+  persistCheckoutPending({
+    planCode:getState().selectedPlan||'monthly',
+    at:Date.now(),
+    source:'premium-return',
+    requestId:digisphere.requestId||null,
+    userId:digisphere.userId||null,
+    checkoutMode:'digisphere',
+    trialEndsAt:digisphere.trialEndsAt||null
+  });
+  try{
+    const result=await pollBillingStatus({attempts:12,intervalMs:1500});
+    await applyAuthoritativeStatus(result,getState().selectedPlan||'monthly');
+  }catch(error){toast(error.message||'Unable to refresh Premium status.');}
+  return true;
+}
 async function walletCheckout(plan){
   if(plan.comingSoon||plan.status==='coming_soon'||plan.raw?.comingSoon||plan.raw?.status==='coming_soon'){toast('This plan is coming soon.');return;}
   track('wallet_link_start',{planId:plan.id});
@@ -30,5 +61,8 @@ export function bindPremium(){
   externalPlans=[];externalAvailable=false;
   const readiness=(async()=>{try{const payload=await fetchBillingPlans();externalPlans=normalizePlans(payload);externalAvailable=Boolean(payload?.enabled!==false&&externalPlans.length);if(externalAvailable){renderPlans(externalPlans);renderExternalChrome();}}catch{externalAvailable=false;}return externalAvailable;})();
   grid.addEventListener('click',async event=>{const button=event.target.closest?.('[data-plan]');if(!button||!grid.contains(button))return;const selectedId=button.dataset.plan;await readiness;const source=externalAvailable?externalPlans:legacyPlans;const plan=source.find(item=>item.id===selectedId);if(!plan)return;update({selectedPlan:plan.id});track('plan_select',{planId:plan.id});if(isPremium())return;await walletCheckout(plan);});
-  readiness.then(enabled=>{if(enabled&&sessionStorage.getItem('game-arena:pending-wallet'))resumeWalletLink();});
+  readiness.then(async enabled=>{
+    await handleDigispherePremiumReturn();
+    if(enabled&&sessionStorage.getItem('game-arena:pending-wallet'))resumeWalletLink();
+  });
 }
