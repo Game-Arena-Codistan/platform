@@ -10,6 +10,7 @@
 | Staging equivalent | `https://gsmarena-play.codistan.org/landing1?utm=T&package=1&parameter=gamingconsole&payment=jazzcash` |
 | TikTok Pixel ID | `DBU5QTJC77UCDH70PUBG` |
 | Traffic marker | `utm=T` → `traffic_source: tiktok` |
+| Digisphere Subscribe | Fire once on `wallet=linked` (or payment succeeded). Prefer URL/`requestId`; else synthesize `digisphere:{userId}:{trialEndsAt}`. Do not require JazzCash `order`/`cv`. |
 
 ## Implementation
 

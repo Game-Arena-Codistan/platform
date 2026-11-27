@@ -1,6 +1,6 @@
 import {attributionForLanding,buildLanding1Path,buildLandingPath,campaignFromSearchParams,commerceForCampaign,planCodeForPackage} from './landing-campaign.js';
-import {buildLandingAnalyticsContext,trackAddToCart,trackLandingView,trackPaymentConversion} from './landing-analytics.js';
-import {linkBillingWallet,submitWalletPortal} from './billing-api.js';
+import {buildLandingAnalyticsContext,digisphereReturnFromParams,persistCheckoutPending,trackAddToCart,trackLandingView,trackPaymentConversion} from './landing-analytics.js';
+import {fetchBillingStatus,linkBillingWallet,submitWalletPortal} from './billing-api.js';
 import {update} from './state.js';
 
 const phoneIcon=`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.8.3 1.6.6 2.3a2 2 0 0 1-.5 2.1L8.1 9.1a16 16 0 0 0 6 6l1.9-1.1a2 2 0 0 1 2.1-.4c.7.3 1.5.5 2.3.6a2 2 0 0 1 1.6 2.1Z"></path></svg>`;
@@ -212,17 +212,26 @@ async function startCheckout({landing,campaign,commerce}){
       attribution:attributionForLanding(campaign,{landing,landingPath})
     });
     if(result?.mock){
-      if(result.transactionId)trackPaymentConversion({paymentStatus:'succeeded',transactionId:result.transactionId});
-      try{sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:commerce.planCode,landing,at:Date.now()}));}catch{/* ignore */}
+      if(result.transactionId)trackPaymentConversion({paymentStatus:'succeeded',transactionId:result.transactionId,checkoutMode:'mock'});
+      persistCheckoutPending({msisdn,planCode:commerce.planCode,landing,at:Date.now(),checkoutMode:'mock',requestId:result.requestId||result.transactionId||null});
       update({entitlement:'premium',selectedPlan:commerce.planCode==='yearly'?'yearly':'monthly'});
       status.textContent='Premium Features Unlocked. Redirecting…';
       location.assign('/?payment=succeeded');
       return;
     }
+    persistCheckoutPending({
+      msisdn,
+      planCode:commerce.planCode,
+      landing,
+      at:Date.now(),
+      requestId:result?.requestId||null,
+      checkoutMode:result?.checkoutMode||'digisphere',
+      userId:result?.userId||null
+    });
     status.textContent='Redirecting to JazzCash…';
     if(!submitWalletPortal(result))throw new Error('JazzCash portal response was incomplete.');
   }catch(error){
-    if(error.code==='already_linked'||/already linked/i.test(String(error.message||''))){
+    if(error.code==='already_linked'||error.code==='already_subscribed'||/already linked|already subscribed/i.test(String(error.message||''))){
       status.textContent='This JazzCash number already has Game Premium. Sign in with the same number to continue.';
       return;
     }
@@ -230,27 +239,56 @@ async function startCheckout({landing,campaign,commerce}){
   }
 }
 
-function handleLandingReturn(campaign,landing){
+async function handleLandingReturn(campaign,landing){
   const params=new URLSearchParams(location.search);
-  const payment=params.get('payment');
+  const digisphere=digisphereReturnFromParams(params);
+  const payment=digisphere.payment||params.get('payment');
   const status=document.querySelector('#landing-status');
-  if(payment==='failed'){
+  if(payment==='failed'||digisphere.wallet==='failed'){
     if(status)status.textContent='JazzCash payment was not completed. You can try again.';
     return;
   }
-  if(payment==='succeeded'){
-    const txn=params.get('orderId')||params.get('txn')||params.get('transactionId')||'';
-    if(txn)trackPaymentConversion({paymentStatus:'succeeded',transactionId:txn});
+  const linked=digisphere.wallet==='linked'||payment==='succeeded';
+  if(!linked)return;
+  trackPaymentConversion({
+    paymentStatus:'succeeded',
+    transactionId:digisphere.orderId,
+    wallet:digisphere.wallet||(payment==='succeeded'?'linked':''),
+    userId:digisphere.userId,
+    trialEndsAt:digisphere.trialEndsAt,
+    requestId:digisphere.requestId,
+    subscriptionStatus:digisphere.subscriptionStatus,
+    checkoutMode:digisphere.wallet?'digisphere':undefined
+  });
+  try{
+    const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
+    persistCheckoutPending({
+      msisdn,
+      planCode:planCodeForPackage(campaign.package),
+      landing,
+      at:Date.now(),
+      requestId:digisphere.requestId||null,
+      userId:digisphere.userId||null,
+      checkoutMode:digisphere.wallet?'digisphere':'diy',
+      trialEndsAt:digisphere.trialEndsAt||null
+    });
+  }catch{/* ignore */}
+  try{
+    const billing=await fetchBillingStatus();
+    if(billing?.appEntitlement?.tier)update({entitlement:billing.appEntitlement.tier,selectedPlan:planCodeForPackage(campaign.package)==='yearly'?'yearly':'monthly'});
+    else update({entitlement:'premium',selectedPlan:planCodeForPackage(campaign.package)==='yearly'?'yearly':'monthly'});
+  }catch{
     update({entitlement:'premium',selectedPlan:planCodeForPackage(campaign.package)==='yearly'?'yearly':'monthly'});
-    try{
-      const msisdn=sessionStorage.getItem('game-arena:landing-msisdn')||'';
-      sessionStorage.setItem('game-arena:pending-subscription',JSON.stringify({msisdn,planCode:planCodeForPackage(campaign.package),landing,at:Date.now()}));
-    }catch{/* ignore */}
-    if(status)status.textContent='Premium Features Unlocked. Redirecting…';
-    const next=new URLSearchParams({payment:'succeeded'});
-    if(txn)next.set('orderId',txn);
-    setTimeout(()=>location.assign(`/?${next}`),1200);
   }
+  if(status)status.textContent='Premium Features Unlocked. Redirecting…';
+  const next=new URLSearchParams({payment:'succeeded'});
+  if(digisphere.orderId)next.set('orderId',digisphere.orderId);
+  if(digisphere.wallet)next.set('wallet',digisphere.wallet);
+  if(digisphere.userId)next.set('userId',digisphere.userId);
+  if(digisphere.subscriptionStatus)next.set('subscriptionStatus',digisphere.subscriptionStatus);
+  if(digisphere.trialEndsAt)next.set('trialEndsAt',digisphere.trialEndsAt);
+  if(digisphere.requestId)next.set('requestId',digisphere.requestId);
+  setTimeout(()=>location.assign(`/?${next}`),1200);
 }
 
 function ensureLandingStyles(){

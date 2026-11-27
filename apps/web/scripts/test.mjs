@@ -160,9 +160,14 @@ test('TikTok Pixel is wired for landing1 campaign analytics',async()=>{
   assert.match(analytics,/logTikTokEvent\('ViewContent'/);
   assert.match(analytics,/logTikTokEvent\('InitiateCheckout'/);
   assert.match(analytics,/logTikTokEvent\('AddPaymentInfo'/);
-  assert.match(analytics,/logTikTokEvent\('Subscribe'/);
+  assert.match(analytics,/logTikTokEvent\(\s*'Subscribe'/);
   assert.match(analytics,/localStorage\.setItem\(CONTEXT_KEY/);
   assert.match(analytics,/PLACEHOLDER_ORDERS/);
+  assert.match(analytics,/resolveSubscribeOrderId/);
+  assert.match(analytics,/digisphere:/);
+  assert.match(analytics,/wallet=linked|wallet==='linked'|wallet\|\|/);
+  assert.match(analytics,/checkout_mode/);
+  assert.match(analytics,/digisphereReturnFromParams/);
   assert.doesNotMatch(analytics,/logTikTokEvent\('AddToCart'/);
   assert.doesNotMatch(analytics,/logTikTokEvent\('CompletePayment'/);
   assert.match(analytics,/event_id:orderId/);
