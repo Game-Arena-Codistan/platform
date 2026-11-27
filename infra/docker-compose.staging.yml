@@ -1,22 +1,12 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: game_arena
-      POSTGRES_USER: game_arena
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-    volumes: [postgres-data:/var/lib/postgresql/data]
-    healthcheck: {test: [CMD-SHELL, "pg_isready -U game_arena -d game_arena"], interval: 5s, timeout: 3s, retries: 20}
-    restart: unless-stopped
 
   migrate:
     image: ${IMAGE_BASE:?IMAGE_BASE is required}-api:${IMAGE_TAG:?IMAGE_TAG is required}
     pull_policy: always
     command: [npm, run, migrate]
     environment:
-      DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD}@postgres:5432/game_arena
+      DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD}@172.17.0.1:5441/game_arena
       DATABASE_SSL: "false"
-    depends_on: {postgres: {condition: service_healthy}}
     restart: "no"
 
   api:
@@ -27,7 +17,7 @@ services:
       PORT: 8081
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?PUBLIC_ORIGIN is required}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?ALLOWED_ORIGINS is required}
-      DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD}@postgres:5432/game_arena
+      DATABASE_URL: postgres://game_arena:${POSTGRES_PASSWORD}@172.17.0.1:5441/game_arena
       DATABASE_SSL: "false"
       REQUIRE_DATABASE: "true"
       OTP_PROVIDER_MODE: ${OTP_PROVIDER_MODE:-mock}
@@ -116,5 +106,3 @@ services:
     depends_on: {api: {condition: service_healthy}, web: {condition: service_healthy}, admin: {condition: service_started}, game-origin: {condition: service_healthy}}
     restart: unless-stopped
 
-volumes:
-  postgres-data:
